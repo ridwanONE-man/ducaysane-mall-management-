@@ -1,0 +1,6 @@
+{
+  "name": "Ducaysane Admin",
+  "description": "Ducaysane Commercial Real Estate & MallCore management portal with spatial yield, storefront unit leasing, dual-currency USD/SSP accounting, and payment receipts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
