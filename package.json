@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
-    "@rolldown/binding-win32-x64-msvc": "^1.2.9",
     "@supabase/supabase-js": "^2.116.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
@@ -23,6 +22,9 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^8.3.0"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-win32-x64-msvc": "^1.2.9"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
