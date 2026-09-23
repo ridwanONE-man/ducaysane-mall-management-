@@ -21,6 +21,8 @@ import {
   NavigationTab, 
   PropertyUnit, 
   PaymentRecord, 
+  DepositRecord,
+  CashflowTransaction,
   CurrencyMode,
   CommercialNotification
 } from './types';
@@ -28,18 +30,32 @@ import {
 import { 
   initialUnits, 
   initialPayments, 
+  initialDeposits,
+  initialCashflowTransactions,
   initialCommercialNotifications 
 } from './data/commercialData';
+
 import { 
   getUnitsFromSupabase, 
   saveUnitToSupabase, 
+  saveUnitsBulkToSupabase,
+  deleteUnitFromSupabase,
   getPaymentsFromSupabase, 
   savePaymentToSupabase, 
-  clearAllSupabaseData 
+  savePaymentsBulkToSupabase,
+  getDepositsFromSupabase,
+  saveDepositToSupabase,
+  saveDepositsBulkToSupabase,
+  getCashflowFromSupabase,
+  saveCashflowToSupabase,
+  saveCashflowsBulkToSupabase,
+  clearAllSupabaseData,
+  subscribeToRealtimeChanges,
+  RealtimeStatus
 } from './lib/supabaseService';
 
 export default function App() {
-  // Authentication State: Defaults to LoginPage as requested by user
+  // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [adminUser, setAdminUser] = useState<AdminUser>({
     id: 'usr-admin-1',
@@ -53,28 +69,9 @@ export default function App() {
   // App Navigation & Data State
   const [activeTab, setActiveTab] = useState<NavigationTab>('dashboard');
 
-  // Purge any legacy default caches on load
+  // Core Data States (initialized with defaults, then hydrated from Supabase)
   const [units, setUnits] = useState<PropertyUnit[]>(() => {
     try {
-      // Clear legacy mallcore cache keys
-      const legacyKeys = [
-        'mallcore_units_clean',
-        'mallcore_payments_clean',
-        'mallcore_units',
-        'mallcore_payments',
-        'mallcore_cache',
-        'mallcore_settings',
-        'mallcore_notifications'
-      ];
-      legacyKeys.forEach(k => localStorage.removeItem(k));
-
-      // Clear all legacy cache on first version run
-      if (!localStorage.getItem('ducaysane_cache_v1_purged')) {
-        localStorage.clear();
-        localStorage.setItem('ducaysane_cache_v1_purged', 'true');
-        return [];
-      }
-
       const saved = localStorage.getItem('ducaysane_units');
       return saved ? JSON.parse(saved) : initialUnits;
     } catch {
@@ -91,12 +88,36 @@ export default function App() {
     }
   });
 
+  const [deposits, setDeposits] = useState<DepositRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('ducaysane_deposits');
+      return saved ? JSON.parse(saved) : initialDeposits;
+    } catch {
+      return initialDeposits;
+    }
+  });
+
+  const [cashflow, setCashflow] = useState<CashflowTransaction[]>(() => {
+    try {
+      const saved = localStorage.getItem('ducaysane_cashflow');
+      return saved ? JSON.parse(saved) : initialCashflowTransactions;
+    } catch {
+      return initialCashflowTransactions;
+    }
+  });
+
   const [notifications, setNotifications] = useState<CommercialNotification[]>(initialCommercialNotifications);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [activeBuilding, setActiveBuilding] = useState('Juba Central Mall');
+  const [activeBuilding] = useState('Juba Central Mall');
 
-  // Persistence for user-created records
+  // Supabase Real-time connection status
+  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('connecting');
+
+  // Unit editing state
+  const [editingUnit, setEditingUnit] = useState<PropertyUnit | null>(null);
+
+  // Persistence to localStorage for offline cache
   useEffect(() => {
     try {
       localStorage.setItem('ducaysane_units', JSON.stringify(units));
@@ -108,6 +129,18 @@ export default function App() {
       localStorage.setItem('ducaysane_payments', JSON.stringify(payments));
     } catch (e) {}
   }, [payments]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('ducaysane_deposits', JSON.stringify(deposits));
+    } catch (e) {}
+  }, [deposits]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('ducaysane_cashflow', JSON.stringify(cashflow));
+    } catch (e) {}
+  }, [cashflow]);
 
   // Modal States
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -124,15 +157,149 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const handleClearAllData = () => {
+  // ==========================================
+  // REAL-TIME SUPABASE HYDRATION & LISTENER
+  // ==========================================
+  useEffect(() => {
+    let isMounted = true;
+
+    async function hydrateAndSync() {
+      try {
+        setRealtimeStatus('connecting');
+
+        const [dbUnits, dbPayments, dbDeposits, dbCashflow] = await Promise.all([
+          getUnitsFromSupabase(),
+          getPaymentsFromSupabase(),
+          getDepositsFromSupabase(),
+          getCashflowFromSupabase(),
+        ]);
+
+        if (!isMounted) return;
+
+        // 1. Units Hydration / Seeding
+        if (dbUnits.length === 0) {
+          console.log('Supabase units table empty. Auto-seeding initial inventory...');
+          await saveUnitsBulkToSupabase(initialUnits);
+          setUnits(initialUnits);
+        } else {
+          setUnits(dbUnits);
+        }
+
+        // 2. Payments Hydration / Seeding
+        if (dbPayments.length === 0) {
+          console.log('Supabase payments table empty. Auto-seeding initial ledger...');
+          await savePaymentsBulkToSupabase(initialPayments);
+          setPayments(initialPayments);
+        } else {
+          setPayments(dbPayments);
+        }
+
+        // 3. Deposits Hydration / Seeding
+        if (dbDeposits.length === 0) {
+          console.log('Supabase deposits table empty. Auto-seeding initial escrow...');
+          await saveDepositsBulkToSupabase(initialDeposits);
+          setDeposits(initialDeposits);
+        } else {
+          setDeposits(dbDeposits);
+        }
+
+        // 4. Cashflow Hydration / Seeding
+        if (dbCashflow.length === 0) {
+          console.log('Supabase cashflow table empty. Auto-seeding initial cashflow...');
+          await saveCashflowsBulkToSupabase(initialCashflowTransactions);
+          setCashflow(initialCashflowTransactions);
+        } else {
+          setCashflow(dbCashflow);
+        }
+      } catch (err) {
+        console.warn('Supabase initial fetch failed:', err);
+      }
+    }
+
+    hydrateAndSync();
+
+    // Subscribe to multi-user changes across all tables
+    const unsubscribe = subscribeToRealtimeChanges({
+      onStatusChange: (status) => {
+        if (isMounted) setRealtimeStatus(status);
+      },
+      onUnitChange: (event, unit, oldId) => {
+        if (!isMounted) return;
+        if (event === 'DELETE') {
+          const targetId = oldId || unit.id;
+          setUnits(prev => prev.filter(u => u.id !== targetId));
+        } else if (event === 'INSERT') {
+          setUnits(prev => {
+            if (prev.some(u => u.id === unit.id)) return prev;
+            return [unit, ...prev];
+          });
+        } else if (event === 'UPDATE') {
+          setUnits(prev => prev.map(u => u.id === unit.id ? unit : u));
+        }
+      },
+      onPaymentChange: (event, payment, oldId) => {
+        if (!isMounted) return;
+        if (event === 'DELETE') {
+          const targetId = oldId || payment.id;
+          setPayments(prev => prev.filter(p => p.id !== targetId));
+        } else if (event === 'INSERT') {
+          setPayments(prev => {
+            if (prev.some(p => p.id === payment.id)) return prev;
+            return [payment, ...prev];
+          });
+        } else if (event === 'UPDATE') {
+          setPayments(prev => prev.map(p => p.id === payment.id ? payment : p));
+        }
+      },
+      onDepositChange: (event, deposit, oldId) => {
+        if (!isMounted) return;
+        if (event === 'DELETE') {
+          const targetId = oldId || deposit.id;
+          setDeposits(prev => prev.filter(d => d.id !== targetId));
+        } else if (event === 'INSERT') {
+          setDeposits(prev => {
+            if (prev.some(d => d.id === deposit.id)) return prev;
+            return [deposit, ...prev];
+          });
+        } else if (event === 'UPDATE') {
+          setDeposits(prev => prev.map(d => d.id === deposit.id ? deposit : d));
+        }
+      },
+      onCashflowChange: (event, tx, oldId) => {
+        if (!isMounted) return;
+        if (event === 'DELETE') {
+          const targetId = oldId || tx.id;
+          setCashflow(prev => prev.filter(c => c.id !== targetId));
+        } else if (event === 'INSERT') {
+          setCashflow(prev => {
+            if (prev.some(c => c.id === tx.id)) return prev;
+            return [tx, ...prev];
+          });
+        } else if (event === 'UPDATE') {
+          setCashflow(prev => prev.map(c => c.id === tx.id ? tx : c));
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Clear all data
+  const handleClearAllData = async () => {
     setUnits([]);
     setPayments([]);
+    setDeposits([]);
+    setCashflow([]);
     setNotifications([]);
     try {
       localStorage.clear();
       localStorage.setItem('ducaysane_cache_v1_purged', 'true');
     } catch (e) {}
-    showToast('All system records and cache have been completely cleared.');
+    await clearAllSupabaseData();
+    showToast('All system records and cache cleared across Supabase and local store.');
   };
 
   // Login handler
@@ -140,7 +307,7 @@ export default function App() {
     setAdminUser(user);
     setIsAuthenticated(true);
     setActiveTab('dashboard');
-    showToast('Logged in successfully. Welcome to MallCore CRE Portal.');
+    showToast('Logged in successfully. Real-time multi-user synchronization active.');
   };
 
   const handleLogout = () => {
@@ -148,13 +315,15 @@ export default function App() {
   };
 
   // Payment Confirmation Handler
-  const handleConfirmPayment = (newPayment: PaymentRecord) => {
+  const handleConfirmPayment = async (newPayment: PaymentRecord) => {
+    // 1. Optimistic update
     setPayments(prev => [newPayment, ...prev]);
 
-    // Update the unit's billing status
+    // 2. Update unit's billing status
+    let updatedUnitRow: PropertyUnit | null = null;
     setUnits(prev => prev.map(u => {
       if (u.unitNumber === newPayment.unitNumber) {
-        return {
+        const updated: PropertyUnit = {
           ...u,
           billingStatus: newPayment.remainingBalance > 0 ? 'Partially Paid' : 'Paid',
           billingMonthText: newPayment.remainingBalance > 0 
@@ -163,11 +332,37 @@ export default function App() {
           arrearsUSD: newPayment.currency === 'USD' ? newPayment.remainingBalance : u.arrearsUSD,
           arrearsSSP: newPayment.currency === 'SSP' ? newPayment.remainingBalance : u.arrearsSSP
         };
+        updatedUnitRow = updated;
+        return updated;
       }
       return u;
     }));
 
-    // Add alert notification
+    // 3. Persist payment & unit in Supabase
+    await savePaymentToSupabase(newPayment);
+    if (updatedUnitRow) {
+      await saveUnitToSupabase(updatedUnitRow);
+    }
+
+    // 4. Record corresponding Cashflow transaction
+    const newTx: CashflowTransaction = {
+      id: `cf-pay-${Date.now()}`,
+      referenceNumber: `CF-${newPayment.receiptNumber.replace(/[^a-zA-Z0-9]/g, '') || Date.now().toString().slice(-6)}`,
+      date: newPayment.date,
+      title: `Rent: ${newPayment.tenantName} (${newPayment.unitNumber})`,
+      category: 'Rent Collection',
+      type: 'Inflow',
+      amount: newPayment.amount,
+      currency: newPayment.currency,
+      account: 'Central Vault Cash Float',
+      recordedBy: adminUser.name,
+      status: 'Completed',
+      notes: `Rent payment for ${newPayment.accountingPeriod}. Receipt: ${newPayment.receiptNumber}`
+    };
+    setCashflow(prev => [newTx, ...prev]);
+    await saveCashflowToSupabase(newTx);
+
+    // 5. Add notification
     const newNotification: CommercialNotification = {
       id: `notif-${Date.now()}`,
       title: `Payment Recorded: ${newPayment.receiptNumber}`,
@@ -181,13 +376,54 @@ export default function App() {
 
     // Open receipt modal for preview/printing
     setSelectedReceiptForPrint(newPayment);
-    showToast(`Payment ${newPayment.receiptNumber} recorded and ledger updated.`);
+    showToast(`Payment ${newPayment.receiptNumber} recorded and synced in real time.`);
   };
 
-  // Add Unit Handler
-  const handleAddUnit = (newUnit: PropertyUnit) => {
-    setUnits(prev => [newUnit, ...prev]);
-    showToast(`Unit ${newUnit.unitNumber} (${newUnit.floor}) registered to mall inventory.`);
+  // Add / Edit Unit Handler
+  const handleSaveUnit = async (unitToSave: PropertyUnit) => {
+    const isExisting = units.some(u => u.id === unitToSave.id);
+    if (isExisting) {
+      setUnits(prev => prev.map(u => u.id === unitToSave.id ? unitToSave : u));
+      showToast(`Unit ${unitToSave.unitNumber} updated and synced.`);
+    } else {
+      setUnits(prev => [unitToSave, ...prev]);
+      showToast(`Unit ${unitToSave.unitNumber} (${unitToSave.floor}) registered and synced.`);
+    }
+    await saveUnitToSupabase(unitToSave);
+  };
+
+  // Delete Unit Handler
+  const handleDeleteUnit = async (unitId: string) => {
+    const found = units.find(u => u.id === unitId);
+    setUnits(prev => prev.filter(u => u.id !== unitId));
+    showToast(`Unit ${found?.unitNumber || ''} deleted from inventory.`);
+    await deleteUnitFromSupabase(unitId);
+  };
+
+  // Save Deposit Handler
+  const handleSaveDeposit = async (dep: DepositRecord) => {
+    const isExisting = deposits.some(d => d.id === dep.id);
+    if (isExisting) {
+      setDeposits(prev => prev.map(d => d.id === dep.id ? dep : d));
+      showToast(`Deposit ${dep.depositSlip || dep.id} updated.`);
+    } else {
+      setDeposits(prev => [dep, ...prev]);
+      showToast(`Deposit recorded for ${dep.tenantName}.`);
+    }
+    await saveDepositToSupabase(dep);
+  };
+
+  // Save Cashflow Handler
+  const handleSaveCashflow = async (tx: CashflowTransaction) => {
+    const isExisting = cashflow.some(c => c.id === tx.id);
+    if (isExisting) {
+      setCashflow(prev => prev.map(c => c.id === tx.id ? tx : c));
+      showToast(`Cashflow voucher ${tx.referenceNumber} updated.`);
+    } else {
+      setCashflow(prev => [tx, ...prev]);
+      showToast(`Cashflow ${tx.type} voucher ${tx.referenceNumber} recorded.`);
+    }
+    await saveCashflowToSupabase(tx);
   };
 
   // Quick action: record payment for specific unit
@@ -229,7 +465,7 @@ export default function App() {
           <span>{toastMessage}</span>
           <button 
             onClick={() => setToastMessage(null)}
-            className="ml-2 text-slate-400 hover:text-white"
+            className="ml-2 text-slate-400 hover:text-white cursor-pointer"
           >
             ✕
           </button>
@@ -252,7 +488,7 @@ export default function App() {
       {/* Main Content Pane */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
         
-        {/* Redesigned Minimalist & Attractive Header */}
+        {/* Header with Live Sync Status */}
         <Header
           currentTab={activeTab}
           currencyMode={currencyMode}
@@ -275,6 +511,7 @@ export default function App() {
           onLogout={handleLogout}
           notifications={notifications}
           onMarkNotificationsRead={handleMarkNotificationsRead}
+          realtimeStatus={realtimeStatus}
         />
 
         {/* Dynamic Views with Real Functions */}
@@ -291,7 +528,10 @@ export default function App() {
                 setPaymentSelectedUnitId(undefined);
                 setIsPaymentModalOpen(true);
               }}
-              onOpenAddUnit={() => setIsAddUnitModalOpen(true)}
+              onOpenAddUnit={() => {
+                setEditingUnit(null);
+                setIsAddUnitModalOpen(true);
+              }}
               onNavigate={setActiveTab}
             />
           )}
@@ -303,14 +543,23 @@ export default function App() {
               currencyMode={currencyMode}
               onCurrencyChange={setCurrencyMode}
               onOpenRecordPaymentWithUnit={handleOpenRecordPaymentForUnit}
-              onOpenAddUnit={() => setIsAddUnitModalOpen(true)}
+              onOpenAddUnit={() => {
+                setEditingUnit(null);
+                setIsAddUnitModalOpen(true);
+              }}
               onOpenFloorMap={() => setIsFloorMapOpen(true)}
+              onEditUnit={(unit) => {
+                setEditingUnit(unit);
+                setIsAddUnitModalOpen(true);
+              }}
+              onDeleteUnit={handleDeleteUnit}
             />
           )}
 
           {/* 3. TENANTS DIRECTORY */}
           {activeTab === 'tenants' && (
             <TenantsView
+              units={units}
               onRecordPaymentForTenant={handleRecordPaymentForTenantUnit}
             />
           )}
@@ -334,6 +583,8 @@ export default function App() {
             <DepositsView
               units={units}
               currencyMode={currencyMode}
+              deposits={deposits}
+              onSaveDeposit={handleSaveDeposit}
             />
           )}
 
@@ -341,6 +592,8 @@ export default function App() {
           {activeTab === 'cashflow' && (
             <CashflowView
               currencyMode={currencyMode}
+              transactions={cashflow}
+              onSaveTransaction={handleSaveCashflow}
             />
           )}
 
@@ -428,11 +681,15 @@ export default function App() {
         payment={selectedReceiptForPrint}
       />
 
-      {/* Register New Commercial Unit Modal */}
+      {/* Register / Edit Commercial Unit Modal */}
       <AddUnitModal
         isOpen={isAddUnitModalOpen}
-        onClose={() => setIsAddUnitModalOpen(false)}
-        onAddUnit={handleAddUnit}
+        onClose={() => {
+          setIsAddUnitModalOpen(false);
+          setEditingUnit(null);
+        }}
+        onSaveUnit={handleSaveUnit}
+        editingUnit={editingUnit}
       />
 
       {/* Floor Map Interactive Architectural View */}

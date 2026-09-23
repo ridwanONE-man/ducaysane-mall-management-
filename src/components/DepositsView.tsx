@@ -20,14 +20,19 @@ interface DepositsViewProps {
   units: PropertyUnit[];
   currencyMode: CurrencyMode;
   onOpenReceiptPrint?: (deposit: DepositRecord) => void;
+  deposits?: DepositRecord[];
+  onSaveDeposit?: (deposit: DepositRecord) => void;
 }
 
 export const DepositsView: React.FC<DepositsViewProps> = ({
   units,
   currencyMode,
-  onOpenReceiptPrint
+  onOpenReceiptPrint,
+  deposits: propDeposits,
+  onSaveDeposit
 }) => {
-  const [deposits, setDeposits] = useState<DepositRecord[]>(initialDeposits);
+  const [localDeposits, setLocalDeposits] = useState<DepositRecord[]>(initialDeposits);
+  const deposits = propDeposits || localDeposits;
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'Held in Escrow' | 'Under Review' | 'Refunded'>('ALL');
   
@@ -77,19 +82,27 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
       bankAccount: newBankAccount,
       notes: 'Initial lease security deposit held in segregation.'
     };
-    setDeposits(prev => [newDep, ...prev]);
+    if (onSaveDeposit) {
+      onSaveDeposit(newDep);
+    } else {
+      setLocalDeposits(prev => [newDep, ...prev]);
+    }
     setIsCollectModalOpen(false);
     setNewTenantName('');
   };
 
   const handleConfirmRefund = () => {
     if (!selectedDepositForRefund) return;
-    setDeposits(prev => prev.map(d => {
-      if (d.id === selectedDepositForRefund.id) {
-        return { ...d, status: 'Refunded', notes: 'Deposit released upon satisfactory lease termination.' };
-      }
-      return d;
-    }));
+    const updated: DepositRecord = { 
+      ...selectedDepositForRefund, 
+      status: 'Refunded', 
+      notes: 'Deposit released upon satisfactory lease termination.' 
+    };
+    if (onSaveDeposit) {
+      onSaveDeposit(updated);
+    } else {
+      setLocalDeposits(prev => prev.map(d => d.id === updated.id ? updated : d));
+    }
     setIsRefundModalOpen(false);
     setSelectedDepositForRefund(null);
   };

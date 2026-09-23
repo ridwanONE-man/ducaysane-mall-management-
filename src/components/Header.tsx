@@ -1,6 +1,7 @@
 import React from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, Wifi, WifiOff } from 'lucide-react';
 import { CurrencyMode, NavigationTab, AdminUser, CommercialNotification } from '../types';
+import { RealtimeStatus } from '../lib/supabaseService';
 
 export interface HeaderProps {
   currentTab?: NavigationTab;
@@ -16,17 +17,19 @@ export interface HeaderProps {
   onLogout?: () => void;
   notifications?: CommercialNotification[];
   onMarkNotificationsRead?: () => void;
+  realtimeStatus?: RealtimeStatus;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   adminUser,
   searchQuery,
   onSearchChange,
+  realtimeStatus = 'connected'
 }) => {
   return (
     <header 
       id="mallcore-appbar" 
-      className="h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-5 lg:px-8 flex items-center justify-between gap-6 sticky top-0 z-30 transition-all"
+      className="h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-5 lg:px-8 flex items-center justify-between gap-4 sticky top-0 z-30 transition-all"
     >
       {/* Search Bar */}
       <div className="flex items-center flex-1 max-w-lg">
@@ -56,8 +59,52 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Admin Profile: Unclickable, displays Name and Email */}
-      <div className="flex items-center select-none shrink-0">
+      {/* Right Controls: Realtime Live Sync Status Badge + Admin Profile */}
+      <div className="flex items-center gap-3 select-none shrink-0">
+        
+        {/* Real-time Multi-User Status Pill */}
+        <div 
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all ${
+            realtimeStatus === 'connected' 
+              ? 'bg-emerald-50/80 border-emerald-200/90 text-emerald-800 shadow-2xs' 
+              : realtimeStatus === 'connecting'
+              ? 'bg-amber-50 border-amber-200 text-amber-800'
+              : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}
+          title={
+            realtimeStatus === 'connected'
+              ? 'Multi-user real-time synchronization active. Changes are synced instantly with Supabase.'
+              : realtimeStatus === 'connecting'
+              ? 'Connecting to live Supabase synchronization channel...'
+              : 'Disconnected. Trying to reconnect to Supabase...'
+          }
+        >
+          {realtimeStatus === 'connected' && (
+            <>
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-[11px] font-bold tracking-tight">Live Sync</span>
+            </>
+          )}
+
+          {realtimeStatus === 'connecting' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-[11px] font-medium tracking-tight">Connecting...</span>
+            </>
+          )}
+
+          {(realtimeStatus === 'error' || realtimeStatus === 'disconnected') && (
+            <>
+              <WifiOff className="w-3 h-3 text-rose-500" />
+              <span className="text-[11px] font-semibold text-rose-600">Offline</span>
+            </>
+          )}
+        </div>
+
+        {/* Admin Profile: Name and Email */}
         <div className="flex items-center gap-3 px-3.5 py-1.5 rounded-2xl bg-slate-50 border border-slate-200/80 cursor-default">
           <img 
             src={adminUser.avatar} 
@@ -73,6 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
         </div>
+
       </div>
     </header>
   );

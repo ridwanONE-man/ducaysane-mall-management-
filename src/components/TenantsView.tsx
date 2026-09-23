@@ -1,14 +1,28 @@
 import React, { useState } from 'react';
 import { Users, Search, Phone, Mail, Store, CreditCard, CheckCircle, Clock } from 'lucide-react';
 import { initialTenants } from '../data/commercialData';
-import { TenantInfo } from '../types';
+import { TenantInfo, PropertyUnit } from '../types';
 
 interface TenantsViewProps {
   onRecordPaymentForTenant: (unitNumber: string) => void;
+  units?: PropertyUnit[];
 }
 
-export const TenantsView: React.FC<TenantsViewProps> = ({ onRecordPaymentForTenant }) => {
-  const [tenants, setTenants] = useState<TenantInfo[]>(initialTenants);
+export const TenantsView: React.FC<TenantsViewProps> = ({ onRecordPaymentForTenant, units }) => {
+  const derivedTenants: TenantInfo[] = units && units.length > 0
+    ? units
+        .filter(u => u.currentTenant && u.currentTenant.name.trim().length > 0)
+        .map(u => ({
+          ...u.currentTenant!,
+          unitNumber: u.unitNumber,
+          balanceUSD: u.arrearsUSD || 0,
+          balanceSSP: u.arrearsSSP || 0,
+          balanceStatus: (u.arrearsUSD || 0) > 0 || (u.arrearsSSP || 0) > 0 ? ('Overdue' as const) : ('Current' as const),
+          leaseEnd: u.leaseEnd || 'Dec 31, 2025'
+        }))
+    : [];
+
+  const tenants = derivedTenants.length > 0 ? derivedTenants : initialTenants;
   const [searchTerm, setSearchTerm] = useState('');
 
   const filtered = tenants.filter(t => 

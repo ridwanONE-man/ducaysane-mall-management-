@@ -22,10 +22,17 @@ import { initialCashflowTransactions } from '../data/commercialData';
 
 interface CashflowViewProps {
   currencyMode: CurrencyMode;
+  transactions?: CashflowTransaction[];
+  onSaveTransaction?: (tx: CashflowTransaction) => void;
 }
 
-export const CashflowView: React.FC<CashflowViewProps> = ({ currencyMode }) => {
-  const [transactions, setTransactions] = useState<CashflowTransaction[]>(initialCashflowTransactions);
+export const CashflowView: React.FC<CashflowViewProps> = ({ 
+  currencyMode,
+  transactions: propTransactions,
+  onSaveTransaction
+}) => {
+  const [localTransactions, setLocalTransactions] = useState<CashflowTransaction[]>(initialCashflowTransactions);
+  const transactions = propTransactions || localTransactions;
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'Inflow' | 'Outflow'>('ALL');
   const [currencyFilter, setCurrencyFilter] = useState<'ALL' | 'USD' | 'SSP'>('ALL');
@@ -89,7 +96,11 @@ export const CashflowView: React.FC<CashflowViewProps> = ({ currencyMode }) => {
       status: 'Completed',
       notes: newNotes
     };
-    setTransactions(prev => [newTx, ...prev]);
+    if (onSaveTransaction) {
+      onSaveTransaction(newTx);
+    } else {
+      setLocalTransactions(prev => [newTx, ...prev]);
+    }
     setIsRecordModalOpen(false);
     setNewTitle('');
     setNewAmount('');

@@ -14,7 +14,9 @@ import {
   Store,
   ChevronDown,
   X,
-  UserPlus
+  UserPlus,
+  Edit2,
+  Trash2
 } from 'lucide-react';
 import { PropertyUnit, CurrencyMode, OccupancyStatus } from '../types';
 import { exportUnitsToCSV } from '../utils/exportUtils';
@@ -26,6 +28,8 @@ interface UnitsViewProps {
   onOpenRecordPaymentWithUnit: (unitId: string) => void;
   onOpenAddUnit: () => void;
   onOpenFloorMap: () => void;
+  onEditUnit?: (unit: PropertyUnit) => void;
+  onDeleteUnit?: (unitId: string) => void;
 }
 
 export const UnitsView: React.FC<UnitsViewProps> = ({
@@ -34,7 +38,9 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
   onCurrencyChange,
   onOpenRecordPaymentWithUnit,
   onOpenAddUnit,
-  onOpenFloorMap
+  onOpenFloorMap,
+  onEditUnit,
+  onDeleteUnit
 }) => {
   // Category tabs
   const [activeCategoryTab, setActiveCategoryTab] = useState<'All' | 'Shops' | 'Kiosks' | 'Available'>('All');
@@ -522,24 +528,41 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
 
                     {/* Actions */}
                     <td className="p-4 text-right">
-                      {unit.currentTenant ? (
+                      <div className="flex items-center justify-end gap-1.5">
+                        {unit.currentTenant && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenRecordPaymentWithUnit(unit.id)}
+                            className="px-2.5 py-1 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
+                            title="Record rent payment"
+                          >
+                            <CreditCard className="w-3 h-3" />
+                            <span>Pay</span>
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => onOpenRecordPaymentWithUnit(unit.id)}
-                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
+                          onClick={() => onEditUnit ? onEditUnit(unit) : onOpenAddUnit()}
+                          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                          title="Edit unit details"
                         >
-                          <CreditCard className="w-3 h-3" />
-                          <span>Pay</span>
+                          <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={onOpenAddUnit}
-                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-medium cursor-pointer"
-                        >
-                          Edit
-                        </button>
-                      )}
+                        {onDeleteUnit && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Delete ${unit.unitNumber}? This change will sync instantly to all users.`)) {
+                                onDeleteUnit(unit.id);
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Delete unit"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
