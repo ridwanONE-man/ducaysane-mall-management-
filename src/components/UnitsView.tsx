@@ -184,7 +184,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
           <span className="text-xs font-medium text-slate-500 block">Total Units</span>
           <div className="flex items-baseline gap-2 mt-0.5">
             <span className="text-2xl font-bold text-slate-900">{totalInventoryCount}</span>
-            <span className="text-[11px] text-slate-400 font-normal">{shopsCount} shops · {kiosksCount} kiosks</span>
+            <span className="text-[11px] text-slate-400 font-normal">{shopsCount} shops · {spacesCount} spaces</span>
           </div>
         </div>
 
