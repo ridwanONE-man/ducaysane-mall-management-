@@ -345,18 +345,6 @@ export default function App() {
     showToast('All system records and cache cleared across Supabase and local store.');
   };
 
-  // Login handler
-  const handleLoginSuccess = (user: AdminUser) => {
-    setAdminUser(user);
-    setIsAuthenticated(true);
-    setActiveTab('dashboard');
-    showToast('Logged in successfully. Real-time multi-user synchronization active.');
-  };
-
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-  };
-
   // Payment Confirmation Handler
   const handleConfirmPayment = async (newPayment: PaymentRecord) => {
     // 1. Optimistic update
