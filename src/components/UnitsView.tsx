@@ -42,8 +42,8 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
   onEditUnit,
   onDeleteUnit
 }) => {
-  // Category tabs
-  const [activeCategoryTab, setActiveCategoryTab] = useState<'All' | 'Shops' | 'Kiosks' | 'Available'>('All');
+  // Category tabs: All, Shops (G), Spaces (BW), Available
+  const [activeCategoryTab, setActiveCategoryTab] = useState<'All' | 'Shops' | 'Spaces' | 'Available'>('All');
 
   // Dynamic inventory calculations
   const totalInventoryCount = units.length;
@@ -51,8 +51,8 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
   const availableCount = units.filter(u => u.occupancyStatus === 'Available').length;
   const reservedCount = units.filter(u => u.occupancyStatus === 'Reserved').length;
   const maintenanceCount = units.filter(u => u.occupancyStatus === 'Maintenance').length;
-  const shopsCount = units.filter(u => u.type === 'Standard Shop').length;
-  const kiosksCount = units.filter(u => u.type !== 'Standard Shop').length;
+  const shopsCount = units.filter(u => u.type === 'Shop' || u.categoryType === 'Shop' || u.unitNumber.startsWith('G')).length;
+  const spacesCount = units.filter(u => u.type === 'Space' || u.categoryType === 'Space' || u.unitNumber.startsWith('BW')).length;
   const occupancyPct = totalInventoryCount > 0 ? Math.round((occupiedCount / totalInventoryCount) * 1000) / 10 : 0;
   const vacancyPct = totalInventoryCount > 0 ? Math.round((availableCount / totalInventoryCount) * 1000) / 10 : 0;
   const totalSqM = units.reduce((sum, u) => sum + (u.sizeSqM || 0), 0);
@@ -75,9 +75,12 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
 
   // Filter application
   const filteredUnits = units.filter(unit => {
+    const isShop = unit.type === 'Shop' || unit.categoryType === 'Shop' || unit.unitNumber.startsWith('G');
+    const isSpace = unit.type === 'Space' || unit.categoryType === 'Space' || unit.unitNumber.startsWith('BW');
+
     // Category tab filter
-    if (activeCategoryTab === 'Shops' && unit.type !== 'Standard Shop') return false;
-    if (activeCategoryTab === 'Kiosks' && unit.type !== 'Kiosk' && unit.type !== 'Open Atrium Space') return false;
+    if (activeCategoryTab === 'Shops' && !isShop) return false;
+    if (activeCategoryTab === 'Spaces' && !isSpace) return false;
     if (activeCategoryTab === 'Available' && unit.occupancyStatus !== 'Available') return false;
 
     // Dropdown filters
@@ -223,17 +226,17 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
           
           {/* Category Tabs */}
           <div className="inline-flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
-            {(['All', 'Shops', 'Kiosks', 'Available'] as const).map(tab => (
+            {(['All', 'Shops', 'Spaces', 'Available'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveCategoryTab(tab)}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   activeCategoryTab === tab 
-                    ? 'bg-white text-blue-700 shadow-xs font-bold' 
+                    ? 'bg-white text-orange-600 shadow-xs font-bold' 
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                {tab === 'All' ? `All (${totalInventoryCount})` : tab === 'Shops' ? `Shops (${shopsCount})` : tab === 'Kiosks' ? `Kiosks (${kiosksCount})` : `Available (${availableCount})`}
+                {tab === 'All' ? `All (${totalInventoryCount})` : tab === 'Shops' ? `Shops (${shopsCount})` : tab === 'Spaces' ? `Spaces (${spacesCount})` : `Available (${availableCount})`}
               </button>
             ))}
           </div>

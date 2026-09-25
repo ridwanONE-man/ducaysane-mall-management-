@@ -53,9 +53,9 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   const [notes, setNotes] = useState('');
   const [autoGenerateReceipt, setAutoGenerateReceipt] = useState(true);
 
-  // Generate dynamic receipt number
+  // Generate dynamic receipt number matching official NBC voucher
   const receiptNumberId = useId();
-  const nextReceiptNumber = `#RCP-2024-${Math.abs(receiptNumberId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 894)) % 900 + 100}`;
+  const nextReceiptNumber = `#REC-2026-${String(Math.abs(receiptNumberId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 894)) % 900 + 100).padStart(4, '0')}`;
 
   if (!isOpen) return null;
 
@@ -98,7 +98,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
       tenantId,
       unitNumber: unitNum,
       unitSpace: selectedUnit 
-        ? `${selectedUnit.unitNumber} (${selectedUnit.floor} ${selectedUnit.type}) ${selectedUnit.sizeSqM} m²`
+        ? `${selectedUnit.unitNumber} (${selectedUnit.floor} ${selectedUnit.type})`
         : unitNum,
       date: paymentDate,
       accountingPeriod,
@@ -112,7 +112,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
       advanceBalance: advanceBalanceHeld,
       status: getPaymentStatus(),
       notes: notes.trim() || `Rental payment cleared via ${paymentMethod}.`,
-      receivedBy: 'D. Deng Bol'
+      receivedBy: 'Mohamed Mohamoud'
     };
 
     onConfirmPayment(record);
@@ -126,15 +126,15 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
         className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-8"
       >
         
-        {/* Header (Exact Match to ducaysane 3.png) */}
+        {/* Header */}
         <div className="flex items-start justify-between p-6 pb-4 border-b border-slate-100">
           <div className="flex items-start gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shrink-0 shadow-md shadow-blue-500/20">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 flex items-center justify-center text-white shrink-0 shadow-md shadow-orange-500/20">
               <CreditCard className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight">Record Tenant Payment</h2>
-              <p className="text-xs text-slate-500">Apply payments towards rent, security deposit, or outstanding arrears.</p>
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight">Record Rent Payment</h2>
+              <p className="text-xs text-slate-500">Apply payments towards rent, advance deposits, or outstanding arrears.</p>
             </div>
           </div>
           <button 
@@ -394,10 +394,10 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               id="auto-receipt-check"
               checked={autoGenerateReceipt}
               onChange={(e) => setAutoGenerateReceipt(e.target.checked)}
-              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+              className="w-4 h-4 rounded text-orange-600 focus:ring-orange-500 border-slate-300 cursor-pointer"
             />
             <label htmlFor="auto-receipt-check" className="text-xs font-semibold text-slate-800 cursor-pointer">
-              Auto-generate official printable receipt (<span className="text-blue-600 font-bold">{nextReceiptNumber}</span>)
+              Auto-generate official printable receipt (<span className="text-orange-600 font-bold">{nextReceiptNumber}</span>)
             </label>
           </div>
 
@@ -412,7 +412,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-600/25 flex items-center gap-1.5 transition-all cursor-pointer"
+              className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-bold rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
             >
               <Check className="w-3.5 h-3.5" />
               <span>Confirm & Issue Receipt</span>

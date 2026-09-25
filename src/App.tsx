@@ -55,24 +55,67 @@ import {
 } from './lib/supabaseService';
 
 export default function App() {
-  // Authentication State
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [adminUser, setAdminUser] = useState<AdminUser>({
-    id: 'usr-admin-1',
-    name: 'Ahmed Ducaysane',
-    email: 'ducaysane@gmail.com',
-    role: 'Super Admin',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    lastLogin: 'Just now'
+  // Authentication State with localStorage persistence
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('nbc_admin_auth') === 'true';
+    } catch {
+      return false;
+    }
   });
 
-  // App Navigation & Data State
-  const [activeTab, setActiveTab] = useState<NavigationTab>('dashboard');
+  const [adminUser, setAdminUser] = useState<AdminUser>(() => {
+    try {
+      const savedUser = localStorage.getItem('nbc_admin_user');
+      if (savedUser) return JSON.parse(savedUser);
+    } catch {}
+    return {
+      id: 'usr-admin-1',
+      name: 'Mohamed Mohamoud',
+      email: 'admin@nyakuron.com',
+      role: 'Super Admin',
+      avatar: '/logo.png',
+      lastLogin: 'Just now'
+    };
+  });
+
+  const handleLoginSuccess = (user: AdminUser) => {
+    setAdminUser(user);
+    setIsAuthenticated(true);
+    try {
+      localStorage.setItem('nbc_admin_auth', 'true');
+      localStorage.setItem('nbc_admin_user', JSON.stringify(user));
+    } catch {}
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    try {
+      localStorage.removeItem('nbc_admin_auth');
+      localStorage.removeItem('nbc_admin_user');
+      localStorage.removeItem('nbc_active_tab');
+    } catch {}
+  };
+
+  // App Navigation & Data State (persisted across page reload)
+  const [activeTab, setActiveTab] = useState<NavigationTab>(() => {
+    try {
+      const savedTab = localStorage.getItem('nbc_active_tab') as NavigationTab;
+      if (savedTab) return savedTab;
+    } catch {}
+    return 'dashboard';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('nbc_active_tab', activeTab);
+    } catch {}
+  }, [activeTab]);
 
   // Core Data States (initialized with defaults, then hydrated from Supabase)
   const [units, setUnits] = useState<PropertyUnit[]>(() => {
     try {
-      const saved = localStorage.getItem('ducaysane_units');
+      const saved = localStorage.getItem('nbc_units');
       return saved ? JSON.parse(saved) : initialUnits;
     } catch {
       return initialUnits;
@@ -81,7 +124,7 @@ export default function App() {
 
   const [payments, setPayments] = useState<PaymentRecord[]>(() => {
     try {
-      const saved = localStorage.getItem('ducaysane_payments');
+      const saved = localStorage.getItem('nbc_payments');
       return saved ? JSON.parse(saved) : initialPayments;
     } catch {
       return initialPayments;
@@ -90,7 +133,7 @@ export default function App() {
 
   const [deposits, setDeposits] = useState<DepositRecord[]>(() => {
     try {
-      const saved = localStorage.getItem('ducaysane_deposits');
+      const saved = localStorage.getItem('nbc_deposits');
       return saved ? JSON.parse(saved) : initialDeposits;
     } catch {
       return initialDeposits;
@@ -99,7 +142,7 @@ export default function App() {
 
   const [cashflow, setCashflow] = useState<CashflowTransaction[]>(() => {
     try {
-      const saved = localStorage.getItem('ducaysane_cashflow');
+      const saved = localStorage.getItem('nbc_cashflow');
       return saved ? JSON.parse(saved) : initialCashflowTransactions;
     } catch {
       return initialCashflowTransactions;
@@ -109,7 +152,7 @@ export default function App() {
   const [notifications, setNotifications] = useState<CommercialNotification[]>(initialCommercialNotifications);
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [activeBuilding] = useState('Juba Central Mall');
+  const [activeBuilding] = useState('Nyakuron Business Centre');
 
   // Supabase Real-time connection status
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('connecting');
@@ -120,25 +163,25 @@ export default function App() {
   // Persistence to localStorage for offline cache
   useEffect(() => {
     try {
-      localStorage.setItem('ducaysane_units', JSON.stringify(units));
+      localStorage.setItem('nbc_units', JSON.stringify(units));
     } catch (e) {}
   }, [units]);
 
   useEffect(() => {
     try {
-      localStorage.setItem('ducaysane_payments', JSON.stringify(payments));
+      localStorage.setItem('nbc_payments', JSON.stringify(payments));
     } catch (e) {}
   }, [payments]);
 
   useEffect(() => {
     try {
-      localStorage.setItem('ducaysane_deposits', JSON.stringify(deposits));
+      localStorage.setItem('nbc_deposits', JSON.stringify(deposits));
     } catch (e) {}
   }, [deposits]);
 
   useEffect(() => {
     try {
-      localStorage.setItem('ducaysane_cashflow', JSON.stringify(cashflow));
+      localStorage.setItem('nbc_cashflow', JSON.stringify(cashflow));
     } catch (e) {}
   }, [cashflow]);
 
@@ -296,7 +339,7 @@ export default function App() {
     setNotifications([]);
     try {
       localStorage.clear();
-      localStorage.setItem('ducaysane_cache_v1_purged', 'true');
+      localStorage.setItem('nbc_cache_v1_purged', 'true');
     } catch (e) {}
     await clearAllSupabaseData();
     showToast('All system records and cache cleared across Supabase and local store.');
@@ -456,7 +499,7 @@ export default function App() {
   }
 
   return (
-    <div id="mallcore-app-layout" className="min-h-screen bg-slate-50 flex flex-row antialiased text-slate-800">
+    <div id="nbc-app-layout" className="min-h-screen bg-slate-50 flex flex-row antialiased text-slate-800">
       
       {/* Toast Notification */}
       {toastMessage && (
@@ -560,7 +603,10 @@ export default function App() {
           {activeTab === 'tenants' && (
             <TenantsView
               units={units}
+              payments={payments}
+              deposits={deposits}
               onRecordPaymentForTenant={handleRecordPaymentForTenantUnit}
+              onSelectReceiptForPrint={(p) => setSelectedReceiptForPrint(p)}
             />
           )}
 

@@ -92,7 +92,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       amount: parseFloat(newAmount) || 0,
       currency: newCurrency,
       account: newAccount,
-      recordedBy: 'Ahmed Ducaysane',
+      recordedBy: 'Mohamed Mohamoud',
       status: 'Completed',
       notes: newNotes
     };
@@ -125,7 +125,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `MallCore_Cashflow_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute('download', `NBC_Cashflow_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

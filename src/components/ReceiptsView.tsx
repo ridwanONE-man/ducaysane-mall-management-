@@ -76,7 +76,7 @@ export const ReceiptsView: React.FC<ReceiptsViewProps> = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `MallCore_Receipts_Registry_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute('download', `NBC_Receipts_Registry_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -85,8 +85,8 @@ export const ReceiptsView: React.FC<ReceiptsViewProps> = ({
   const handleDownloadSingleReceipt = (p: PaymentRecord) => {
     const text = `
 =====================================================
-          JUBA CENTRAL COMMERCIAL MALL
-            OFFICIAL RENT RECEIPT VOUCHER
+            NYAKURON BUSINESS CENTRE
+          OFFICIAL RENT RECEIPT VOUCHER
 =====================================================
 Receipt Number: ${p.receiptNumber}
 Date Issued:    ${p.date}
@@ -105,10 +105,10 @@ Remaining Balance:     ${p.currency === 'USD' ? `$${p.remainingBalance.toFixed(2
 Advance Credit:        ${p.currency === 'USD' ? `$${p.advanceBalance.toFixed(2)}` : `${p.advanceBalance.toLocaleString()} SSP`}
 
 Payment Method: ${p.paymentMethod}
-Authorized By:  ${p.receivedBy || 'Management Desk'}
+Authorized By:  ${p.receivedBy || 'Mohamed Mohamoud'}
 Status:         ${p.status.toUpperCase()}
 =====================================================
-Generated electronically by MallCore Enterprise CRE.
+Generated electronically by Nyakuron Business Centre Management.
 `;
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);

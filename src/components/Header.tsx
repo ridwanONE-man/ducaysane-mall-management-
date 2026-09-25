@@ -28,7 +28,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   return (
     <header 
-      id="mallcore-appbar" 
+      id="nbc-appbar" 
       className="h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-5 lg:px-8 flex items-center justify-between gap-4 sticky top-0 z-30 transition-all"
     >
       {/* Search Bar */}

@@ -58,7 +58,7 @@ export function exportUnitsToCSV(units: PropertyUnit[]) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', `MallCore_Units_Directory_${new Date().toISOString().slice(0, 10)}.csv`);
+  link.setAttribute('download', `NBC_Units_Directory_${new Date().toISOString().slice(0, 10)}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -94,7 +94,7 @@ export function exportPaymentsToCSV(payments: PaymentRecord[]) {
     p.monthlyBaseRent,
     p.remainingBalance,
     `"${p.status}"`,
-    `"${p.receivedBy || 'Admin'}"`
+    `"${p.receivedBy || 'Mohamed Mohamoud'}"`
   ]);
 
   const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -102,7 +102,7 @@ export function exportPaymentsToCSV(payments: PaymentRecord[]) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', `MallCore_Financial_Ledger_${new Date().toISOString().slice(0, 10)}.csv`);
+  link.setAttribute('download', `NBC_Financial_Ledger_${new Date().toISOString().slice(0, 10)}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

@@ -23,7 +23,7 @@ export interface AdminUser {
   lastLogin: string;
 }
 
-export type UnitType = 'Standard Shop' | 'Open Atrium Space' | 'Kiosk' | 'Corner Unit' | 'Anchor Store';
+export type UnitType = 'Shop' | 'Space' | 'Standard Shop' | 'Open Atrium Space' | 'Kiosk' | 'Corner Unit' | 'Anchor Store';
 export type OccupancyStatus = 'Occupied' | 'Available' | 'Reserved' | 'Maintenance';
 export type BillingStatus = 'Paid' | 'Partially Paid' | 'Overdue' | 'No Balance';
 
@@ -39,21 +39,24 @@ export interface TenantInfo {
   balanceUSD: number;
   balanceSSP: number;
   balanceStatus?: 'Current' | 'Overdue' | 'Partial';
+  leaseStart?: string;
   leaseEnd?: string;
+  daysRemaining?: number;
   status: 'Active' | 'Under Notice' | 'Pending Renewal';
   joinDate?: string;
 }
 
 export interface PropertyUnit {
   id: string;
-  unitNumber: string; // e.g. "Unit G-001"
-  codeBadge: string; // e.g. "G 001"
+  unitNumber: string; // e.g. "G001" or "BW-1-A"
+  codeBadge: string; // e.g. "G001" or "BW-1-A"
   floor: 'Ground Floor' | 'Floor 1' | 'Floor 2' | 'Floor 3';
   type: UnitType;
-  subType: string; // e.g. "Retail A", "Electronics", "FMCG & Grocery", "Prime Facade"
+  categoryType?: 'Shop' | 'Space';
+  subType: string; // e.g. "Retail Shop", "Open Space", "Commercial"
   sizeSqM: number;
   sizeSqFt: number;
-  meterNumber: string; // e.g. "MTR-8821"
+  meterNumber: string; // e.g. "MTR-8821" or "2 meter"
   currentTenant?: TenantInfo;
   monthlyRateUSD: number;
   monthlyRateSSP: number;
@@ -63,12 +66,13 @@ export interface PropertyUnit {
   leaseEnd?: string;
   leaseTermMonths?: number;
   daysToExpiry?: number;
+  daysRemaining?: number;
   occupancyStatus: OccupancyStatus;
   billingStatus: BillingStatus;
-  billingMonthText?: string; // e.g. "Paid • Oct 2024"
+  billingMonthText?: string;
   arrearsUSD: number;
   arrearsSSP: number;
-  footfallBadge?: string; // e.g. "High Footfall"
+  footfallBadge?: string;
   notes?: string;
   maintenanceReason?: string;
 }

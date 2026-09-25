@@ -23,7 +23,7 @@ export function mapRowToUnit(row: any): PropertyUnit {
     trade: row.tenant_trade || 'Commercial Retail',
     code: row.tenant_code || `TNT-${digits}`,
     phone: row.tenant_phone || '+211 92 000 0000',
-    email: row.tenant_email || 'tenant@ducaysanemall.com',
+    email: row.tenant_email || 'tenant@nyakuron.com',
     unitNumber: unitNum,
     balanceUSD: Number(row.arrears_usd) || 0,
     balanceSSP: Number(row.arrears_ssp) || 0,
@@ -140,7 +140,7 @@ export function mapPaymentToRow(payment: PaymentRecord) {
     advance_balance: payment.advanceBalance || 0,
     status: payment.status || 'Paid',
     notes: payment.notes || null,
-    received_by: payment.receivedBy || 'Ahmed Ducaysane (Admin)',
+    received_by: payment.receivedBy || 'Mohamed Mohamoud (Management In-Charge)',
   };
 }
 
@@ -189,7 +189,7 @@ export function mapRowToCashflow(row: any): CashflowTransaction {
     amount: Number(row.amount) || 0,
     currency: (row.currency as any) || 'USD',
     account: (row.account as any) || 'Central Vault Cash Float',
-    recordedBy: row.recorded_by || 'Ahmed Ducaysane',
+    recordedBy: row.recorded_by || 'Mohamed Mohamoud',
     status: (row.status as any) || 'Completed',
     notes: row.notes || undefined,
   };
@@ -206,7 +206,7 @@ export function mapCashflowToRow(item: CashflowTransaction) {
     amount: item.amount,
     currency: item.currency,
     account: item.account,
-    recorded_by: item.recordedBy || 'Ahmed Ducaysane',
+    recorded_by: item.recordedBy || 'Mohamed Mohamoud',
     status: item.status || 'Completed',
     notes: item.notes || null,
   };
@@ -537,7 +537,7 @@ export function subscribeToRealtimeChanges(callbacks: RealtimeCallbacks) {
   callbacks.onStatusChange?.('connecting');
 
   const channel = supabase
-    .channel('mallcore-live-sync-channel')
+    .channel('nbc-live-sync-channel')
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'units' },
@@ -618,9 +618,9 @@ export interface AdminCredentials {
 }
 
 export const DEFAULT_ADMIN: AdminCredentials = {
-  email: 'ducaysane@gmail.com',
-  password: 'ducaysane1212',
-  name: 'Ahmed Ducaysane',
+  email: 'admin@nyakuron.com',
+  password: 'admin',
+  name: 'Mohamed Mohamoud',
   role: 'Super Admin',
 };
 
@@ -633,14 +633,14 @@ export async function getAdminCredentials(): Promise<AdminCredentials> {
       .single();
 
     if (error || !data) {
-      const cachedPwd = localStorage.getItem('ducaysane_admin_pwd');
+      const cachedPwd = localStorage.getItem('nbc_admin_pwd');
       return {
         ...DEFAULT_ADMIN,
         password: cachedPwd || DEFAULT_ADMIN.password,
       };
     }
 
-    localStorage.setItem('ducaysane_admin_pwd', data.password);
+    localStorage.setItem('nbc_admin_pwd', data.password);
     return {
       email: data.email || DEFAULT_ADMIN.email,
       password: data.password || DEFAULT_ADMIN.password,
@@ -648,7 +648,7 @@ export async function getAdminCredentials(): Promise<AdminCredentials> {
       role: data.role || DEFAULT_ADMIN.role,
     };
   } catch {
-    const cachedPwd = localStorage.getItem('ducaysane_admin_pwd');
+    const cachedPwd = localStorage.getItem('nbc_admin_pwd');
     return {
       ...DEFAULT_ADMIN,
       password: cachedPwd || DEFAULT_ADMIN.password,
@@ -658,7 +658,7 @@ export async function getAdminCredentials(): Promise<AdminCredentials> {
 
 export async function updateAdminPassword(newPassword: string): Promise<boolean> {
   try {
-    localStorage.setItem('ducaysane_admin_pwd', newPassword);
+    localStorage.setItem('nbc_admin_pwd', newPassword);
 
     const { error } = await supabase
       .from('admin_credentials')

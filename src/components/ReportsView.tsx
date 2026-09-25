@@ -64,7 +64,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ units, payments }) => 
     let filename = '';
 
     if (activeReportTab === 'revenue') {
-      filename = 'MallCore_Revenue_Report';
+      filename = 'NBC_Revenue_Report';
       headers = ['Receipt #', 'Tenant', 'Unit Space', 'Date', 'Period', 'Amount Paid', 'Currency', 'Payment Method'];
       rows = payments.map(p => [
         p.receiptNumber,
@@ -77,7 +77,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ units, payments }) => 
         `"${p.paymentMethod}"`
       ]);
     } else if (activeReportTab === 'arrears') {
-      filename = 'MallCore_Arrears_Aging_Report';
+      filename = 'NBC_Arrears_Aging_Report';
       headers = ['Unit Number', 'Tenant Name', 'Floor', 'Billing Status', 'Overdue USD', 'Overdue SSP', 'Days to Expiry'];
       rows = unitsInArrears.map(u => [
         u.unitNumber,
@@ -89,7 +89,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ units, payments }) => 
         (u.daysToExpiry || 0).toString()
       ]);
     } else if (activeReportTab === 'spatial') {
-      filename = 'MallCore_Spatial_Yield_Report';
+      filename = 'NBC_Spatial_Yield_Report';
       headers = ['Floor Level', 'Total Units', 'Occupied Units', 'Occupancy Rate (%)', 'Total Area (sq.m)', 'Monthly Yield (USD)', 'Yield / sq.m'];
       rows = floorStats.map(f => [
         f.floor,
@@ -101,7 +101,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ units, payments }) => 
         '$' + f.yieldPerSqM.toFixed(2)
       ]);
     } else {
-      filename = 'MallCore_Lease_Expirations';
+      filename = 'NBC_Lease_Expirations';
       headers = ['Unit Number', 'Tenant Name', 'Floor', 'Lease Maturity', 'Days Remaining', 'Monthly Rate USD'];
       rows = unitsExpiringSoon.map(u => [
         u.unitNumber,
@@ -465,7 +465,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ units, payments }) => 
               <p>UNIT: {selectedNoticeTenant.unitNumber} ({selectedNoticeTenant.floor})</p>
               <p>OUTSTANDING AMOUNT: ${selectedNoticeTenant.arrearsUSD.toFixed(2)} USD</p>
               <p className="mt-2 text-slate-600">
-                Take notice that your commercial rent is overdue. In accordance with MallCore Tenancy Agreement Section 9, please clear the arrears within 7 business days or escrow default procedures will be enacted.
+                Take notice that your commercial rent is overdue. In accordance with Nyakuron Business Centre Tenancy Agreement Section 9, please clear the arrears within 7 business days or escrow default procedures will be enacted.
               </p>
             </div>
 

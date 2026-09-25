@@ -123,7 +123,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `MallCore_Escrow_Deposits_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute('download', `NBC_Escrow_Deposits_${new Date().toISOString().slice(0,10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

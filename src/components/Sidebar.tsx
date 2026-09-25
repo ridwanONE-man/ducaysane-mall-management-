@@ -17,6 +17,7 @@ import {
   LogOut
 } from 'lucide-react';
 import { NavigationTab, AdminUser } from '../types';
+import logoImg from '../assets/logo.png';
 
 interface SidebarProps {
   activeTab: NavigationTab;
@@ -47,7 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'tenants', label: 'Tenants', icon: Users },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'deposits', label: 'Deposits', icon: Lock },
-    { id: 'cashflow', label: 'Cash Flow', icon: Landmark, badge: 'USD/SSP', badgeColor: 'bg-blue-50 text-blue-700' },
+    { id: 'cashflow', label: 'Cash Flow', icon: Landmark, badge: 'USD/SSP', badgeColor: 'bg-orange-50 text-orange-700' },
     { id: 'receipts', label: 'Receipts', icon: Printer },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
@@ -56,18 +57,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside id="mallcore-sidebar" className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between h-screen shrink-0 sticky top-0 z-30 select-none">
+    <aside id="nbc-sidebar" className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between h-screen shrink-0 sticky top-0 z-30 select-none">
       
       {/* Top Header & Property Selector */}
       <div className="p-4 border-b border-slate-100">
-        {/* MallCore Brand Logo */}
-        <div className="flex items-center gap-3 px-2 py-1 mb-4">
-          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-xl shadow-md shadow-blue-500/20">
-            M
+        {/* Nyakuron Business Centre Brand Logo */}
+        <div className="flex items-center gap-3 px-1 py-1 mb-4">
+          <div className="relative w-10 h-10 rounded-full bg-white ring-2 ring-orange-500/40 p-0.5 shadow-md shadow-orange-500/10 flex items-center justify-center overflow-hidden shrink-0">
+            <img 
+              src={logoImg} 
+              alt="Nyakuron Business Centre" 
+              className="w-full h-full object-contain rounded-full"
+            />
           </div>
-          <div>
-            <div className="font-bold text-slate-900 text-base leading-tight">MallCore</div>
-            <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">ENTERPRISE CRE</div>
+          <div className="min-w-0">
+            <div className="font-extrabold text-slate-900 text-sm leading-tight tracking-tight truncate">
+              Nyakuron
+            </div>
+            <div className="text-[10px] font-bold text-orange-600 tracking-wider uppercase">
+              Business Centre
+            </div>
           </div>
         </div>
 
@@ -79,8 +88,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           title="Switch Mall Property"
         >
           <div className="flex items-center gap-2 truncate">
-            <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-            <span className="truncate">{activeBuilding}</span>
+            <Building2 className="w-3.5 h-3.5 text-orange-600 shrink-0" />
+            <span className="truncate">{activeBuilding || 'Nyakuron Business Centre'}</span>
           </div>
           <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 shrink-0 ml-1" />
         </button>
@@ -100,7 +109,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => onTabChange(item.id)}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
                 isActive
-                  ? 'bg-blue-600 text-white font-semibold shadow-sm shadow-blue-600/20'
+                  ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold shadow-sm shadow-orange-500/25'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
               }`}
             >
@@ -123,15 +132,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Bottom User Profile Section (Matching Screenshot 3 bottom-left) */}
+      {/* Bottom User Profile Section */}
       <div className="p-3 border-t border-slate-100 bg-slate-50/50">
         <div className="flex items-center gap-3 px-2 py-2">
-          <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-sm">
-            {adminUser.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+          <div className="w-8 h-8 rounded-full bg-orange-500 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-sm ring-1 ring-orange-400/50 overflow-hidden">
+            {adminUser.avatar && adminUser.avatar !== 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80' ? (
+              <img src={adminUser.avatar} alt={adminUser.name} className="w-full h-full object-cover" />
+            ) : (
+              adminUser.name.split(' ').map(n => n[0]).join('').slice(0, 2)
+            )}
           </div>
           <div className="truncate flex-1">
             <p className="text-xs font-bold text-slate-800 truncate">{adminUser.name}</p>
-            <p className="text-[10px] text-slate-500 truncate">Mall Admin • Super</p>
+            <p className="text-[10px] text-slate-500 truncate">Office Management In-Charge</p>
           </div>
         </div>
 
@@ -139,10 +152,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={() => onTabChange('settings')}
-            className="hover:text-blue-600 flex items-center gap-1 cursor-pointer transition-colors"
+            className="hover:text-orange-600 flex items-center gap-1 cursor-pointer transition-colors"
           >
             <Mail className="w-3 h-3" />
-            <span>Mail</span>
+            <span>Settings</span>
           </button>
           <button
             type="button"
