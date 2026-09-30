@@ -29,7 +29,6 @@ export const ReceiptsView: React.FC<ReceiptsViewProps> = ({
   onOpenRecordPayment
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [currencyFilter, setCurrencyFilter] = useState<'ALL' | 'USD' | 'SSP'>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'Paid' | 'Partially Paid'>('ALL');
 
   // Filter receipts
@@ -39,17 +38,12 @@ export const ReceiptsView: React.FC<ReceiptsViewProps> = ({
       p.tenantName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.unitNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.accountingPeriod.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCurrency = currencyFilter === 'ALL' || p.currency === currencyFilter;
     const matchesStatus = statusFilter === 'ALL' || p.status === statusFilter;
-    return matchesSearch && matchesCurrency && matchesStatus;
+    return matchesSearch && matchesStatus;
   });
 
   const totalReceiptsUSD = payments
     .filter(p => p.currency === 'USD')
-    .reduce((sum, p) => sum + p.amount, 0);
-
-  const totalReceiptsSSP = payments
-    .filter(p => p.currency === 'SSP')
     .reduce((sum, p) => sum + p.amount, 0);
 
   const handleExportCSV = () => {
@@ -157,28 +151,20 @@ Generated electronically by Nyakuron Business Centre Management.
       </div>
 
       {/* Unified Minimalist Metric Strip */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 gap-y-3 sm:gap-y-0">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 gap-y-3 sm:gap-y-0">
         <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Total Issued</span>
+          <span className="text-xs font-medium text-slate-500 block">Total Issued Receipts</span>
           <div className="flex items-baseline gap-2 mt-0.5">
             <span className="text-2xl font-bold text-slate-900">{payments.length}</span>
-            <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded-full">Audited</span>
+            <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded-full">Audited & Reconciled</span>
           </div>
         </div>
 
         <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Total (USD)</span>
+          <span className="text-xs font-medium text-slate-500 block">Total Collections Cleared (USD)</span>
           <div className="flex items-baseline gap-2 mt-0.5">
             <span className="text-2xl font-bold text-emerald-600">${totalReceiptsUSD.toLocaleString()}</span>
-            <span className="text-[11px] text-slate-400 font-normal">USD</span>
-          </div>
-        </div>
-
-        <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Total (SSP)</span>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-bold text-slate-900">{totalReceiptsSSP.toLocaleString()}</span>
-            <span className="text-[11px] text-slate-400 font-normal">SSP</span>
+            <span className="text-[11px] text-slate-400 font-normal">USD ($)</span>
           </div>
         </div>
       </div>
@@ -200,22 +186,6 @@ Generated electronically by Nyakuron Business Centre Management.
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Currency Filter */}
-            <div className="inline-flex bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
-              {(['ALL', 'USD', 'SSP'] as const).map((curr) => (
-                <button
-                  key={curr}
-                  type="button"
-                  onClick={() => setCurrencyFilter(curr)}
-                  className={`px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer ${
-                    currencyFilter === curr ? 'bg-white text-blue-700 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {curr}
-                </button>
-              ))}
-            </div>
-
             {/* Status Filter */}
             <div className="inline-flex bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
               {(['ALL', 'Paid', 'Partially Paid'] as const).map((st) => (

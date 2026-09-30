@@ -25,7 +25,7 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
   const [sizeSqM, setSizeSqM] = useState<string>('30');
   const [meterNumber, setMeterNumber] = useState('');
   const [monthlyRent, setMonthlyRent] = useState<string>('500');
-  const [rentCurrency, setRentCurrency] = useState<'USD' | 'SSP'>('USD');
+  const [depositMonths, setDepositMonths] = useState<number>(1);
   const [status, setStatus] = useState<OccupancyStatus>('Available');
 
   // Tenant Fields
@@ -76,22 +76,16 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       // Strip prefix for input
       if (isShop) {
         setUnitCodeInput(editingUnit.unitNumber.replace(/^G-?/, ''));
-        setRentCurrency('USD');
       } else {
         setUnitCodeInput(editingUnit.unitNumber.replace(/^BW-?/, ''));
-        setRentCurrency(editingUnit.monthlyRateSSP > 0 && editingUnit.monthlyRateUSD <= 100 ? 'SSP' : 'USD');
       }
 
       setFloor(editingUnit.floor || 'Ground Floor');
       setTrade(editingUnit.currentTenant?.trade || editingUnit.subType || '');
       setSizeSqM(editingUnit.sizeSqM ? String(editingUnit.sizeSqM) : '30');
       setMeterNumber(editingUnit.meterNumber || '');
-      
-      if (!isShop && editingUnit.monthlyRateSSP > 0 && editingUnit.monthlyRateUSD <= 100) {
-        setMonthlyRent(String(editingUnit.monthlyRateSSP));
-      } else {
-        setMonthlyRent(String(editingUnit.monthlyRateUSD));
-      }
+      setMonthlyRent(String(editingUnit.monthlyRateUSD || 500));
+      setDepositMonths(editingUnit.depositMonths || (editingUnit.escrowDepositUSD && editingUnit.monthlyRateUSD ? Math.max(1, Math.round(editingUnit.escrowDepositUSD / editingUnit.monthlyRateUSD)) : 1));
 
       setStatus(editingUnit.occupancyStatus || 'Available');
       setTenantName(editingUnit.currentTenant?.name || '');
@@ -106,7 +100,7 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       setSizeSqM('30');
       setMeterNumber('');
       setMonthlyRent('500');
-      setRentCurrency('USD');
+      setDepositMonths(1);
       setStatus('Available');
       setTenantName('');
       setTenantPhone('');
@@ -119,12 +113,10 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
   // When switching category
   const handleCategoryChange = (cat: 'Shop' | 'Space') => {
     setSelectedCategory(cat);
-    if (cat === 'Shop') {
-      setRentCurrency('USD');
-      if (monthlyRent === '100000' || monthlyRent === '50000') setMonthlyRent('500');
-    } else {
-      setRentCurrency('SSP');
-      if (monthlyRent === '500' || monthlyRent === '600') setMonthlyRent('100000');
+    if (cat === 'Shop' && (monthlyRent === '100' || monthlyRent === '150')) {
+      setMonthlyRent('500');
+    } else if (cat === 'Space' && (monthlyRent === '500' || monthlyRent === '600')) {
+      setMonthlyRent('150');
     }
   };
 
@@ -156,17 +148,8 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
 
     const numSize = parseFloat(sizeSqM) || 30;
     const numRent = parseFloat(monthlyRent) || 0;
-
-    let rateUSD = 0;
-    let rateSSP = 0;
-
-    if (rentCurrency === 'USD') {
-      rateUSD = numRent;
-      rateSSP = Math.round(numRent * 1300);
-    } else {
-      rateSSP = numRent;
-      rateUSD = Math.round((numRent / 1300) * 100) / 100;
-    }
+    const rateUSD = numRent;
+    const numDeposit = rateUSD * Math.max(1, Number(depositMonths) || 1);
 
     const hasTenant = Boolean(tenantName.trim().length > 0 || status === 'Occupied');
     const assignedTenant = hasTenant ? {
@@ -178,8 +161,10 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       email: `${finalUnitNumber.toLowerCase()}@nyakuron.com`,
       unitNumber: finalUnitNumber,
       balanceUSD: editingUnit?.arrearsUSD || 0,
-      balanceSSP: editingUnit?.arrearsSSP || 0,
-      balanceStatus: (editingUnit?.arrearsUSD || 0) > 0 || (editingUnit?.arrearsSSP || 0) > 0 ? ('Overdue' as const) : ('Current' as const),
+      balanceSSP: 0,
+      depositUSD: numDeposit,
+      depositMonths: Math.max(1, Number(depositMonths) || 1),
+      balanceStatus: (editingUnit?.arrearsUSD || 0) > 0 ? ('Overdue' as const) : ('Current' as const),
       status: 'Active' as const,
       leaseStart,
       leaseEnd: calculatedEnd,
@@ -198,14 +183,15 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       sizeSqFt: Math.round(numSize * 10.764 * 10) / 10,
       meterNumber: meterNumber.trim() || (selectedCategory === 'Shop' ? `MTR-${finalUnitNumber}` : '2 meter'),
       monthlyRateUSD: rateUSD,
-      monthlyRateSSP: rateSSP,
-      escrowDepositUSD: rateUSD,
-      escrowDepositSSP: rateSSP,
+      monthlyRateSSP: 0,
+      escrowDepositUSD: numDeposit,
+      escrowDepositSSP: 0,
+      depositMonths: Math.max(1, Number(depositMonths) || 1),
       occupancyStatus: hasTenant ? 'Occupied' : status,
       billingStatus: hasTenant ? (editingUnit?.billingStatus || 'Paid') : 'No Balance',
       billingMonthText: editingUnit?.billingMonthText || (hasTenant ? 'Paid • Sept 2026' : undefined),
       arrearsUSD: editingUnit?.arrearsUSD || 0,
-      arrearsSSP: editingUnit?.arrearsSSP || 0,
+      arrearsSSP: 0,
       currentTenant: assignedTenant,
       leaseStart,
       leaseEnd: calculatedEnd,
@@ -356,42 +342,37 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
             </div>
           </div>
 
-          {/* Monthly Rent & Currency */}
+          {/* Monthly Rent & Security Deposit Months */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Monthly Rent ({rentCurrency})
+                Monthly Rent (USD $)
               </label>
               <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">$</span>
                 <input
                   type="number"
                   step="any"
                   required
                   value={monthlyRent}
                   onChange={(e) => setMonthlyRent(e.target.value)}
-                  placeholder={rentCurrency === 'USD' ? '600' : '100000'}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white"
+                  placeholder="500"
+                  className="w-full pl-8 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Currency</label>
-              {selectedCategory === 'Shop' ? (
-                <div className="px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-between">
-                  <span>USD ($)</span>
-                  <span className="text-[10px] text-slate-500">Standard for Shops</span>
-                </div>
-              ) : (
-                <select
-                  value={rentCurrency}
-                  onChange={(e) => setRentCurrency(e.target.value as any)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white"
-                >
-                  <option value="SSP">SSP (South Sudanese Pounds)</option>
-                  <option value="USD">USD (US Dollars)</option>
-                </select>
-              )}
+              <label className="block text-xs font-bold text-slate-700 mb-1">Security Deposit</label>
+              <select
+                value={depositMonths}
+                onChange={(e) => setDepositMonths(Number(e.target.value))}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white"
+              >
+                <option value={1}>1 Month Deposit (${(parseFloat(monthlyRent) || 0) * 1})</option>
+                <option value={2}>2 Months Deposit (${(parseFloat(monthlyRent) || 0) * 2})</option>
+                <option value={3}>3 Months Deposit (${(parseFloat(monthlyRent) || 0) * 3})</option>
+              </select>
             </div>
           </div>
 

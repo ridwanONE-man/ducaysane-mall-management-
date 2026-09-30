@@ -30,6 +30,7 @@ interface UnitsViewProps {
   onOpenFloorMap: () => void;
   onEditUnit?: (unit: PropertyUnit) => void;
   onDeleteUnit?: (unitId: string) => void;
+  onAssignTenant?: (unit: PropertyUnit) => void;
 }
 
 export const UnitsView: React.FC<UnitsViewProps> = ({
@@ -40,7 +41,8 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
   onOpenAddUnit,
   onOpenFloorMap,
   onEditUnit,
-  onDeleteUnit
+  onDeleteUnit,
+  onAssignTenant
 }) => {
   // Category tabs: All, Shops (G), Spaces (BW), Available
   const [activeCategoryTab, setActiveCategoryTab] = useState<'All' | 'Shops' | 'Spaces' | 'Available'>('All');
@@ -450,7 +452,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                         <div>
                           <p className="text-slate-400 italic">No Active Tenant</p>
                           <button
-                            onClick={() => onOpenAddUnit()}
+                            onClick={() => onAssignTenant ? onAssignTenant(unit) : onOpenAddUnit()}
                             className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-0.5 cursor-pointer"
                           >
                             <UserPlus className="w-3 h-3" />
@@ -466,7 +468,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                         ${unit.monthlyRateUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })} <span className="text-[10px] font-normal text-slate-500">USD</span>
                       </p>
                       <p className="text-[11px] text-slate-500">
-                        equiv. {unit.monthlyRateSSP.toLocaleString('en-US')} SSP/mo
+                        {unit.sizeSqM} m² ({unit.sizeSqFt} sq ft)
                       </p>
                       <p className="text-[10px] text-blue-700 font-medium mt-0.5">
                         Deposit: ${unit.escrowDepositUSD.toLocaleString()} held

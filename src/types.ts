@@ -12,7 +12,7 @@ export type NavigationTab =
   | 'notifications' 
   | 'settings';
 
-export type CurrencyMode = 'ALL' | 'USD' | 'SSP' | 'DUAL';
+export type CurrencyMode = 'USD' | 'ALL';
 
 export interface AdminUser {
   id: string;
@@ -37,7 +37,9 @@ export interface TenantInfo {
   unitNumber?: string;
   contactPerson?: string;
   balanceUSD: number;
-  balanceSSP: number;
+  balanceSSP?: number;
+  depositUSD?: number;
+  depositMonths?: number;
   balanceStatus?: 'Current' | 'Overdue' | 'Partial';
   leaseStart?: string;
   leaseEnd?: string;
@@ -59,9 +61,10 @@ export interface PropertyUnit {
   meterNumber: string; // e.g. "MTR-8821" or "2 meter"
   currentTenant?: TenantInfo;
   monthlyRateUSD: number;
-  monthlyRateSSP: number;
+  monthlyRateSSP?: number;
   escrowDepositUSD: number;
-  escrowDepositSSP: number;
+  escrowDepositSSP?: number;
+  depositMonths?: number;
   leaseStart?: string;
   leaseEnd?: string;
   leaseTermMonths?: number;
@@ -71,7 +74,7 @@ export interface PropertyUnit {
   billingStatus: BillingStatus;
   billingMonthText?: string;
   arrearsUSD: number;
-  arrearsSSP: number;
+  arrearsSSP?: number;
   footfallBadge?: string;
   notes?: string;
   maintenanceReason?: string;
@@ -112,7 +115,9 @@ export interface DepositRecord {
   tenantId?: string;
   unitNumber: string;
   amountUSD: number;
-  amountSSP: number;
+  amountSSP?: number;
+  depositMonths?: number;
+  monthlyRentUSD?: number;
   currency?: 'USD' | 'SSP' | 'DUAL';
   heldSince: string;
   status: 'Held in Escrow' | 'Under Review' | 'Refunded';

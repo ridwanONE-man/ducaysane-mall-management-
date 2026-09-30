@@ -35,7 +35,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const transactions = propTransactions || localTransactions;
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'Inflow' | 'Outflow'>('ALL');
-  const [currencyFilter, setCurrencyFilter] = useState<'ALL' | 'USD' | 'SSP'>('ALL');
 
   // Modal State
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
@@ -43,30 +42,19 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const [newType, setNewType] = useState<'Inflow' | 'Outflow'>('Inflow');
   const [newCategory, setNewCategory] = useState<CashflowCategory>('Rent Collection');
   const [newAmount, setNewAmount] = useState('');
-  const [newCurrency, setNewCurrency] = useState<'USD' | 'SSP'>('USD');
   const [newAccount, setNewAccount] = useState<'Central Vault Cash Float' | 'Stanbic Bank Operating' | 'Ecobank Operating'>('Central Vault Cash Float');
   const [newNotes, setNewNotes] = useState('');
 
   // Calculations
   const totalInflowUSD = transactions
-    .filter(t => t.type === 'Inflow' && t.currency === 'USD')
+    .filter(t => t.type === 'Inflow')
     .reduce((sum, t) => sum + t.amount, 0);
 
   const totalOutflowUSD = transactions
-    .filter(t => t.type === 'Outflow' && t.currency === 'USD')
+    .filter(t => t.type === 'Outflow')
     .reduce((sum, t) => sum + t.amount, 0);
 
   const netUSD = totalInflowUSD - totalOutflowUSD;
-
-  const totalInflowSSP = transactions
-    .filter(t => t.type === 'Inflow' && t.currency === 'SSP')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const totalOutflowSSP = transactions
-    .filter(t => t.type === 'Outflow' && t.currency === 'SSP')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const netSSP = totalInflowSSP - totalOutflowSSP;
 
   // Filtered transactions
   const filteredTransactions = transactions.filter(t => {
@@ -76,8 +64,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       t.referenceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.account.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = typeFilter === 'ALL' || t.type === typeFilter;
-    const matchesCurrency = currencyFilter === 'ALL' || t.currency === currencyFilter;
-    return matchesSearch && matchesType && matchesCurrency;
+    return matchesSearch && matchesType;
   });
 
   const handleAddTransaction = (e: React.FormEvent) => {
@@ -90,7 +77,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       category: newCategory,
       type: newType,
       amount: parseFloat(newAmount) || 0,
-      currency: newCurrency,
+      currency: 'USD',
       account: newAccount,
       recordedBy: 'Mohamed Mohamoud',
       status: 'Completed',
@@ -203,12 +190,12 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         </div>
 
         <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Net SSP</span>
+          <span className="text-xs font-medium text-slate-500 block">Total Inflow (USD)</span>
           <div className="flex items-baseline gap-2 mt-0.5">
-            <span className={`text-2xl font-bold ${netSSP >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
-              {netSSP >= 0 ? `+${netSSP.toLocaleString()}` : `-${Math.abs(netSSP).toLocaleString()}`}
+            <span className="text-2xl font-bold text-emerald-600">
+              ${totalInflowUSD.toLocaleString()}
             </span>
-            <span className="text-[11px] text-slate-400 font-normal">SSP</span>
+            <span className="text-[11px] text-slate-400 font-normal">USD</span>
           </div>
         </div>
 
@@ -251,22 +238,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                   }`}
                 >
                   {type === 'ALL' ? 'All' : type}
-                </button>
-              ))}
-            </div>
-
-            {/* Currency Filter */}
-            <div className="inline-flex bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
-              {(['ALL', 'USD', 'SSP'] as const).map((curr) => (
-                <button
-                  key={curr}
-                  type="button"
-                  onClick={() => setCurrencyFilter(curr)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                    currencyFilter === curr ? 'bg-white text-blue-700 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {curr}
                 </button>
               ))}
             </div>
@@ -339,7 +310,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                     <td className="py-3.5 px-4 text-right font-black">
                       <span className={t.type === 'Inflow' ? 'text-emerald-600' : 'text-slate-900'}>
                         {t.type === 'Inflow' ? '+' : '-'}
-                        {t.currency === 'USD' ? `$${t.amount.toLocaleString()}` : `${t.amount.toLocaleString()} SSP`}
+                        ${t.amount.toLocaleString()}
                       </span>
                     </td>
                   </tr>
@@ -447,14 +418,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Currency</label>
-                  <select
-                    value={newCurrency}
-                    onChange={(e) => setNewCurrency(e.target.value as 'USD' | 'SSP')}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white"
-                  >
-                    <option value="USD">USD ($)</option>
-                    <option value="SSP">SSP (South Sudanese Pound)</option>
-                  </select>
+                  <div className="px-3.5 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50 font-bold text-slate-800">
+                    USD ($) - Official Mall Currency
+                  </div>
                 </div>
 
                 <div>

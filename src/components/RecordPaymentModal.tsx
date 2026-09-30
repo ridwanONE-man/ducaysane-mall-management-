@@ -236,33 +236,18 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
           {/* Row 3: Payment Currency & Channel */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Payment Currency</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCurrency('USD')}
-                  className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
-                    currency === 'USD'
-                      ? 'bg-blue-50 border-blue-600 text-blue-800 shadow-xs'
-                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <span>USD ($)</span>
-                  {currency === 'USD' && <Check className="w-3.5 h-3.5 text-blue-600" />}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setCurrency('SSP')}
-                  className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
-                    currency === 'SSP'
-                      ? 'bg-blue-50 border-blue-600 text-blue-800 shadow-xs'
-                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <span>SSP (SSP)</span>
-                  {currency === 'SSP' && <Check className="w-3.5 h-3.5 text-blue-600" />}
-                </button>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Currency & Deposit Standing</label>
+              <div className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                  <span className="font-extrabold text-slate-900">USD ($)</span>
+                  <span className="text-[10px] text-slate-500 font-medium">Dollar Only</span>
+                </div>
+                <span className="text-[11px] font-bold text-emerald-800">
+                  {selectedUnit?.escrowDepositUSD && selectedUnit.escrowDepositUSD > 0 
+                    ? `Deposit: $${selectedUnit.escrowDepositUSD.toLocaleString()} (${selectedUnit.depositMonths || Math.max(1, Math.round(selectedUnit.escrowDepositUSD / (selectedUnit.monthlyRateUSD || 1)))} mo)`
+                    : 'No Deposit'}
+                </span>
               </div>
             </div>
 
@@ -298,19 +283,19 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               <div>
                 <span className="text-[10px] text-slate-500 block">Monthly Base Rent</span>
                 <span className="text-xs sm:text-sm font-bold text-slate-900">
-                  {currency === 'USD' ? `$${baseRent.toLocaleString()}` : `${baseRent.toLocaleString()} SSP`} {currency}
+                  ${baseRent.toLocaleString()}
                 </span>
               </div>
               <div>
                 <span className="text-[10px] text-slate-500 block">Previous Arrears</span>
                 <span className="text-xs sm:text-sm font-bold text-emerald-600">
-                  {currency === 'USD' ? `$${previousArrears.toFixed(2)}` : `${previousArrears.toLocaleString()} SSP`} {currency}
+                  ${previousArrears.toFixed(2)}
                 </span>
               </div>
               <div>
                 <span className="text-[10px] text-slate-500 block">Total Due Amount</span>
                 <span className="text-xs sm:text-sm font-bold text-blue-700">
-                  {currency === 'USD' ? `$${totalDue.toLocaleString()}` : `${totalDue.toLocaleString()} SSP`} {currency}
+                  ${totalDue.toLocaleString()}
                 </span>
               </div>
             </div>
@@ -319,11 +304,11 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             <div className="pt-2">
               <div className="flex items-center justify-between text-xs font-semibold text-slate-700 mb-1">
                 <span>Payment Amount Received</span>
-                <span className="text-[11px] text-slate-500 font-normal">Currency: {currency}</span>
+                <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded">USD ($)</span>
               </div>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-blue-600">
-                  {currency === 'USD' ? '$' : 'SSP'}
+                  $
                 </span>
                 <input
                   type="number"
@@ -341,7 +326,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Applied to {accountingPeriod.split(' ')[0]} Rent:</span>
                 <span className="font-bold text-emerald-700">
-                  {currency === 'USD' ? `$${appliedToRent.toFixed(2)}` : `${appliedToRent.toLocaleString()} SSP`} {currency}
+                  ${appliedToRent.toFixed(2)}
                 </span>
               </div>
 
@@ -359,14 +344,14 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                   )}
                 </div>
                 <span className={`font-bold ${remainingRentBalance > 0 ? 'text-red-600' : 'text-slate-900'}`}>
-                  {currency === 'USD' ? `$${remainingRentBalance.toFixed(2)}` : `${remainingRentBalance.toLocaleString()} SSP`} {currency}
+                  ${remainingRentBalance.toFixed(2)}
                 </span>
               </div>
 
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Advance Balance Held:</span>
                 <span className="font-bold text-slate-700">
-                  {currency === 'USD' ? `$${advanceBalanceHeld.toFixed(2)}` : `${advanceBalanceHeld.toLocaleString()} SSP`} {currency}
+                  ${advanceBalanceHeld.toFixed(2)}
                 </span>
               </div>
             </div>

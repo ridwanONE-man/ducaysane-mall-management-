@@ -179,42 +179,19 @@ export const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
 
           </div>
 
-          {/* Amount In Currency Boxes (Replicating the SSP / USD printed boxes) */}
+          {/* Official Amount Box (Pure USD) */}
           <div className="pt-4">
-            <div className="grid grid-cols-2 gap-4">
-              
-              {/* SSP Box */}
-              <div className={`border-2 rounded-2xl p-3.5 flex items-center justify-between ${
-                payment.currency === 'SSP' 
-                  ? 'border-orange-500 bg-orange-50/60 shadow-xs' 
-                  : 'border-slate-300 bg-slate-50/60 opacity-60'
-              }`}>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black uppercase tracking-wider text-slate-700">SSP</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-base sm:text-lg font-black text-slate-900 font-mono">
-                    {payment.currency === 'SSP' ? payment.amount.toLocaleString() : '—'}
-                  </span>
-                </div>
+            <div className="border-2 border-slate-900 rounded-2xl p-4 bg-emerald-50/50 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">Total Amount Cleared</span>
+                <span className="text-xl sm:text-2xl font-black text-emerald-700 font-mono">
+                  ${payment.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                </span>
               </div>
-
-              {/* USD Box */}
-              <div className={`border-2 rounded-2xl p-3.5 flex items-center justify-between ${
-                payment.currency === 'USD' 
-                  ? 'border-emerald-600 bg-emerald-50/60 shadow-xs' 
-                  : 'border-slate-300 bg-slate-50/60 opacity-60'
-              }`}>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black uppercase tracking-wider text-slate-700">USD</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-base sm:text-lg font-black text-slate-900 font-mono">
-                    {payment.currency === 'USD' ? `$${payment.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
-                  </span>
-                </div>
+              <div className="text-right">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Payment Method</span>
+                <span className="text-xs sm:text-sm font-extrabold text-slate-900">{payment.paymentMethod}</span>
               </div>
-
             </div>
           </div>
 

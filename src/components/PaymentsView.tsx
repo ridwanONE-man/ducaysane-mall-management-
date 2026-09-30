@@ -156,12 +156,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div>
 
         <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Cleared (SSP)</span>
+          <span className="text-xs font-medium text-slate-500 block">Escrow Reserves Held</span>
           <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-bold text-slate-900">
-              {totalClearedSSP.toLocaleString('en-US')}
+            <span className="text-2xl font-bold text-blue-600">
+              ${units.reduce((s, u) => s + (u.escrowDepositUSD || 0), 0).toLocaleString()}
             </span>
-            <span className="text-[11px] text-slate-400 font-normal">SSP</span>
+            <span className="text-[11px] text-slate-400 font-normal">USD</span>
           </div>
         </div>
 
@@ -282,13 +282,13 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                           <p className="text-[10px] text-slate-400 font-normal">{unit.currentTenant?.phone || 'No phone recorded'}</p>
                         </td>
                         <td className="p-4 font-semibold text-slate-700">
-                          {unit.monthlyRateUSD > 0 ? `$${unit.monthlyRateUSD}` : `${unit.monthlyRateSSP.toLocaleString()} SSP`}
+                          ${unit.monthlyRateUSD.toLocaleString()} USD
                         </td>
                         <td className="p-4 font-bold text-rose-600 text-sm">
-                          ${(unit.arrearsUSD || 0).toLocaleString()}
+                          ${(unit.arrearsUSD || 0).toLocaleString()} USD
                         </td>
                         <td className="p-4 font-bold text-slate-800">
-                          {(unit.arrearsSSP || 0).toLocaleString()} SSP
+                          ${(unit.escrowDepositUSD || 0).toLocaleString()} USD Held
                         </td>
                         <td className="p-4">
                           <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${
@@ -374,12 +374,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                         </span>
                       </td>
                       <td className="p-4 font-bold text-slate-900 text-sm">
-                        {item.currency === 'USD' ? `$${item.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : `${item.amount.toLocaleString()} SSP`} {item.currency}
+                        ${item.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
                       </td>
                       <td className="p-4 font-semibold">
                         {item.remainingBalance > 0 ? (
-                          <span className="text-amber-700">
-                            {item.currency === 'USD' ? `$${item.remainingBalance.toFixed(2)}` : `${item.remainingBalance.toLocaleString()} SSP`}
+                          <span className="text-amber-700 font-bold">
+                            ${item.remainingBalance.toFixed(2)} USD
                           </span>
                         ) : (
                           <span className="text-emerald-700 font-bold">$0.00 (Cleared)</span>
