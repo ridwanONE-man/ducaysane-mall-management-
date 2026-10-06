@@ -16,7 +16,16 @@ export function mapRowToUnit(row: any): PropertyUnit {
   const unitNum = row.unit_number || 'Unit G-000';
   const digits = unitNum.replace(/\D/g, '') || '101';
   
-  const hasTenant = Boolean(row.current_tenant && String(row.current_tenant).trim().length > 0);
+  let daysRemaining = 7;
+  if (row.lease_end) {
+    const endMs = new Date(row.lease_end).getTime();
+    if (!isNaN(endMs)) {
+      daysRemaining = Math.ceil((endMs - Date.now()) / (1000 * 60 * 60 * 24));
+    }
+  }
+
+  const isMarkedAvailable = row.occupancy_status === 'Available';
+  const hasTenant = !isMarkedAvailable && Boolean(row.current_tenant && String(row.current_tenant).trim().length > 0);
   const currentTenant: TenantInfo | undefined = hasTenant ? {
     id: `t-${row.id}`,
     name: String(row.current_tenant),
@@ -29,7 +38,9 @@ export function mapRowToUnit(row: any): PropertyUnit {
     balanceSSP: Number(row.arrears_ssp) || 0,
     balanceStatus: Number(row.arrears_usd) > 0 || Number(row.arrears_ssp) > 0 ? 'Overdue' : 'Current',
     status: 'Active',
+    leaseStart: row.lease_start || undefined,
     leaseEnd: row.lease_end || 'Dec 31, 2025',
+    daysRemaining,
   } : undefined;
 
   return {
@@ -49,6 +60,7 @@ export function mapRowToUnit(row: any): PropertyUnit {
     escrowDepositSSP: Number(row.escrow_deposit_ssp ?? row.security_deposit_ssp) || 0,
     leaseStart: row.lease_start || undefined,
     leaseEnd: row.lease_end || undefined,
+    daysRemaining,
     occupancyStatus: (row.occupancy_status as any) || (hasTenant ? 'Occupied' : 'Available'),
     billingStatus: (row.billing_status as any) || (hasTenant ? 'Paid' : 'No Balance'),
     billingMonthText: row.billing_month_text || (hasTenant ? 'Paid' : undefined),
@@ -288,6 +300,151 @@ export async function deleteUnitFromSupabase(unitId: string): Promise<boolean> {
     return false;
   }
 }
+
+export interface ModifyTenantPricingPayload {
+  tenantName: string;
+  trade: string;
+  phone: string;
+  email: string;
+  tenantCode?: string;
+  monthlyRateUSD: number;
+  monthlyRateSSP: number;
+  securityDepositUSD: number;
+  securityDepositSSP: number;
+  leaseStart?: string;
+  leaseEnd?: string;
+  billingStatus?: string;
+  notes?: string;
+}
+
+export async function updateTenantAndPricingInSupabase(
+  unitId: string, 
+  payload: ModifyTenantPricingPayload
+): Promise<{ success: boolean; unit?: PropertyUnit; error?: string }> {
+  try {
+    const updateRow = {
+      current_tenant: payload.tenantName.trim(),
+      tenant_trade: payload.trade.trim(),
+      tenant_phone: payload.phone.trim(),
+      tenant_email: payload.email.trim(),
+      tenant_code: payload.tenantCode?.trim() || null,
+      monthly_rate_usd: payload.monthlyRateUSD,
+      monthly_rate_ssp: payload.monthlyRateSSP,
+      security_deposit_usd: payload.securityDepositUSD,
+      security_deposit_ssp: payload.securityDepositSSP,
+      escrow_deposit_usd: payload.securityDepositUSD,
+      escrow_deposit_ssp: payload.securityDepositSSP,
+      lease_start: payload.leaseStart || null,
+      lease_end: payload.leaseEnd || null,
+      billing_status: payload.billingStatus || 'Paid',
+      notes: payload.notes || null,
+      occupancy_status: 'Occupied',
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from('units')
+      .update(updateRow)
+      .eq('id', unitId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating tenant & price in Supabase:', error);
+      return { success: false, error: error.message };
+    }
+
+    // Sync to public.tenants table as well
+    try {
+      await supabase.from('tenants').upsert({
+        id: `t-${unitId}`,
+        name: payload.tenantName.trim(),
+        trade: payload.trade.trim(),
+        unit_number: data.unit_number,
+        phone: payload.phone.trim(),
+        email: payload.email.trim(),
+        status: 'Active',
+        balance_usd: Number(data.arrears_usd) || 0,
+        balance_ssp: Number(data.arrears_ssp) || 0,
+        created_at: new Date().toISOString(),
+      });
+    } catch (tErr) {
+      console.warn('Could not sync to tenants table:', tErr);
+    }
+
+    const updatedUnit = mapRowToUnit(data);
+    return { success: true, unit: updatedUnit };
+  } catch (err: any) {
+    console.error('Network error modifying tenant & price in Supabase:', err);
+    return { success: false, error: err?.message || 'Network error' };
+  }
+}
+
+export interface VacateUnitPayload {
+  vacatedDate?: string;
+  reason?: string;
+  notes?: string;
+}
+
+export async function vacateUnitInSupabase(
+  unitId: string, 
+  payload?: VacateUnitPayload
+): Promise<{ success: boolean; unit?: PropertyUnit; error?: string }> {
+  try {
+    const vacateDate = payload?.vacatedDate || new Date().toISOString().slice(0, 10);
+    const reasonText = payload?.reason ? `Reason: ${payload.reason}` : '';
+    const notesText = payload?.notes ? `Notes: ${payload.notes}` : '';
+    const vacateLog = `[Vacated on ${vacateDate}] ${reasonText} ${notesText}`.trim();
+
+    const updateRow = {
+      occupancy_status: 'Available',
+      current_tenant: null,
+      tenant_phone: null,
+      tenant_email: null,
+      tenant_trade: null,
+      tenant_code: null,
+      lease_start: null,
+      lease_end: null,
+      billing_status: 'No Balance',
+      billing_month_text: null,
+      arrears_usd: 0,
+      arrears_ssp: 0,
+      notes: vacateLog || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from('units')
+      .update(updateRow)
+      .eq('id', unitId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error vacating unit in Supabase:', error);
+      return { success: false, error: error.message };
+    }
+
+    // Sync to public.tenants table (update status to Vacated)
+    try {
+      await supabase
+        .from('tenants')
+        .update({
+          status: 'Vacated'
+        })
+        .eq('unit_number', data.unit_number);
+    } catch (tErr) {
+      console.warn('Could not update status in tenants table:', tErr);
+    }
+
+    const updatedUnit = mapRowToUnit(data);
+    return { success: true, unit: updatedUnit };
+  } catch (err: any) {
+    console.error('Network error vacating unit in Supabase:', err);
+    return { success: false, error: err?.message || 'Network error' };
+  }
+}
+
 
 // ==========================================
 // 3. PAYMENTS API

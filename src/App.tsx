@@ -40,6 +40,10 @@ import {
   saveUnitToSupabase, 
   saveUnitsBulkToSupabase,
   deleteUnitFromSupabase,
+  updateTenantAndPricingInSupabase,
+  vacateUnitInSupabase,
+  ModifyTenantPricingPayload,
+  VacateUnitPayload,
   getPaymentsFromSupabase, 
   savePaymentToSupabase, 
   savePaymentsBulkToSupabase,
@@ -431,6 +435,61 @@ export default function App() {
     await deleteUnitFromSupabase(unitId);
   };
 
+  // Modify Tenant & Lease Pricing Handler from Tenants Page
+  const handleModifyTenantPricing = async (unitId: string, payload: ModifyTenantPricingPayload): Promise<boolean> => {
+    const targetUnit = units.find(u => u.id === unitId);
+    const res = await updateTenantAndPricingInSupabase(unitId, payload);
+    if (res.success && res.unit) {
+      const updated = res.unit;
+      setUnits(prev => prev.map(u => u.id === unitId ? updated : u));
+
+      // Record commercial notification
+      const notif: CommercialNotification = {
+        id: `notif-${Date.now()}`,
+        title: `Tenant Modified: ${payload.tenantName} (${targetUnit?.unitNumber || ''})`,
+        description: `Lease terms updated: Rent set to $${payload.monthlyRateUSD} / ${payload.monthlyRateSSP.toLocaleString()} SSP. Synced to Supabase database.`,
+        timestamp: 'Just now',
+        type: 'general',
+        read: false,
+        priority: 'low'
+      };
+      setNotifications(prev => [notif, ...prev]);
+      showToast(`Tenant details & rent for ${targetUnit?.unitNumber || ''} updated and synced to database.`);
+      return true;
+    } else {
+      showToast(`Error updating tenant: ${res.error || 'Database error'}`);
+      return false;
+    }
+  };
+
+  // Vacate Unit Handler from Tenants Page
+  const handleVacateUnit = async (unitId: string, payload?: VacateUnitPayload): Promise<boolean> => {
+    const targetUnit = units.find(u => u.id === unitId);
+    const tenantName = targetUnit?.currentTenant?.name || 'Tenant';
+    const res = await vacateUnitInSupabase(unitId, payload);
+    if (res.success && res.unit) {
+      const updated = res.unit;
+      setUnits(prev => prev.map(u => u.id === unitId ? updated : u));
+
+      // Record commercial notification
+      const notif: CommercialNotification = {
+        id: `notif-${Date.now()}`,
+        title: `Unit Vacated: ${targetUnit?.unitNumber || ''}`,
+        description: `${tenantName} has vacated unit ${targetUnit?.unitNumber || ''}. Unit is now marked as Available for lease. Synced to Supabase database.`,
+        timestamp: 'Just now',
+        type: 'maintenance',
+        read: false,
+        priority: 'high'
+      };
+      setNotifications(prev => [notif, ...prev]);
+      showToast(`Unit ${targetUnit?.unitNumber || ''} has been vacated and updated in Supabase database.`);
+      return true;
+    } else {
+      showToast(`Error vacating unit: ${res.error || 'Database error'}`);
+      return false;
+    }
+  };
+
   // Save Deposit Handler
   const handleSaveDeposit = async (dep: DepositRecord) => {
     const isExisting = deposits.some(d => d.id === dep.id);
@@ -595,6 +654,8 @@ export default function App() {
               deposits={deposits}
               onRecordPaymentForTenant={handleRecordPaymentForTenantUnit}
               onSelectReceiptForPrint={(p) => setSelectedReceiptForPrint(p)}
+              onModifyTenantPricing={handleModifyTenantPricing}
+              onVacateUnit={handleVacateUnit}
             />
           )}
 

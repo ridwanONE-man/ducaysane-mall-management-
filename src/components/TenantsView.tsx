@@ -15,10 +15,19 @@ import {
   Printer, 
   FileText, 
   ChevronRight,
-  Receipt
+  Receipt,
+  Edit3,
+  DoorOpen,
+  DollarSign,
+  Loader2,
+  RefreshCw,
+  Database,
+  Check,
+  AlertCircle
 } from 'lucide-react';
 import { initialTenants } from '../data/commercialData';
-import { TenantInfo, PropertyUnit, PaymentRecord, DepositRecord } from '../types';
+import { TenantInfo, PropertyUnit, PaymentRecord, DepositRecord, BillingStatus } from '../types';
+import { ModifyTenantPricingPayload, VacateUnitPayload } from '../lib/supabaseService';
 
 interface TenantsViewProps {
   units?: PropertyUnit[];
@@ -26,6 +35,8 @@ interface TenantsViewProps {
   deposits?: DepositRecord[];
   onRecordPaymentForTenant: (unitNumber: string) => void;
   onSelectReceiptForPrint?: (payment: PaymentRecord) => void;
+  onModifyTenantPricing?: (unitId: string, payload: ModifyTenantPricingPayload) => Promise<boolean>;
+  onVacateUnit?: (unitId: string, payload?: VacateUnitPayload) => Promise<boolean>;
 }
 
 export const TenantsView: React.FC<TenantsViewProps> = ({ 
@@ -33,15 +44,44 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
   payments = [], 
   deposits = [],
   onRecordPaymentForTenant,
-  onSelectReceiptForPrint 
+  onSelectReceiptForPrint,
+  onModifyTenantPricing,
+  onVacateUnit
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategoryTab, setActiveCategoryTab] = useState<'All' | 'Shops' | 'Spaces' | 'Overdue' | 'Expiring Soon'>('All');
   const [selectedTenant, setSelectedTenant] = useState<{ tenant: TenantInfo; unit?: PropertyUnit } | null>(null);
 
-  // Derive tenant list combined with live unit states
+  // Modify Tenant & Price Modal State
+  const [modifyingTarget, setModifyingTarget] = useState<{ unit: PropertyUnit; tenant: TenantInfo } | null>(null);
+  const [modName, setModName] = useState('');
+  const [modTrade, setModTrade] = useState('');
+  const [modPhone, setModPhone] = useState('');
+  const [modEmail, setModEmail] = useState('');
+  const [modCode, setModCode] = useState('');
+  const [modMonthlyUSD, setModMonthlyUSD] = useState('');
+  const [modMonthlySSP, setModMonthlySSP] = useState('');
+  const [modDepositUSD, setModDepositUSD] = useState('');
+  const [modDepositSSP, setModDepositSSP] = useState('');
+  const [modLeaseStart, setModLeaseStart] = useState('');
+  const [modLeaseEnd, setModLeaseEnd] = useState('');
+  const [modBillingStatus, setModBillingStatus] = useState<BillingStatus>('Paid');
+  const [modNotes, setModNotes] = useState('');
+  const [isModSaving, setIsModSaving] = useState(false);
+  const [modError, setModError] = useState<string | null>(null);
+
+  // Vacate Unit Modal State
+  const [vacatingTarget, setVacatingTarget] = useState<{ unit: PropertyUnit; tenant: TenantInfo } | null>(null);
+  const [vacateDate, setVacateDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [vacateReason, setVacateReason] = useState('End of Lease Term');
+  const [vacateNotes, setVacateNotes] = useState('');
+  const [vacateConfirmed, setVacateConfirmed] = useState(false);
+  const [isVacatingSaving, setIsVacatingSaving] = useState(false);
+  const [vacateError, setVacateError] = useState<string | null>(null);
+
+  // Derive active tenant list combined with live unit states
   const derivedTenants: { tenant: TenantInfo; unit: PropertyUnit }[] = units
-    .filter(u => u.currentTenant && u.currentTenant.name.trim().length > 0)
+    .filter(u => u.occupancyStatus !== 'Available' && u.currentTenant && u.currentTenant.name.trim().length > 0)
     .map(u => ({
       unit: u,
       tenant: {
@@ -60,8 +100,8 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
       }
     }));
 
-  // Fallback to initialTenants if units not yet hydrated
-  const listItems: { tenant: TenantInfo; unit?: PropertyUnit }[] = derivedTenants.length > 0
+  // Fallback to initialTenants only if units have not loaded at all
+  const listItems: { tenant: TenantInfo; unit?: PropertyUnit }[] = units.length > 0
     ? derivedTenants
     : initialTenants.map(t => ({
         tenant: t,
@@ -114,13 +154,155 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
       )
     : [];
 
+  // Open Modify Modal
+  const openModifyModal = (unit: PropertyUnit, tenant: TenantInfo) => {
+    setModifyingTarget({ unit, tenant });
+    setModName(tenant.name || '');
+    setModTrade(tenant.trade || '');
+    setModPhone(tenant.phone || '');
+    setModEmail(tenant.email || '');
+    setModCode(tenant.code || '');
+    setModMonthlyUSD(String(unit.monthlyRateUSD || 0));
+    setModMonthlySSP(String(unit.monthlyRateSSP || (unit.monthlyRateUSD ? unit.monthlyRateUSD * 1300 : 0)));
+    setModDepositUSD(String(unit.escrowDepositUSD || unit.monthlyRateUSD || 0));
+    setModDepositSSP(String(unit.escrowDepositSSP || (unit.monthlyRateSSP || (unit.monthlyRateUSD ? unit.monthlyRateUSD * 1300 : 0))));
+    setModLeaseStart(unit.leaseStart || tenant.leaseStart || '2026-09-01');
+    setModLeaseEnd(unit.leaseEnd || tenant.leaseEnd || '2026-10-01');
+    setModBillingStatus(unit.billingStatus || 'Paid');
+    setModNotes(unit.notes || '');
+    setModError(null);
+  };
+
+  // Open Vacate Modal
+  const openVacateModal = (unit: PropertyUnit, tenant: TenantInfo) => {
+    setVacatingTarget({ unit, tenant });
+    setVacateDate(new Date().toISOString().slice(0, 10));
+    setVacateReason('End of Lease Term');
+    setVacateNotes('');
+    setVacateConfirmed(false);
+    setVacateError(null);
+  };
+
+  // Submit Modify Form
+  const handleSaveModify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!modifyingTarget) return;
+
+    if (!modName.trim()) {
+      setModError('Tenant name is required.');
+      return;
+    }
+
+    const monthlyUSD = parseFloat(modMonthlyUSD) || 0;
+    const monthlySSP = parseFloat(modMonthlySSP) || 0;
+    const depositUSD = parseFloat(modDepositUSD) || 0;
+    const depositSSP = parseFloat(modDepositSSP) || 0;
+
+    setIsModSaving(true);
+    setModError(null);
+
+    const payload: ModifyTenantPricingPayload = {
+      tenantName: modName.trim(),
+      trade: modTrade.trim(),
+      phone: modPhone.trim(),
+      email: modEmail.trim(),
+      tenantCode: modCode.trim() || undefined,
+      monthlyRateUSD: monthlyUSD,
+      monthlyRateSSP: monthlySSP,
+      securityDepositUSD: depositUSD,
+      securityDepositSSP: depositSSP,
+      leaseStart: modLeaseStart || undefined,
+      leaseEnd: modLeaseEnd || undefined,
+      billingStatus: modBillingStatus,
+      notes: modNotes.trim() || undefined,
+    };
+
+    try {
+      if (onModifyTenantPricing) {
+        const ok = await onModifyTenantPricing(modifyingTarget.unit.id, payload);
+        if (ok) {
+          setModifyingTarget(null);
+          // If selectedTenant was this unit, update its local view
+          if (selectedTenant && selectedTenant.unit?.id === modifyingTarget.unit.id) {
+            setSelectedTenant(prev => prev ? {
+              ...prev,
+              tenant: {
+                ...prev.tenant,
+                name: payload.tenantName,
+                trade: payload.trade,
+                phone: payload.phone,
+                email: payload.email,
+                leaseStart: payload.leaseStart,
+                leaseEnd: payload.leaseEnd,
+              },
+              unit: {
+                ...prev.unit!,
+                monthlyRateUSD: payload.monthlyRateUSD,
+                monthlyRateSSP: payload.monthlyRateSSP,
+                escrowDepositUSD: payload.securityDepositUSD,
+                escrowDepositSSP: payload.securityDepositSSP,
+                leaseStart: payload.leaseStart,
+                leaseEnd: payload.leaseEnd,
+                billingStatus: payload.billingStatus as any,
+                notes: payload.notes,
+              }
+            } : null);
+          }
+        } else {
+          setModError('Database update failed. Please check network connection.');
+        }
+      }
+    } catch (err: any) {
+      setModError(err?.message || 'Error saving changes to database.');
+    } finally {
+      setIsModSaving(false);
+    }
+  };
+
+  // Submit Vacate Form
+  const handleConfirmVacate = async () => {
+    if (!vacatingTarget) return;
+
+    if (!vacateConfirmed) {
+      setVacateError('Please confirm the acknowledgment checkbox before proceeding.');
+      return;
+    }
+
+    setIsVacatingSaving(true);
+    setVacateError(null);
+
+    const payload: VacateUnitPayload = {
+      vacatedDate: vacateDate,
+      reason: vacateReason,
+      notes: vacateNotes.trim() || undefined,
+    };
+
+    try {
+      if (onVacateUnit) {
+        const ok = await onVacateUnit(vacatingTarget.unit.id, payload);
+        if (ok) {
+          setVacatingTarget(null);
+          if (selectedTenant && selectedTenant.unit?.id === vacatingTarget.unit.id) {
+            setSelectedTenant(null);
+          }
+        } else {
+          setVacateError('Database update failed when vacating unit.');
+        }
+      }
+    } catch (err: any) {
+      setVacateError(err?.message || 'Error vacating unit in database.');
+    } finally {
+      setIsVacatingSaving(false);
+    }
+  };
+
   return (
     <div className="p-6 sm:p-8 space-y-6 max-w-7xl mx-auto">
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-1.5 text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">
-            <span>Nyakuron Business Centre</span>
+            <span>Ducaysane Mall</span>
             <span>›</span>
             <span className="text-orange-600">Tenants</span>
           </div>
@@ -291,21 +473,41 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                 </div>
 
                 {/* Actions Bar */}
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-2">
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1.5">
                   <button
                     onClick={() => setSelectedTenant({ tenant, unit })}
-                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                    title="View full tenant ledger and profile"
                   >
                     <FileText className="w-3.5 h-3.5" />
-                    <span>View Profile</span>
+                    <span>Profile</span>
+                  </button>
+
+                  <button
+                    onClick={() => unit && openModifyModal(unit, tenant)}
+                    className="flex-1 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/60 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                    title="Modify tenant details and lease price in database"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Modify</span>
+                  </button>
+
+                  <button
+                    onClick={() => unit && openVacateModal(unit, tenant)}
+                    className="px-2.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/60 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                    title="Vacate this unit and mark as available"
+                  >
+                    <DoorOpen className="w-3.5 h-3.5 text-rose-600" />
+                    <span className="hidden sm:inline">Vacate</span>
                   </button>
 
                   <button
                     onClick={() => onRecordPaymentForTenant(tenant.unitNumber || 'G001')}
-                    className="flex-1 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shadow-orange-500/20"
+                    className="flex-1 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer shadow-xs shadow-orange-500/20"
+                    title="Record rent payment"
                   >
                     <CreditCard className="w-3.5 h-3.5" />
-                    <span>Pay Rent</span>
+                    <span>Pay</span>
                   </button>
                 </div>
               </div>
@@ -330,12 +532,24 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                   <p className="text-xs text-slate-500">{selectedTenant.tenant.trade} • {selectedTenant.tenant.code || 'Registered Tenant'}</p>
                 </div>
               </div>
-              <button
-                onClick={() => setSelectedTenant(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedTenant.unit && (
+                  <button
+                    onClick={() => openModifyModal(selectedTenant.unit!, selectedTenant.tenant)}
+                    className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                    title="Modify details or price"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Modify</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedTenant(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Profile Content */}
@@ -469,29 +683,514 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
               </div>
 
               {/* Action Buttons in Modal */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setSelectedTenant(null)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl cursor-pointer"
-                >
-                  Close
-                </button>
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
+                {selectedTenant.unit && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      openVacateModal(selectedTenant.unit!, selectedTenant.tenant);
+                    }}
+                    className="px-3.5 py-2 text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <DoorOpen className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Vacate Unit</span>
+                  </button>
+                )}
 
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTenant(null)}
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl cursor-pointer"
+                  >
+                    Close
+                  </button>
+
+                  {selectedTenant.unit && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        openModifyModal(selectedTenant.unit!, selectedTenant.tenant);
+                      }}
+                      className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Modify / Price</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const unitNum = selectedTenant.tenant.unitNumber || 'G001';
+                      setSelectedTenant(null);
+                      onRecordPaymentForTenant(unitNum);
+                    }}
+                    className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-500/20 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Record Rent</span>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL: MODIFY DETAILS / PRICE (Direct Database Sync)     */}
+      {/* ======================================================== */}
+      {modifyingTarget && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 my-8">
+            <form onSubmit={handleSaveModify}>
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-amber-50/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
+                    <Edit3 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-extrabold text-slate-900">Modify Details & Price</h2>
+                      <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold font-mono">
+                        {modifyingTarget.unit.unitNumber}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Updates tenant information and monthly rental rates directly in Supabase.
+                    </p>
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    const unitNum = selectedTenant.tenant.unitNumber || 'G001';
-                    setSelectedTenant(null);
-                    onRecordPaymentForTenant(unitNum);
-                  }}
-                  className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-500/20 flex items-center gap-1.5 cursor-pointer"
+                  onClick={() => setModifyingTarget(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
                 >
-                  <CreditCard className="w-3.5 h-3.5" />
-                  <span>Record Rent Payment</span>
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
+              {/* Form Body */}
+              <div className="p-6 space-y-4 text-xs text-slate-700 max-h-[70vh] overflow-y-auto">
+                {modError && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{modError}</span>
+                  </div>
+                )}
+
+                {/* Section 1: Tenant Profile */}
+                <div className="space-y-3 pb-4 border-b border-slate-100">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                    Tenant Identity & Contact
+                  </span>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Tenant Full Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={modName}
+                        onChange={(e) => setModName(e.target.value)}
+                        placeholder="e.g. Saber Ibrahim"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Business / Trade</label>
+                      <input
+                        type="text"
+                        value={modTrade}
+                        onChange={(e) => setModTrade(e.target.value)}
+                        placeholder="e.g. Electronics & Accessories"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Phone Number</label>
+                      <input
+                        type="text"
+                        value={modPhone}
+                        onChange={(e) => setModPhone(e.target.value)}
+                        placeholder="+211 910 000 000"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Email Address</label>
+                      <input
+                        type="email"
+                        value={modEmail}
+                        onChange={(e) => setModEmail(e.target.value)}
+                        placeholder="tenant@domain.com"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Monthly Rent & Security Deposit */}
+                <div className="space-y-3 pb-4 border-b border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                      Lease Rates & Security Deposit
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const usd = parseFloat(modMonthlyUSD) || 0;
+                        if (usd > 0) {
+                          setModMonthlySSP(String(Math.round(usd * 1300)));
+                        }
+                        const depUSD = parseFloat(modDepositUSD) || 0;
+                        if (depUSD > 0) {
+                          setModDepositSSP(String(Math.round(depUSD * 1300)));
+                        }
+                      }}
+                      className="text-[10px] text-amber-700 hover:text-amber-800 font-bold flex items-center gap-1 cursor-pointer bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200/50"
+                      title="Calculate SSP at rate 1 USD = 1,300 SSP"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Sync SSP @ 1,300 Rate</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Monthly Rent (USD $)</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                        <input
+                          type="number"
+                          step="any"
+                          value={modMonthlyUSD}
+                          onChange={(e) => setModMonthlyUSD(e.target.value)}
+                          placeholder="600"
+                          className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white font-semibold"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Monthly Rent (SSP)</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={modMonthlySSP}
+                        onChange={(e) => setModMonthlySSP(e.target.value)}
+                        placeholder="780000"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white font-semibold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Security Deposit (USD $)</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                        <input
+                          type="number"
+                          step="any"
+                          value={modDepositUSD}
+                          onChange={(e) => setModDepositUSD(e.target.value)}
+                          placeholder="600"
+                          className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Security Deposit (SSP)</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={modDepositSSP}
+                        onChange={(e) => setModDepositSSP(e.target.value)}
+                        placeholder="780000"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 3: Lease Dates & Standing */}
+                <div className="space-y-3">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                    Lease Schedule & Status
+                  </span>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Lease Start Date</label>
+                      <input
+                        type="date"
+                        value={modLeaseStart}
+                        onChange={(e) => setModLeaseStart(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Lease End Date</label>
+                      <input
+                        type="date"
+                        value={modLeaseEnd}
+                        onChange={(e) => setModLeaseEnd(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Billing Status</label>
+                      <select
+                        value={modBillingStatus}
+                        onChange={(e) => setModBillingStatus(e.target.value as BillingStatus)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white"
+                      >
+                        <option value="Paid">Paid</option>
+                        <option value="Partially Paid">Partially Paid</option>
+                        <option value="Overdue">Overdue</option>
+                        <option value="No Balance">No Balance</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Internal Notes / Terms</label>
+                    <textarea
+                      rows={2}
+                      value={modNotes}
+                      onChange={(e) => setModNotes(e.target.value)}
+                      placeholder="Special lease notes, price revisions, or remarks..."
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between p-5 border-t border-slate-100 bg-slate-50">
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
+                  <Database className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Syncs to Supabase Database</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isModSaving}
+                    onClick={() => setModifyingTarget(null)}
+                    className="px-4 py-2 border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-100 cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={isModSaving}
+                    className="px-5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
+                  >
+                    {isModSaving ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Saving to Database...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Save & Sync Database</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL: VACATE UNIT CONFIRMATION (Database Sync)          */}
+      {/* ======================================================== */}
+      {vacatingTarget && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 my-8">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-rose-50/70">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500 text-white flex items-center justify-center shadow-md shadow-rose-500/20">
+                  <DoorOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-extrabold text-slate-900">Vacate Unit: {vacatingTarget.unit.unitNumber}</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Tenant will be checked out and unit restored to 'Available' status in Supabase.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVacatingTarget(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4 text-xs text-slate-700">
+              {vacateError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{vacateError}</span>
+                </div>
+              )}
+
+              {/* Tenant Summary Banner */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Current Occupant</span>
+                  <span className="font-extrabold text-slate-900 text-sm">{vacatingTarget.tenant.name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Business Trade:</span>
+                  <span className="font-semibold text-slate-800">{vacatingTarget.tenant.trade}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Assigned Unit Space:</span>
+                  <span className="font-semibold text-slate-800">{vacatingTarget.unit.unitNumber} ({vacatingTarget.unit.floor})</span>
+                </div>
+              </div>
+
+              {/* Financial Reconcile Alert */}
+              {(vacatingTarget.tenant.balanceUSD > 0 || vacatingTarget.tenant.balanceSSP > 0) ? (
+                <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 space-y-1">
+                  <div className="flex items-center gap-2 font-bold text-xs text-rose-900">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Outstanding Arrears Warning</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-rose-700">
+                    This tenant has an unpaid balance of{' '}
+                    <strong className="font-extrabold">
+                      {vacatingTarget.tenant.balanceUSD > 0 
+                        ? `$${vacatingTarget.tenant.balanceUSD.toLocaleString()} USD` 
+                        : `${vacatingTarget.tenant.balanceSSP.toLocaleString()} SSP`}
+                    </strong>. Ensure collection or settlement before releasing keys or escrow deposit.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-medium">No outstanding rent arrears. Tenant account is in good standing.</span>
+                </div>
+              )}
+
+              {/* Escrow Deposit Notice */}
+              <div className="p-3 bg-amber-50/70 border border-amber-200/60 rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-amber-800 font-bold block uppercase">Security Deposit in Escrow</span>
+                  <span className="text-xs text-amber-900 font-extrabold">
+                    {vacatingTarget.unit.escrowDepositUSD 
+                      ? `$${vacatingTarget.unit.escrowDepositUSD.toLocaleString()} USD` 
+                      : `${(vacatingTarget.unit.escrowDepositSSP || 0).toLocaleString()} SSP`}
+                  </span>
+                </div>
+                <span className="text-[10px] text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-md font-semibold">
+                  Held in Escrow
+                </span>
+              </div>
+
+              {/* Vacate Details Form */}
+              <div className="space-y-3 pt-2">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Effective Vacation Date</label>
+                  <input
+                    type="date"
+                    value={vacateDate}
+                    onChange={(e) => setVacateDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-rose-500 bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Vacate Reason</label>
+                  <select
+                    value={vacateReason}
+                    onChange={(e) => setVacateReason(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-rose-500 bg-white"
+                  >
+                    <option value="End of Lease Term">End of Lease Term (Standard Expiry)</option>
+                    <option value="Tenant Requested Early Termination">Tenant Requested Early Termination</option>
+                    <option value="Default / Eviction for Non-Payment">Default / Eviction for Non-Payment</option>
+                    <option value="Relocated to Another Unit">Relocated to Another Mall Unit</option>
+                    <option value="Mutual Lease Cancellation">Mutual Lease Cancellation</option>
+                    <option value="Other">Other Reason</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Handover & Inspection Remarks (Optional)</label>
+                  <textarea
+                    rows={2}
+                    value={vacateNotes}
+                    onChange={(e) => setVacateNotes(e.target.value)}
+                    placeholder="e.g. Keys handed over, shop painted, electricity meter reading verified..."
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-rose-500 bg-white"
+                  />
+                </div>
+
+                {/* Confirmation Checkbox */}
+                <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={vacateConfirmed}
+                    onChange={(e) => setVacateConfirmed(e.target.checked)}
+                    className="mt-0.5 rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                  />
+                  <span className="text-[11px] text-slate-600 leading-snug">
+                    I confirm that unit handover inspection has occurred and authorize updating unit{' '}
+                    <strong>{vacatingTarget.unit.unitNumber}</strong> to <em>Available</em> in the live Supabase database.
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between p-5 border-t border-slate-100 bg-slate-50">
+              <button
+                type="button"
+                disabled={isVacatingSaving}
+                onClick={() => setVacatingTarget(null)}
+                className="px-4 py-2 border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-100 cursor-pointer transition-colors"
+              >
+                Keep Occupied
+              </button>
+
+              <button
+                type="button"
+                disabled={isVacatingSaving || !vacateConfirmed}
+                onClick={handleConfirmVacate}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md shadow-rose-600/20 flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                {isVacatingSaving ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Vacating in Supabase...</span>
+                  </>
+                ) : (
+                  <>
+                    <DoorOpen className="w-3.5 h-3.5" />
+                    <span>Confirm & Vacate Unit</span>
+                  </>
+                )}
+              </button>
             </div>
 
           </div>
