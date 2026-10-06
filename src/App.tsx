@@ -516,18 +516,20 @@ export default function App() {
     await saveCashflowToSupabase(tx);
   };
 
-  // Quick action: record payment for specific unit
+  // Quick action: record payment for specific unit (navigates to payments page)
   const handleOpenRecordPaymentForUnit = (unitId: string) => {
     setPaymentSelectedUnitId(unitId);
+    setActiveTab('payments');
     setIsPaymentModalOpen(true);
   };
 
-  // Quick action: record payment for tenant name or unit number
+  // Quick action: record payment for tenant name or unit number (navigates to payments page)
   const handleRecordPaymentForTenantUnit = (unitNumber: string) => {
     const found = units.find(u => u.unitNumber === unitNumber);
     if (found) {
       setPaymentSelectedUnitId(found.id);
     }
+    setActiveTab('payments');
     setIsPaymentModalOpen(true);
   };
 

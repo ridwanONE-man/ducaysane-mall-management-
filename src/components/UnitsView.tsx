@@ -9,7 +9,6 @@ import {
   Map, 
   Plus, 
   Filter, 
-  CreditCard, 
   Check, 
   Store,
   ChevronDown,
@@ -25,7 +24,7 @@ interface UnitsViewProps {
   units: PropertyUnit[];
   currencyMode: CurrencyMode;
   onCurrencyChange: (mode: CurrencyMode) => void;
-  onOpenRecordPaymentWithUnit: (unitId: string) => void;
+  onOpenRecordPaymentWithUnit?: (unitId: string) => void;
   onOpenAddUnit: () => void;
   onOpenFloorMap: () => void;
   onEditUnit?: (unit: PropertyUnit) => void;
@@ -534,17 +533,6 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                     {/* Actions */}
                     <td className="p-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        {unit.currentTenant && (
-                          <button
-                            type="button"
-                            onClick={() => onOpenRecordPaymentWithUnit(unit.id)}
-                            className="px-2.5 py-1 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
-                            title="Record rent payment"
-                          >
-                            <CreditCard className="w-3 h-3" />
-                            <span>Pay</span>
-                          </button>
-                        )}
                         <button
                           type="button"
                           onClick={() => onEditUnit ? onEditUnit(unit) : onOpenAddUnit()}
