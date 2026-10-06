@@ -1,35 +1,38 @@
 import React, { useState } from 'react';
 import { 
-  Lock, 
+  ShieldCheck, 
   Search, 
   Download, 
   Plus, 
-  ShieldCheck, 
   Landmark, 
   AlertCircle, 
   CheckCircle2, 
   ArrowUpRight, 
   RefreshCw,
   Eye,
-  FileText
+  FileText,
+  Store,
+  DollarSign,
+  Calendar,
+  X
 } from 'lucide-react';
 import { DepositRecord, PropertyUnit, CurrencyMode } from '../types';
 import { initialDeposits } from '../data/commercialData';
 
 interface DepositsViewProps {
   units: PropertyUnit[];
-  currencyMode: CurrencyMode;
-  onOpenReceiptPrint?: (deposit: DepositRecord) => void;
   deposits?: DepositRecord[];
+  currencyMode?: CurrencyMode;
   onSaveDeposit?: (deposit: DepositRecord) => void;
+  onSaveUnit?: (unit: PropertyUnit) => void;
+  onOpenReceiptPrint?: (deposit: DepositRecord) => void;
 }
 
 export const DepositsView: React.FC<DepositsViewProps> = ({
   units,
-  currencyMode,
-  onOpenReceiptPrint,
   deposits: propDeposits,
-  onSaveDeposit
+  onSaveDeposit,
+  onSaveUnit
 }) => {
   const [localDeposits, setLocalDeposits] = useState<DepositRecord[]>(initialDeposits);
   const deposits = propDeposits || localDeposits;
@@ -42,53 +45,84 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
   const [selectedDepositForRefund, setSelectedDepositForRefund] = useState<DepositRecord | null>(null);
 
   // New Deposit Form State
-  const [newTenantName, setNewTenantName] = useState('');
-  const [newUnitNumber, setNewUnitNumber] = useState(units[0]?.unitNumber || '');
-  const [newAmountUSD, setNewAmountUSD] = useState('');
-  const [newAmountSSP, setNewAmountSSP] = useState('');
-  const [newBankAccount, setNewBankAccount] = useState('Stanbic Bank - Escrow Liability #8892-01');
+  const [selectedUnitId, setSelectedUnitId] = useState<string>(units[0]?.id || '');
+  const [depositMonthsOption, setDepositMonthsOption] = useState<number>(2);
+  const [isCustomAmount, setIsCustomAmount] = useState<boolean>(false);
+  const [customAmountUSD, setCustomAmountUSD] = useState<string>('');
+  const [depositSlipNumber, setDepositSlipNumber] = useState<string>(`DEP-2026-${Math.floor(100 + Math.random() * 900)}`);
+  const [bankAccount, setBankAccount] = useState('Stanbic Bank - Escrow Liability #8892-01');
+  const [notes, setNotes] = useState('');
+
+  // Selected unit for form
+  const selectedUnit = units.find(u => u.id === selectedUnitId) || units[0] || null;
+  const unitRent = selectedUnit?.monthlyRateUSD || 500;
+  const calculatedAmount = isCustomAmount 
+    ? (parseFloat(customAmountUSD) || 0) 
+    : unitRent * depositMonthsOption;
 
   // Filtered deposits
   const filteredDeposits = deposits.filter(d => {
     const matchesSearch = 
       d.tenantName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       d.unitNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      d.bankAccount.toLowerCase().includes(searchTerm.toLowerCase());
+      d.bankAccount.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (d.depositSlip && d.depositSlip.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesStatus = statusFilter === 'ALL' || d.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   // Aggregate metrics
-  const totalUSD = deposits
-    .filter(d => d.status === 'Held in Escrow')
+  const activeDeposits = deposits.filter(d => d.status === 'Held in Escrow');
+  const totalUSD = activeDeposits.reduce((sum, d) => sum + d.amountUSD, 0);
+  const refundedUSD = deposits
+    .filter(d => d.status === 'Refunded')
     .reduce((sum, d) => sum + d.amountUSD, 0);
-
-  const totalSSP = deposits
-    .filter(d => d.status === 'Held in Escrow')
-    .reduce((sum, d) => sum + d.amountSSP, 0);
 
   // Handlers
   const handleCollectDeposit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedUnit) return;
+
+    const tenantName = selectedUnit.currentTenant?.name || 'Commercial Tenant';
+    const effectiveMonths = isCustomAmount 
+      ? Math.max(1, Math.round(calculatedAmount / (unitRent || 1))) 
+      : depositMonthsOption;
+
     const newDep: DepositRecord = {
       id: `dep-${Date.now()}`,
-      depositSlip: `DEP-2024-${Math.floor(100 + Math.random() * 900)}`,
-      tenantName: newTenantName || 'New Commercial Tenant',
-      unitNumber: newUnitNumber,
-      amountUSD: parseFloat(newAmountUSD) || 0,
-      amountSSP: parseFloat(newAmountSSP) || 0,
+      depositSlip: depositSlipNumber || `DEP-2026-${Math.floor(100 + Math.random() * 900)}`,
+      tenantName,
+      tenantId: selectedUnit.currentTenant?.id,
+      unitNumber: selectedUnit.unitNumber,
+      amountUSD: calculatedAmount,
+      amountSSP: 0,
+      depositMonths: effectiveMonths,
+      monthlyRentUSD: unitRent,
       heldSince: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
       status: 'Held in Escrow',
-      bankAccount: newBankAccount,
-      notes: 'Initial lease security deposit held in segregation.'
+      bankAccount,
+      notes: notes.trim() || `Security deposit of ${effectiveMonths} month(s) rent ($${calculatedAmount.toLocaleString()}) held in segregated escrow.`
     };
+
     if (onSaveDeposit) {
       onSaveDeposit(newDep);
     } else {
       setLocalDeposits(prev => [newDep, ...prev]);
     }
+
+    // Also update corresponding unit so deposit status is connected everywhere
+    if (onSaveUnit) {
+      const updatedUnit: PropertyUnit = {
+        ...selectedUnit,
+        escrowDepositUSD: calculatedAmount,
+        depositMonths: effectiveMonths
+      };
+      onSaveUnit(updatedUnit);
+    }
+
     setIsCollectModalOpen(false);
-    setNewTenantName('');
+    setDepositSlipNumber(`DEP-2026-${Math.floor(100 + Math.random() * 900)}`);
+    setNotes('');
   };
 
   const handleConfirmRefund = () => {
@@ -96,25 +130,37 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
     const updated: DepositRecord = { 
       ...selectedDepositForRefund, 
       status: 'Refunded', 
-      notes: 'Deposit released upon satisfactory lease termination.' 
+      notes: 'Security deposit released and refunded upon satisfactory lease clearance.' 
     };
+
     if (onSaveDeposit) {
       onSaveDeposit(updated);
     } else {
       setLocalDeposits(prev => prev.map(d => d.id === updated.id ? updated : d));
     }
+
+    // Reset escrow deposit on the unit if it matches
+    const unitMatch = units.find(u => u.unitNumber === selectedDepositForRefund.unitNumber);
+    if (unitMatch && onSaveUnit) {
+      onSaveUnit({
+        ...unitMatch,
+        escrowDepositUSD: 0,
+        depositMonths: 0
+      });
+    }
+
     setIsRefundModalOpen(false);
     setSelectedDepositForRefund(null);
   };
 
   const handleExportCSV = () => {
-    const headers = ['Deposit ID', 'Tenant Name', 'Unit Number', 'Amount USD', 'Amount SSP', 'Held Since', 'Status', 'Escrow Account'];
+    const headers = ['Deposit ID', 'Tenant Name', 'Unit Number', 'Amount USD', 'Months Covered', 'Held Since', 'Status', 'Escrow Account'];
     const rows = filteredDeposits.map(d => [
       d.depositSlip || d.id,
       `"${d.tenantName}"`,
       d.unitNumber,
       d.amountUSD.toFixed(2),
-      d.amountSSP.toString(),
+      d.depositMonths ? `${d.depositMonths} mo` : 'N/A',
       d.heldSince,
       d.status,
       `"${d.bankAccount}"`
@@ -132,14 +178,19 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
   return (
     <div id="deposits-view" className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       
-      {/* Header - Clean & Minimal */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            Escrow Deposits
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">
+            <span>Nyakuron Business Centre</span>
+            <span>›</span>
+            <span className="text-blue-600">Escrow</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            Security & Escrow Deposits
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Security deposits and segregated lease escrow reserves
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            Administer multi-month lease security deposits, segregated trust reserves, and return vouchers.
           </p>
         </div>
 
@@ -147,49 +198,53 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
           <button
             type="button"
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Export</span>
+            <span>Export CSV</span>
           </button>
 
           <button
             type="button"
             onClick={() => setIsCollectModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-all shadow-xs shadow-blue-500/20 cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20 cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Collect Deposit</span>
+            <Plus className="w-4 h-4" />
+            <span>Add Tenant Deposit</span>
           </button>
         </div>
       </div>
 
-      {/* Unified Minimalist Escrow Metric Strip */}
+      {/* Escrow Metric Strip */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 gap-y-3 sm:gap-y-0">
         
         <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Total Escrow (USD)</span>
+          <span className="text-xs font-medium text-slate-500 block">Total Escrow Reserve (USD)</span>
           <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-bold text-slate-900">${totalUSD.toLocaleString()}</span>
-            <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded-full">Segregated</span>
-          </div>
-        </div>
-
-        <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Total Escrow (SSP)</span>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-bold text-slate-900">{totalSSP.toLocaleString()}</span>
-            <span className="text-[11px] text-slate-400 font-normal">SSP</span>
-          </div>
-        </div>
-
-        <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Active Guarantees</span>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-bold text-slate-900">
-              {deposits.filter(d => d.status === 'Held in Escrow').length}
+            <span className="text-2xl font-bold text-slate-900">${totalUSD.toLocaleString()} USD</span>
+            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
+              Segregated
             </span>
-            <span className="text-[11px] text-slate-400 font-normal">Active accounts</span>
+          </div>
+        </div>
+
+        <div className="px-3 sm:px-4 py-1">
+          <span className="text-xs font-medium text-slate-500 block">Protected Leases</span>
+          <div className="flex items-baseline gap-2 mt-0.5">
+            <span className="text-2xl font-bold text-blue-600">
+              {activeDeposits.length}
+            </span>
+            <span className="text-[11px] text-slate-400 font-normal">Active Tenancies</span>
+          </div>
+        </div>
+
+        <div className="px-3 sm:px-4 py-1">
+          <span className="text-xs font-medium text-slate-500 block">Refunded / Settled Reserves</span>
+          <div className="flex items-baseline gap-2 mt-0.5">
+            <span className="text-2xl font-bold text-slate-600">
+              ${refundedUSD.toLocaleString()} USD
+            </span>
+            <span className="text-[11px] text-slate-400 font-normal">Released</span>
           </div>
         </div>
 
@@ -228,15 +283,16 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
             ))}
           </div>
         </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 <th className="py-3 px-4">Slip / Tenant</th>
                 <th className="py-3 px-4">Leased Space</th>
-                <th className="py-3 px-4">Escrow Balance (USD)</th>
-                <th className="py-3 px-4">Escrow Balance (SSP)</th>
-                <th className="py-3 px-4">Depository Account</th>
+                <th className="py-3 px-4">Security Deposit (USD)</th>
+                <th className="py-3 px-4">Coverage</th>
+                <th className="py-3 px-4">Depository Bank</th>
                 <th className="py-3 px-4">Held Since</th>
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4 text-right">Actions</th>
@@ -250,7 +306,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
                       <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
                         <ShieldCheck className="w-6 h-6 text-slate-400 stroke-[1.5]" />
                       </div>
-                      <p className="font-bold text-slate-800 text-sm">No Escrow Deposits Registered</p>
+                      <p className="font-bold text-slate-800 text-sm">No Escrow Deposits Found</p>
                       <p className="text-xs text-slate-400 mt-1 mb-4">Record security deposits held in segregated bank escrow for commercial leases.</p>
                       <button
                         type="button"
@@ -264,220 +320,309 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredDeposits.map((d) => (
-                  <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4">
-                      <div className="font-bold text-slate-900">{d.tenantName}</div>
-                      <span className="text-[10px] font-mono text-slate-400">
-                        {d.depositSlip || d.id}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 font-semibold text-slate-700">
-                      {d.unitNumber}
-                    </td>
-                    <td className="py-3.5 px-4 font-bold text-slate-900">
-                      ${d.amountUSD.toLocaleString()}
-                    </td>
-                    <td className="py-3.5 px-4 font-semibold text-slate-600">
-                      {d.amountSSP.toLocaleString()} SSP
-                    </td>
-                    <td className="py-3.5 px-4 text-[11px] text-slate-500">
-                      {d.bankAccount}
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-600">
-                      {d.heldSince}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        d.status === 'Held in Escrow'
-                          ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
-                          : d.status === 'Under Review'
-                          ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20'
-                          : 'bg-slate-100 text-slate-600'
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          d.status === 'Held in Escrow' ? 'bg-emerald-500' : 'bg-amber-500'
-                        }`} />
-                        {d.status}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      {d.status === 'Held in Escrow' ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedDepositForRefund(d);
-                            setIsRefundModalOpen(true);
-                          }}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-red-50 hover:text-red-700 text-slate-600 rounded-lg text-xs font-bold transition-all cursor-pointer"
-                          title="Refund upon lease termination"
-                        >
-                          Release
-                        </button>
-                      ) : (
-                        <span className="text-[11px] text-slate-400 font-medium italic">Settled</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                filteredDeposits.map((d) => {
+                  const unitMatch = units.find(u => u.unitNumber === d.unitNumber);
+                  const isShop = unitMatch?.type === 'Shop' || unitMatch?.categoryType === 'Shop' || d.unitNumber.startsWith('G');
+                  const mos = d.depositMonths || (d.monthlyRentUSD && d.amountUSD ? Math.max(1, Math.round(d.amountUSD / d.monthlyRentUSD)) : 2);
+
+                  return (
+                    <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-slate-900">{d.tenantName}</div>
+                        <span className="text-[10px] font-mono text-slate-400">
+                          {d.depositSlip || d.id}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            isShop ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
+                          }`}>
+                            {d.unitNumber}
+                          </span>
+                          <span className="text-slate-500 text-[11px]">
+                            {isShop ? 'Shop' : 'Space'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 font-bold text-slate-900 text-sm">
+                        ${d.amountUSD.toLocaleString()} USD
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-[11px]">
+                          {mos} Month(s) Rent
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-[11px] text-slate-500">
+                        {d.bankAccount}
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-600">
+                        {d.heldSince}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          d.status === 'Held in Escrow'
+                            ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
+                            : d.status === 'Under Review'
+                            ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            d.status === 'Held in Escrow' ? 'bg-emerald-500' : 'bg-amber-500'
+                          }`} />
+                          {d.status}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        {d.status === 'Held in Escrow' ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedDepositForRefund(d);
+                              setIsRefundModalOpen(true);
+                            }}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                            title="Refund upon lease termination"
+                          >
+                            Release
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 font-medium italic">Settled</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Collect Deposit Modal */}
+      {/* Collect / Add Escrow Deposit Modal */}
       {isCollectModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="p-2 rounded-xl bg-blue-50 text-blue-600">
-                  <Lock className="w-4 h-4" />
-                </span>
-                <h3 className="text-base font-bold text-slate-900">Collect Escrow Security Deposit</h3>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 my-8">
+            <div className="flex items-center justify-between p-6 pb-4 border-b border-slate-100 bg-slate-50/70">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Add Security Deposit
+                  </h3>
+                  <p className="text-xs text-slate-500">Hold multi-month security deposit in segregated escrow</p>
+                </div>
               </div>
-              <button 
+              <button
                 onClick={() => setIsCollectModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCollectDeposit} className="mt-4 space-y-4">
+            <form onSubmit={handleCollectDeposit} className="p-6 space-y-4 text-xs">
+              
+              {/* Select Tenant / Leased Unit (Shop or Space) */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Tenant Commercial Name</label>
-                <input
-                  type="text"
-                  required
-                  value={newTenantName}
-                  onChange={(e) => setNewTenantName(e.target.value)}
-                  placeholder="e.g. Nile Traders Ltd"
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Select Leased Space & Tenant <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={selectedUnitId}
+                  onChange={(e) => setSelectedUnitId(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white"
+                >
+                  {units.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.unitNumber} ({u.categoryType || u.type}) — {u.currentTenant?.name || 'Available Space'} (${u.monthlyRateUSD}/mo)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Monthly Base Rent Info */}
+              {selectedUnit && (
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Current Tenant</span>
+                    <span className="font-bold text-slate-900 text-xs">
+                      {selectedUnit.currentTenant?.name || 'Walk-in / New Tenant'}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Monthly Base Rent</span>
+                    <span className="font-bold text-blue-600 text-xs">
+                      ${unitRent.toLocaleString()} USD
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Months to Deposit Selector */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Deposit Coverage (Months of Rent) <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[1, 2, 3].map(months => (
+                    <button
+                      key={months}
+                      type="button"
+                      onClick={() => {
+                        setIsCustomAmount(false);
+                        setDepositMonthsOption(months);
+                      }}
+                      className={`py-2 rounded-xl font-bold border transition-all cursor-pointer ${
+                        !isCustomAmount && depositMonthsOption === months
+                          ? 'bg-blue-50 border-blue-600 text-blue-800 shadow-2xs'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {months} Mo
+                    </button>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomAmount(true);
+                      setCustomAmountUSD(String(unitRent * 2));
+                    }}
+                    className={`py-2 rounded-xl font-bold border transition-all cursor-pointer ${
+                      isCustomAmount
+                        ? 'bg-blue-50 border-blue-600 text-blue-800 shadow-2xs'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Custom
+                  </button>
+                </div>
+              </div>
+
+              {isCustomAmount && (
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Custom Deposit Amount (USD $)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">$</span>
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      value={customAmountUSD}
+                      onChange={(e) => setCustomAmountUSD(e.target.value)}
+                      placeholder="Enter amount in USD"
+                      className="w-full pl-7 pr-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Real-time deposit total card */}
+              <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-blue-800 block">Total Deposit Required</span>
+                  <span className="text-lg font-black text-blue-900">
+                    ${calculatedAmount.toLocaleString()} USD
+                  </span>
+                </div>
+                <div className="text-right text-[11px] text-blue-700 font-semibold">
+                  {isCustomAmount ? 'Custom Amount' : `${depositMonthsOption} × $${unitRent} / mo`}
+                </div>
+              </div>
+
+              {/* Deposit Slip & Bank */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Deposit Slip / Receipt #</label>
+                  <input
+                    type="text"
+                    value={depositSlipNumber}
+                    onChange={(e) => setDepositSlipNumber(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 font-mono font-bold focus:outline-none focus:border-blue-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Depository Trust Bank</label>
+                  <select
+                    value={bankAccount}
+                    onChange={(e) => setBankAccount(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-blue-600 truncate"
+                  >
+                    <option value="Stanbic Bank - Escrow Liability #8892-01">Stanbic Bank (Escrow)</option>
+                    <option value="Central Vault Cash Float - Nyakuron">Central Vault Cash Float</option>
+                    <option value="Ecobank Commercial Escrow #4410-09">Ecobank Escrow</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Notes & Lease Reference</label>
+                <textarea
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Security deposit terms, condition of return, receipt notes..."
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-blue-600"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Leased Space</label>
-                  <select
-                    value={newUnitNumber}
-                    onChange={(e) => setNewUnitNumber(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
-                  >
-                    {units.map(u => (
-                      <option key={u.id} value={u.unitNumber}>{u.unitNumber} ({u.floor})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Escrow Bank Trust Account</label>
-                  <select
-                    value={newBankAccount}
-                    onChange={(e) => setNewBankAccount(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
-                  >
-                    <option value="Stanbic Bank - Escrow Liability #8892-01">Stanbic Bank #8892-01</option>
-                    <option value="Ecobank - Commercial Trust #4410-02">Ecobank Trust #4410-02</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Amount (USD)</label>
-                  <input
-                    type="number"
-                    placeholder="e.g. 1850"
-                    value={newAmountUSD}
-                    onChange={(e) => {
-                      setNewAmountUSD(e.target.value);
-                      const ssp = (parseFloat(e.target.value) || 0) * 1300;
-                      setNewAmountSSP(e.target.value ? ssp.toString() : '');
-                    }}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Amount (SSP equivalent)</label>
-                  <input
-                    type="number"
-                    placeholder="e.g. 2405000"
-                    value={newAmountSSP}
-                    onChange={(e) => setNewAmountSSP(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600" />
-                <span>
-                  Escrow deposits are held in a legally segregated liability trust and cannot be co-mingled with mall operating revenue.
-                </span>
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsCollectModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2 font-semibold text-slate-600 hover:text-slate-900"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
                 >
-                  Lock Deposit into Escrow
+                  <Plus className="w-4 h-4" />
+                  <span>Record & Hold Escrow Deposit</span>
                 </button>
               </div>
+
             </form>
           </div>
         </div>
       )}
 
-      {/* Release/Refund Modal */}
+      {/* Refund / Release Confirmation Modal */}
       {isRefundModalOpen && selectedDepositForRefund && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
-            <h3 className="text-base font-bold text-slate-900">Release Escrow Security Deposit</h3>
-            <p className="text-xs text-slate-500 mt-1">
-              Confirm release of funds for <span className="font-bold text-slate-800">{selectedDepositForRefund.tenantName}</span> ({selectedDepositForRefund.unitNumber}).
-            </p>
-
-            <div className="my-4 p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Deposit Amount (USD):</span>
-                <span className="font-bold text-slate-900">${selectedDepositForRefund.amountUSD.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Deposit Amount (SSP):</span>
-                <span className="font-bold text-slate-900">{selectedDepositForRefund.amountSSP.toLocaleString()} SSP</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Held Since:</span>
-                <span className="font-semibold text-slate-700">{selectedDepositForRefund.heldSince}</span>
-              </div>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-6 h-6" />
             </div>
 
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+            <div className="text-center">
+              <h3 className="text-base font-bold text-slate-900">
+                Release & Refund Escrow Deposit?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Release security deposit of <strong>${selectedDepositForRefund.amountUSD.toLocaleString()} USD</strong> for <strong>{selectedDepositForRefund.tenantName}</strong> ({selectedDepositForRefund.unitNumber}).
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setIsRefundModalOpen(false)}
-                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmRefund}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs"
+                className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs"
               >
-                Confirm Release & Issue Voucher
+                Confirm Release & Settle
               </button>
             </div>
           </div>

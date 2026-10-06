@@ -1,6 +1,6 @@
 export function numberToWords(num: number, currency: 'USD' | 'SSP' = 'USD'): string {
   if (isNaN(num) || num <= 0) {
-    return currency === 'USD' ? 'Zero US Dollars Only' : 'Zero South Sudanese Pounds Only';
+    return 'Zero US Dollars Only';
   }
 
   const ones = [
@@ -34,11 +34,9 @@ export function numberToWords(num: number, currency: 'USD' | 'SSP' = 'USD'): str
 
   if (wholeNumber === 0) {
     if (cents > 0) {
-      return currency === 'USD' 
-        ? `${cents}/100 Cents Only` 
-        : `${cents}/100 Piasters Only`;
+      return `${cents}/100 Cents US Dollars Only`;
     }
-    return currency === 'USD' ? 'Zero US Dollars Only' : 'Zero South Sudanese Pounds Only';
+    return 'Zero US Dollars Only';
   }
 
   let words = '';
@@ -61,10 +59,7 @@ export function numberToWords(num: number, currency: 'USD' | 'SSP' = 'USD'): str
   }
 
   words = words.trim();
-
-  const currencyUnit = currency === 'USD' 
-    ? (wholeNumber === 1 ? 'US Dollar' : 'US Dollars') 
-    : 'South Sudanese Pounds';
+  const currencyUnit = wholeNumber === 1 ? 'US Dollar' : 'US Dollars';
 
   if (cents > 0) {
     return `${words} ${currencyUnit} and ${cents}/100 Only`;

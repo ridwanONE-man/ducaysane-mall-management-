@@ -17,13 +17,17 @@ import {
   ChevronRight,
   Receipt,
   Edit3,
+  Edit2,
   DoorOpen,
   DollarSign,
   Loader2,
   RefreshCw,
   Database,
   Check,
-  AlertCircle
+  AlertCircle,
+  UserX,
+  UserPlus,
+  Plus
 } from 'lucide-react';
 import { initialTenants } from '../data/commercialData';
 import { TenantInfo, PropertyUnit, PaymentRecord, DepositRecord, BillingStatus } from '../types';
@@ -37,6 +41,9 @@ interface TenantsViewProps {
   onSelectReceiptForPrint?: (payment: PaymentRecord) => void;
   onModifyTenantPricing?: (unitId: string, payload: ModifyTenantPricingPayload) => Promise<boolean>;
   onVacateUnit?: (unitId: string, payload?: VacateUnitPayload) => Promise<boolean>;
+  onSaveUnit?: (unit: PropertyUnit) => void;
+  onSaveDeposit?: (deposit: DepositRecord) => void;
+  onOpenAssignUnit?: (unit: PropertyUnit) => void;
 }
 
 export const TenantsView: React.FC<TenantsViewProps> = ({ 
@@ -46,10 +53,13 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
   onRecordPaymentForTenant,
   onSelectReceiptForPrint,
   onModifyTenantPricing,
-  onVacateUnit
+  onVacateUnit,
+  onSaveUnit,
+  onSaveDeposit,
+  onOpenAssignUnit
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeCategoryTab, setActiveCategoryTab] = useState<'All' | 'Shops' | 'Spaces' | 'Overdue' | 'Expiring Soon'>('All');
+  const [activeCategoryTab, setActiveCategoryTab] = useState<'All' | 'Shops' | 'Spaces' | 'Overdue' | 'Expiring Soon' | 'Available Units'>('All');
   const [selectedTenant, setSelectedTenant] = useState<{ tenant: TenantInfo; unit?: PropertyUnit } | null>(null);
 
   // Modify Tenant & Price Modal State
@@ -79,26 +89,45 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
   const [isVacatingSaving, setIsVacatingSaving] = useState(false);
   const [vacateError, setVacateError] = useState<string | null>(null);
 
+  // Add / Modify Deposit Modal State
+  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+  const [depositUnit, setDepositUnit] = useState<PropertyUnit | null>(null);
+  const [depositMonths, setDepositMonths] = useState<number>(2);
+  const [customDepositAmount, setCustomDepositAmount] = useState<string>('');
+  const [isCustomDeposit, setIsCustomDeposit] = useState(false);
+  const [depositBankAccount, setDepositBankAccount] = useState('Stanbic Bank - Escrow Liability #8892-01');
+
   // Derive active tenant list combined with live unit states
   const derivedTenants: { tenant: TenantInfo; unit: PropertyUnit }[] = units
     .filter(u => u.occupancyStatus !== 'Available' && u.currentTenant && u.currentTenant.name.trim().length > 0)
-    .map(u => ({
-      unit: u,
-      tenant: {
-        ...u.currentTenant!,
-        unitNumber: u.unitNumber,
-        balanceUSD: u.arrearsUSD || 0,
-        balanceSSP: u.arrearsSSP || 0,
-        balanceStatus: ((u.arrearsUSD || 0) > 0 || (u.arrearsSSP || 0) > 0) ? ('Overdue' as const) : ('Current' as const),
-        leaseStart: u.leaseStart || u.currentTenant?.leaseStart || '2026-09-01',
-        leaseEnd: u.leaseEnd || u.currentTenant?.leaseEnd || '2026-10-01',
-        daysRemaining: typeof u.daysRemaining === 'number' 
-          ? u.daysRemaining 
-          : typeof u.currentTenant?.daysRemaining === 'number' 
-          ? u.currentTenant.daysRemaining 
-          : 7
-      }
-    }));
+    .map(u => {
+      const matchingDeposit = deposits.find(d => d.unitNumber === u.unitNumber && d.status === 'Held in Escrow');
+      const depositAmount = matchingDeposit?.amountUSD || u.escrowDepositUSD || 0;
+      const depositMos = matchingDeposit?.depositMonths || u.depositMonths || (depositAmount > 0 && u.monthlyRateUSD > 0 ? Math.max(1, Math.round(depositAmount / u.monthlyRateUSD)) : 0);
+
+      return {
+        unit: u,
+        tenant: {
+          ...u.currentTenant!,
+          unitNumber: u.unitNumber,
+          balanceUSD: u.arrearsUSD || 0,
+          balanceSSP: u.arrearsSSP || 0,
+          depositUSD: depositAmount,
+          depositMonths: depositMos,
+          balanceStatus: ((u.arrearsUSD || 0) > 0 || (u.arrearsSSP || 0) > 0) ? ('Overdue' as const) : ('Current' as const),
+          leaseStart: u.leaseStart || u.currentTenant?.leaseStart || '2026-09-01',
+          leaseEnd: u.leaseEnd || u.currentTenant?.leaseEnd || '2026-10-01',
+          daysRemaining: typeof u.daysRemaining === 'number' 
+            ? u.daysRemaining 
+            : typeof u.currentTenant?.daysRemaining === 'number' 
+            ? u.currentTenant.daysRemaining 
+            : 30
+        }
+      };
+    });
+
+  // Available vacant units
+  const availableUnits = units.filter(u => u.occupancyStatus === 'Available' || !u.currentTenant);
 
   // Fallback to initialTenants only if units have not loaded at all
   const listItems: { tenant: TenantInfo; unit?: PropertyUnit }[] = units.length > 0
@@ -117,18 +146,19 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
     (item.unit?.type === 'Space' || item.unit?.categoryType === 'Space' || (item.tenant.unitNumber && item.tenant.unitNumber.startsWith('BW')))
   ).length;
   const overdueCount = listItems.filter(item => 
-    item.tenant.balanceUSD > 0 || item.tenant.balanceSSP > 0 || item.tenant.balanceStatus === 'Overdue'
+    item.tenant.balanceUSD > 0 || item.tenant.balanceStatus === 'Overdue'
   ).length;
   const expiringSoonCount = listItems.filter(item => 
-    typeof item.tenant.daysRemaining === 'number' && item.tenant.daysRemaining <= 7
+    typeof item.tenant.daysRemaining === 'number' && item.tenant.daysRemaining <= 15
   ).length;
+  const availableCount = availableUnits.length;
 
   // Filter application
   const filtered = listItems.filter(({ tenant, unit }) => {
     const isShop = unit?.type === 'Shop' || unit?.categoryType === 'Shop' || (tenant.unitNumber && tenant.unitNumber.startsWith('G'));
     const isSpace = unit?.type === 'Space' || unit?.categoryType === 'Space' || (tenant.unitNumber && tenant.unitNumber.startsWith('BW'));
-    const isOverdue = tenant.balanceUSD > 0 || tenant.balanceSSP > 0 || tenant.balanceStatus === 'Overdue';
-    const isExpiring = typeof tenant.daysRemaining === 'number' && tenant.daysRemaining <= 7;
+    const isOverdue = tenant.balanceUSD > 0 || tenant.balanceStatus === 'Overdue';
+    const isExpiring = typeof tenant.daysRemaining === 'number' && tenant.daysRemaining <= 15;
 
     // Category Tab
     if (activeCategoryTab === 'Shops' && !isShop) return false;
@@ -145,6 +175,71 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
 
     return matchName || matchTrade || matchUnit || matchPhone;
   });
+
+  // Open Edit / Replace Modal (delegates to comprehensive Supabase modify)
+  const handleOpenEdit = (unit: PropertyUnit, tenant: TenantInfo) => {
+    openModifyModal(unit, tenant);
+  };
+
+  // Open Vacate / Clear Tenant Confirmation (delegates to comprehensive Supabase vacate)
+  const handleOpenVacate = (unit: PropertyUnit) => {
+    if (unit.currentTenant) {
+      openVacateModal(unit, unit.currentTenant);
+    }
+  };
+
+  // Open Deposit Modal
+  const handleOpenDepositModal = (unit: PropertyUnit) => {
+    setDepositUnit(unit);
+    setDepositMonths(2);
+    setIsCustomDeposit(false);
+    setCustomDepositAmount(String((unit.monthlyRateUSD || 500) * 2));
+    setIsDepositModalOpen(true);
+    setSelectedTenant(null);
+  };
+
+  // Save Deposit
+  const handleSaveDepositRecord = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!depositUnit) return;
+
+    const rate = depositUnit.monthlyRateUSD || 500;
+    const finalAmt = isCustomDeposit 
+      ? (parseFloat(customDepositAmount) || 0) 
+      : rate * depositMonths;
+    const effectiveMonths = isCustomDeposit 
+      ? Math.max(1, Math.round(finalAmt / (rate || 1))) 
+      : depositMonths;
+
+    const newDep: DepositRecord = {
+      id: `dep-${Date.now()}`,
+      depositSlip: `DEP-2026-${Math.floor(100 + Math.random() * 900)}`,
+      tenantName: depositUnit.currentTenant?.name || 'Commercial Tenant',
+      tenantId: depositUnit.currentTenant?.id,
+      unitNumber: depositUnit.unitNumber,
+      amountUSD: finalAmt,
+      amountSSP: 0,
+      depositMonths: effectiveMonths,
+      monthlyRentUSD: rate,
+      heldSince: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+      status: 'Held in Escrow',
+      bankAccount: depositBankAccount,
+      notes: `Security deposit of ${effectiveMonths} month(s) rent held in segregated escrow.`
+    };
+
+    // Update unit with new deposit amount
+    const updatedUnit: PropertyUnit = {
+      ...depositUnit,
+      escrowDepositUSD: finalAmt,
+      depositMonths: effectiveMonths
+    };
+
+    if (onSaveUnit) onSaveUnit(updatedUnit);
+    if (onSaveDeposit) onSaveDeposit(newDep);
+
+    setIsDepositModalOpen(false);
+    setDepositUnit(null);
+  };
 
   // Payments for selected tenant
   const selectedTenantPayments = selectedTenant
@@ -304,39 +399,50 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
           <div className="flex items-center gap-1.5 text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">
             <span>Ducaysane Mall</span>
             <span>›</span>
-            <span className="text-orange-600">Tenants</span>
+            <span className="text-blue-600">Tenants</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             Commercial Tenant Directory
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Active shop and space leases, contact profiles, lease terms, and financial standing.
+            Active shop and space leases, contact profiles, lease terms, and security deposit standings.
           </p>
         </div>
 
-        {/* Search */}
+        {/* Actions & Search */}
         <div className="flex items-center gap-3">
-          <div className="relative w-full sm:w-72">
+          <div className="relative w-full sm:w-64">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search tenant, trade, unit #..."
-              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-orange-500 shadow-xs"
+              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
             />
           </div>
+
+          {availableUnits.length > 0 && onOpenAssignUnit && (
+            <button
+              onClick={() => onOpenAssignUnit(availableUnits[0])}
+              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-blue-500/25 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>+ Lease Available Unit</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Category Tabs Strip */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/80 pb-3">
-        {(['All', 'Shops', 'Spaces', 'Overdue', 'Expiring Soon'] as const).map(tab => {
+        {(['All', 'Shops', 'Spaces', 'Overdue', 'Expiring Soon', 'Available Units'] as const).map(tab => {
           const count = 
             tab === 'All' ? totalCount :
             tab === 'Shops' ? shopsCount :
             tab === 'Spaces' ? spacesCount :
-            tab === 'Overdue' ? overdueCount : expiringSoonCount;
+            tab === 'Overdue' ? overdueCount :
+            tab === 'Expiring Soon' ? expiringSoonCount : availableCount;
 
           return (
             <button
@@ -344,7 +450,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
               onClick={() => setActiveCategoryTab(tab)}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeCategoryTab === tab
-                  ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs shadow-orange-500/20'
+                  ? 'bg-slate-900 text-white shadow-xs'
                   : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
@@ -356,6 +462,8 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                   ? 'bg-rose-100 text-rose-700' 
                   : tab === 'Expiring Soon' && expiringSoonCount > 0
                   ? 'bg-amber-100 text-amber-700'
+                  : tab === 'Available Units'
+                  ? 'bg-emerald-100 text-emerald-800'
                   : 'bg-slate-100 text-slate-600'
               }`}>
                 {count}
@@ -365,8 +473,72 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
         })}
       </div>
 
-      {/* Tenants Grid */}
-      {filtered.length === 0 ? (
+      {/* View: Available Vacant Units Tab */}
+      {activeCategoryTab === 'Available Units' ? (
+        <div className="space-y-4">
+          <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-2xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <div>
+                <h3 className="font-bold text-slate-900 text-xs sm:text-sm">
+                  {availableUnits.length} Vacant Units Ready for Immediate Lease
+                </h3>
+                <p className="text-[11px] text-slate-600">
+                  Click on any available shop or space to fill in a new tenant and onboard them instantly.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {availableUnits.map(unit => (
+              <div 
+                key={unit.id}
+                onClick={() => onOpenAssignUnit && onOpenAssignUnit(unit)}
+                className="bg-white rounded-3xl p-5 border border-slate-200 shadow-2xs hover:shadow-md hover:border-blue-400 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 font-extrabold text-xs flex items-center justify-center">
+                        {unit.unitNumber}
+                      </span>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-blue-600 transition-colors">
+                          {unit.categoryType || unit.type}
+                        </h4>
+                        <span className="text-[11px] text-slate-400 font-medium">{unit.floor}</span>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                      Available
+                    </span>
+                  </div>
+
+                  <div className="py-2 space-y-1.5 border-y border-slate-100 text-xs">
+                    <div className="flex justify-between text-slate-600">
+                      <span>Area Size:</span>
+                      <strong className="text-slate-800">{unit.sizeSqM} m² ({unit.sizeSqFt} sq.ft)</strong>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>Standard Rent:</span>
+                      <strong className="text-slate-900 font-bold">${unit.monthlyRateUSD.toLocaleString()} USD/mo</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-blue-600 group-hover:underline flex items-center gap-1">
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Assign / Lease to Tenant</span>
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="bg-white rounded-3xl p-12 border border-slate-200 shadow-xs text-center max-w-md mx-auto">
           <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-3">
             <Users className="w-6 h-6 text-slate-400 stroke-[1.5]" />
@@ -375,11 +547,14 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
           <p className="text-xs text-slate-400 mt-1">Try changing your search query or tab filter.</p>
         </div>
       ) : (
+        /* Tenants Grid */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filtered.map(({ tenant, unit }) => {
             const isShop = unit?.type === 'Shop' || unit?.categoryType === 'Shop' || (tenant.unitNumber && tenant.unitNumber.startsWith('G'));
-            const isOverdue = tenant.balanceUSD > 0 || tenant.balanceSSP > 0 || tenant.balanceStatus === 'Overdue';
-            const daysRem = tenant.daysRemaining ?? 7;
+            const isOverdue = tenant.balanceUSD > 0 || tenant.balanceStatus === 'Overdue';
+            const daysRem = tenant.daysRemaining ?? 30;
+            const depositAmt = tenant.depositUSD || unit?.escrowDepositUSD || 0;
+            const depositMos = tenant.depositMonths || (depositAmt > 0 && unit?.monthlyRateUSD ? Math.max(1, Math.round(depositAmt / unit.monthlyRateUSD)) : 0);
 
             return (
               <div 
@@ -390,10 +565,10 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                   {/* Top Bar: Avatar, Name, Unit Badge */}
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-11 h-11 rounded-2xl font-black text-sm flex items-center justify-center shadow-sm shrink-0 ${
+                      <div className={`w-11 h-11 rounded-2xl font-black text-sm flex items-center justify-center shadow-xs shrink-0 ${
                         isShop 
-                          ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-orange-500/20' 
-                          : 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-blue-500/20'
+                          ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-blue-500/20' 
+                          : 'bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-emerald-500/20'
                       }`}>
                         {tenant.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                       </div>
@@ -406,8 +581,8 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                     </div>
                     <span className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold shrink-0 ${
                       isShop 
-                        ? 'bg-orange-50 text-orange-700 border border-orange-200/80' 
-                        : 'bg-blue-50 text-blue-700 border border-blue-200/80'
+                        ? 'bg-blue-50 text-blue-700 border border-blue-200/80' 
+                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
                     }`}>
                       {tenant.unitNumber}
                     </span>
@@ -418,7 +593,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                     <div>
                       <span className="text-[10px] text-slate-400 font-bold uppercase block">Lease Status</span>
                       <span className={`font-bold inline-block px-1.5 py-0.2 rounded-md text-[11px] ${
-                        daysRem > 7 
+                        daysRem > 15 
                           ? 'bg-emerald-100 text-emerald-800' 
                           : daysRem > 0 
                           ? 'bg-amber-100 text-amber-800' 
@@ -429,11 +604,9 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                     </div>
 
                     <div className="text-right">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Balance Standing</span>
-                      <span className={`font-bold text-xs ${isOverdue ? 'text-rose-600' : 'text-emerald-600'}`}>
-                        {isOverdue 
-                          ? (tenant.balanceUSD > 0 ? `$${tenant.balanceUSD} Overdue` : `${tenant.balanceSSP?.toLocaleString()} SSP Overdue`)
-                          : 'Good Standing'}
+                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Deposit Standing</span>
+                      <span className={`font-bold text-xs ${depositAmt > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                        {depositAmt > 0 ? `$${depositAmt.toLocaleString()} (${depositMos} mo)` : 'No Deposit'}
                       </span>
                     </div>
                   </div>
@@ -442,11 +615,11 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                   <div className="space-y-2 py-2 border-y border-slate-100 text-xs">
                     <div className="flex items-center justify-between">
                       <span className="text-slate-500 flex items-center gap-1.5">
-                        <Store className="w-3.5 h-3.5 text-orange-500" />
+                        <Store className="w-3.5 h-3.5 text-blue-500" />
                         Space / Category:
                       </span>
                       <span className="font-semibold text-slate-800">
-                        {isShop ? 'Retail Shop' : 'Open Commercial Space'} ({unit?.floor || 'Ground Floor'})
+                        {isShop ? 'Retail Shop' : 'Commercial Space'} ({unit?.floor || 'Ground Floor'})
                       </span>
                     </div>
 
@@ -464,11 +637,19 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                         Monthly Base Rent:
                       </span>
                       <span className="font-extrabold text-slate-900">
-                        {unit?.monthlyRateUSD 
-                          ? `$${unit.monthlyRateUSD.toLocaleString()} USD` 
-                          : `${(unit?.monthlyRateSSP || 0).toLocaleString()} SSP`}
+                        ${(unit?.monthlyRateUSD || 0).toLocaleString()} USD
                       </span>
                     </div>
+
+                    {isOverdue && (
+                      <div className="flex items-center justify-between text-rose-600 font-bold">
+                        <span className="flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          Outstanding Arrears:
+                        </span>
+                        <span>${tenant.balanceUSD.toLocaleString()} USD</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -524,7 +705,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
             {/* Drawer Header */}
             <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/70">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white font-extrabold text-base flex items-center justify-center shadow-md shadow-orange-500/20">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-extrabold text-base flex items-center justify-center shadow-md shadow-blue-500/20">
                   {selectedTenant.tenant.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                 </div>
                 <div>
@@ -556,7 +737,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
             <div className="p-6 space-y-5 text-xs text-slate-700">
               
               {/* Leased Space & Lease Timing Strip */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-orange-50/40 p-4 rounded-2xl border border-orange-200/60">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-blue-50/40 p-4 rounded-2xl border border-blue-200/60">
                 <div>
                   <span className="text-[10px] text-slate-500 uppercase font-bold block">Assigned Unit</span>
                   <span className="font-extrabold text-slate-900 text-sm">{selectedTenant.tenant.unitNumber}</span>
@@ -573,13 +754,13 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                 <div>
                   <span className="text-[10px] text-slate-500 uppercase font-bold block">Expiry Alert</span>
                   <span className={`font-bold inline-block px-2 py-0.5 rounded-full text-[11px] ${
-                    (selectedTenant.tenant.daysRemaining ?? 7) > 7 
+                    (selectedTenant.tenant.daysRemaining ?? 30) > 15 
                       ? 'bg-emerald-100 text-emerald-800' 
-                      : (selectedTenant.tenant.daysRemaining ?? 7) > 0 
+                      : (selectedTenant.tenant.daysRemaining ?? 30) > 0 
                       ? 'bg-amber-100 text-amber-800' 
                       : 'bg-rose-100 text-rose-800'
                   }`}>
-                    {(selectedTenant.tenant.daysRemaining ?? 7) > 0 
+                    {(selectedTenant.tenant.daysRemaining ?? 30) > 0 
                       ? `${selectedTenant.tenant.daysRemaining} days remaining` 
                       : `Expired`}
                   </span>
@@ -589,41 +770,46 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
               {/* Financial Ledger Overview */}
               <div className="border border-slate-200 rounded-2xl p-4 space-y-3 bg-white">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <span className="font-bold text-slate-900 text-xs uppercase tracking-wide">Financial Statement</span>
-                  <span className={`px-2 py-0.5 rounded-md font-bold text-[11px] ${
-                    selectedTenant.tenant.balanceStatus === 'Current' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
-                  }`}>
-                    {selectedTenant.tenant.balanceStatus === 'Current' ? 'All Dues Paid' : 'Arrears Balance Due'}
-                  </span>
+                  <span className="font-bold text-slate-900 text-xs uppercase tracking-wide">Financial Statement (USD)</span>
+                  <div className="flex items-center gap-2">
+                    {selectedTenant.unit && (
+                      <button
+                        onClick={() => handleOpenDepositModal(selectedTenant.unit!)}
+                        className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-[10px] font-bold cursor-pointer"
+                      >
+                        + Add / Modify Deposit
+                      </button>
+                    )}
+                    <span className={`px-2 py-0.5 rounded-md font-bold text-[11px] ${
+                      selectedTenant.tenant.balanceStatus === 'Current' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                    }`}>
+                      {selectedTenant.tenant.balanceStatus === 'Current' ? 'All Dues Paid' : 'Arrears Balance Due'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div className="p-3 bg-slate-50 rounded-xl">
                     <span className="text-[10px] uppercase font-bold text-slate-500 block">Monthly Base Rent</span>
                     <span className="font-black text-slate-900 text-sm">
-                      {selectedTenant.unit?.monthlyRateUSD 
-                        ? `$${selectedTenant.unit.monthlyRateUSD.toLocaleString()}` 
-                        : `${(selectedTenant.unit?.monthlyRateSSP || 0).toLocaleString()} SSP`}
+                      ${(selectedTenant.unit?.monthlyRateUSD || 0).toLocaleString()} USD
                     </span>
                   </div>
 
                   <div className="p-3 bg-slate-50 rounded-xl">
-                    <span className="text-[10px] uppercase font-bold text-slate-500 block">Security Deposit</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">Security Deposit Held</span>
                     <span className="font-black text-slate-900 text-sm">
-                      {selectedTenant.unit?.escrowDepositUSD 
-                        ? `$${selectedTenant.unit.escrowDepositUSD.toLocaleString()}` 
-                        : `${(selectedTenant.unit?.escrowDepositSSP || 0).toLocaleString()} SSP`}
+                      ${(selectedTenant.tenant.depositUSD || selectedTenant.unit?.escrowDepositUSD || 0).toLocaleString()} USD
+                    </span>
+                    <span className="text-[9px] text-slate-400 block mt-0.5">
+                      {selectedTenant.tenant.depositMonths ? `${selectedTenant.tenant.depositMonths} Month(s) Escrow` : 'Escrow Deposit'}
                     </span>
                   </div>
 
-                  <div className={`p-3 rounded-xl ${selectedTenant.tenant.balanceUSD > 0 || selectedTenant.tenant.balanceSSP > 0 ? 'bg-rose-50' : 'bg-emerald-50'}`}>
+                  <div className={`p-3 rounded-xl ${selectedTenant.tenant.balanceUSD > 0 ? 'bg-rose-50' : 'bg-emerald-50'}`}>
                     <span className="text-[10px] uppercase font-bold text-slate-500 block">Outstanding Arrears</span>
-                    <span className={`font-black text-sm ${selectedTenant.tenant.balanceUSD > 0 || selectedTenant.tenant.balanceSSP > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                      {selectedTenant.tenant.balanceUSD > 0 
-                        ? `$${selectedTenant.tenant.balanceUSD.toLocaleString()}` 
-                        : selectedTenant.tenant.balanceSSP > 0 
-                        ? `${selectedTenant.tenant.balanceSSP.toLocaleString()} SSP`
-                        : '$0.00'}
+                    <span className={`font-black text-sm ${selectedTenant.tenant.balanceUSD > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                      ${(selectedTenant.tenant.balanceUSD || 0).toLocaleString()} USD
                     </span>
                   </div>
                 </div>
@@ -633,7 +819,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
               <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
                 <div className="p-3 bg-slate-50 border-b border-slate-200 font-bold text-slate-800 flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
-                    <Receipt className="w-4 h-4 text-orange-600" />
+                    <Receipt className="w-4 h-4 text-blue-600" />
                     <span>Recent Rent Payments & Vouchers</span>
                   </div>
                   <span className="text-[10px] text-slate-500">{selectedTenantPayments.length} records</span>
@@ -649,7 +835,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                       <div key={p.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-rose-600">{p.receiptNumber}</span>
+                            <span className="font-mono font-bold text-blue-600">{p.receiptNumber}</span>
                             <span className="text-slate-400">•</span>
                             <span className="font-medium text-slate-800">{p.accountingPeriod}</span>
                           </div>
@@ -660,7 +846,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
 
                         <div className="flex items-center gap-3">
                           <span className="font-bold text-emerald-600 text-xs">
-                            {p.currency === 'USD' ? `$${p.amount.toFixed(2)}` : `${p.amount.toLocaleString()} SSP`}
+                            ${p.amount.toFixed(2)} USD
                           </span>
 
                           {onSelectReceiptForPrint && (
@@ -669,7 +855,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                                 onSelectReceiptForPrint(p);
                                 setSelectedTenant(null);
                               }}
-                              className="p-1 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors cursor-pointer"
+                              className="p-1 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                               title="Print Receipt Voucher"
                             >
                               <Printer className="w-4 h-4" />
@@ -1070,7 +1256,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
               </div>
 
               {/* Financial Reconcile Alert */}
-              {(vacatingTarget.tenant.balanceUSD > 0 || vacatingTarget.tenant.balanceSSP > 0) ? (
+              {(vacatingTarget.tenant.balanceUSD > 0 || (vacatingTarget.tenant.balanceSSP || 0) > 0) ? (
                 <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 space-y-1">
                   <div className="flex items-center gap-2 font-bold text-xs text-rose-900">
                     <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -1081,7 +1267,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                     <strong className="font-extrabold">
                       {vacatingTarget.tenant.balanceUSD > 0 
                         ? `$${vacatingTarget.tenant.balanceUSD.toLocaleString()} USD` 
-                        : `${vacatingTarget.tenant.balanceSSP.toLocaleString()} SSP`}
+                        : `${(vacatingTarget.tenant.balanceSSP || 0).toLocaleString()} SSP`}
                     </strong>. Ensure collection or settlement before releasing keys or escrow deposit.
                   </p>
                 </div>
@@ -1193,6 +1379,110 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Add / Modify Deposit Modal */}
+      {isDepositModalOpen && depositUnit && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden">
+            <div className="p-6 pb-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Record / Add Security Deposit
+                  </h3>
+                  <p className="text-[11px] text-slate-500">Unit {depositUnit.unitNumber} • {depositUnit.currentTenant?.name}</p>
+                </div>
+              </div>
+              <button onClick={() => setIsDepositModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-700">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveDepositRecord} className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Monthly Base Rent:
+                </label>
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 font-extrabold text-slate-900 text-sm">
+                  ${(depositUnit.monthlyRateUSD || 500).toLocaleString()} USD/mo
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Deposit Months / Option</label>
+                <select
+                  value={isCustomDeposit ? 'custom' : depositMonths}
+                  onChange={(e) => {
+                    if (e.target.value === 'custom') {
+                      setIsCustomDeposit(true);
+                    } else {
+                      setIsCustomDeposit(false);
+                      setDepositMonths(Number(e.target.value));
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                >
+                  <option value={1}>1 Month Deposit (${(depositUnit.monthlyRateUSD || 500) * 1})</option>
+                  <option value={2}>2 Months Deposit (${(depositUnit.monthlyRateUSD || 500) * 2}) • Standard</option>
+                  <option value={3}>3 Months Deposit (${(depositUnit.monthlyRateUSD || 500) * 3})</option>
+                  <option value="custom">Custom Deposit Amount ($ USD)</option>
+                </select>
+              </div>
+
+              {isCustomDeposit && (
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Custom Amount (USD $)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={customDepositAmount}
+                    onChange={(e) => setCustomDepositAmount(e.target.value)}
+                    placeholder="Enter deposit in USD"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Depository Trust Account</label>
+                <select
+                  value={depositBankAccount}
+                  onChange={(e) => setDepositBankAccount(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-blue-600"
+                >
+                  <option value="Stanbic Bank - Escrow Liability #8892-01">Stanbic Bank - Escrow Liability #8892-01</option>
+                  <option value="Central Vault Cash Float - Nyakuron">Central Vault Cash Float - Nyakuron</option>
+                  <option value="Ecobank Commercial Escrow #4410-09">Ecobank Commercial Escrow #4410-09</option>
+                </select>
+              </div>
+
+              <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 flex items-center justify-between">
+                <span className="font-bold text-slate-700">Total Deposit to Hold:</span>
+                <span className="font-black text-emerald-700 text-sm">
+                  ${(isCustomDeposit ? (parseFloat(customDepositAmount) || 0) : (depositUnit.monthlyRateUSD || 500) * depositMonths).toLocaleString()} USD
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsDepositModalOpen(false)}
+                  className="px-4 py-2 font-semibold text-slate-600 hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs cursor-pointer"
+                >
+                  Confirm & Hold Deposit
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

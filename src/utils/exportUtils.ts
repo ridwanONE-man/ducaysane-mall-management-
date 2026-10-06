@@ -1,15 +1,12 @@
 import { PropertyUnit, PaymentRecord } from '../types';
 
-export function formatCurrency(amount: number, currency: 'USD' | 'SSP'): string {
-  if (currency === 'USD') {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(amount);
-  }
-  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(amount)} SSP`;
+export function formatCurrency(amount: number, _currency?: string): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(amount);
 }
 
 export function exportUnitsToCSV(units: PropertyUnit[]) {
@@ -24,7 +21,6 @@ export function exportUnitsToCSV(units: PropertyUnit[]) {
     'Tenant Name',
     'Tenant ID',
     'Monthly Rate (USD)',
-    'Monthly Rate (SSP)',
     'Deposit (USD)',
     'Lease Start',
     'Lease End',
@@ -44,7 +40,6 @@ export function exportUnitsToCSV(units: PropertyUnit[]) {
     `"${u.currentTenant?.name || 'Vacant'}"`,
     `"${u.currentTenant?.code || 'N/A'}"`,
     u.monthlyRateUSD,
-    u.monthlyRateSSP,
     u.escrowDepositUSD,
     `"${u.leaseStart || 'N/A'}"`,
     `"${u.leaseEnd || 'N/A'}"`,

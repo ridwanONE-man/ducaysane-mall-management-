@@ -147,7 +147,7 @@ export const FloorMapView: React.FC<FloorMapViewProps> = ({
                   <span className="text-slate-500 text-xs font-normal">Meter: {selectedUnit.meterNumber}</span>
                 </div>
                 <p className="text-slate-600 mt-0.5">
-                  Tenant: <strong>{selectedUnit.currentTenant ? selectedUnit.currentTenant.name : 'None (Vacant)'}</strong> • Rate: <strong>${selectedUnit.monthlyRateUSD.toLocaleString()} USD / {selectedUnit.monthlyRateSSP.toLocaleString()} SSP</strong>
+                  Tenant: <strong>{selectedUnit.currentTenant ? selectedUnit.currentTenant.name : 'None (Vacant)'}</strong> • Rate: <strong>${selectedUnit.monthlyRateUSD.toLocaleString()} USD / {(selectedUnit.monthlyRateSSP || (selectedUnit.monthlyRateUSD * 1300)).toLocaleString()} SSP</strong>
                 </p>
               </div>
 

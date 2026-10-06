@@ -48,7 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'tenants', label: 'Tenants', icon: Users },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'deposits', label: 'Deposits', icon: Lock },
-    { id: 'cashflow', label: 'Cash Flow', icon: Landmark, badge: 'USD/SSP', badgeColor: 'bg-orange-50 text-orange-700' },
+    { id: 'cashflow', label: 'Cash Flow', icon: Landmark },
     { id: 'receipts', label: 'Receipts', icon: Printer },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },

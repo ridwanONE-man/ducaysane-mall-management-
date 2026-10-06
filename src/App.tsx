@@ -449,7 +449,7 @@ export default function App() {
         title: `Tenant Modified: ${payload.tenantName} (${targetUnit?.unitNumber || ''})`,
         description: `Lease terms updated: Rent set to $${payload.monthlyRateUSD} / ${payload.monthlyRateSSP.toLocaleString()} SSP. Synced to Supabase database.`,
         timestamp: 'Just now',
-        type: 'general',
+        type: 'lease',
         read: false,
         priority: 'low'
       };
@@ -622,6 +622,7 @@ export default function App() {
                 setEditingUnit(null);
                 setIsAddUnitModalOpen(true);
               }}
+              onRecordPaymentForTenant={handleRecordPaymentForTenantUnit}
               onNavigate={setActiveTab}
             />
           )}
