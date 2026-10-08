@@ -15,7 +15,8 @@ import {
   X,
   UserPlus,
   Edit2,
-  Trash2
+  Trash2,
+  Search
 } from 'lucide-react';
 import { PropertyUnit, CurrencyMode, OccupancyStatus } from '../types';
 import { exportUnitsToCSV } from '../utils/exportUtils';
@@ -30,6 +31,8 @@ interface UnitsViewProps {
   onEditUnit?: (unit: PropertyUnit) => void;
   onDeleteUnit?: (unitId: string) => void;
   onAssignTenant?: (unit: PropertyUnit) => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 }
 
 export const UnitsView: React.FC<UnitsViewProps> = ({
@@ -41,8 +44,27 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
   onOpenFloorMap,
   onEditUnit,
   onDeleteUnit,
-  onAssignTenant
+  onAssignTenant,
+  searchQuery: externalSearchQuery,
+  onSearchChange: externalOnSearchChange
 }) => {
+  // Search query state (support controlled from App/Header and local state)
+  const [internalSearchQuery, setInternalSearchQuery] = useState('');
+  const search = externalSearchQuery !== undefined ? externalSearchQuery : internalSearchQuery;
+
+  const handleSearchChange = (value: string) => {
+    if (externalOnSearchChange) {
+      externalOnSearchChange(value);
+    }
+    setInternalSearchQuery(value);
+    if (value.trim().length > 0 && activeCategoryTab !== 'All') {
+      setActiveCategoryTab('All');
+    }
+  };
+
+  // Helper for normalized search without spaces, dashes, slashes
+  const cleanStr = (val?: string) => (val || '').toLowerCase().replace(/[\s\-_/]/g, '');
+
   // Category tabs: All, Shops (G), Spaces (BW), Available
   const [activeCategoryTab, setActiveCategoryTab] = useState<'All' | 'Shops' | 'Spaces' | 'Available'>('All');
 
@@ -76,6 +98,45 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
 
   // Filter application
   const filteredUnits = units.filter(unit => {
+    // Search query filter (matches unit number, badge, tenant name/trade/code/phone, meter, type, subType, floor, notes, footfall)
+    const q = search.trim().toLowerCase();
+    if (q) {
+      const cleanQ = cleanStr(q);
+      const matchUnitNumber = unit.unitNumber?.toLowerCase().includes(q) || cleanStr(unit.unitNumber).includes(cleanQ);
+      const matchBadge = unit.codeBadge?.toLowerCase().includes(q) || cleanStr(unit.codeBadge).includes(cleanQ);
+      const matchTenantName = unit.currentTenant?.name?.toLowerCase().includes(q);
+      const matchTenantTrade = unit.currentTenant?.trade?.toLowerCase().includes(q);
+      const matchTenantCode = unit.currentTenant?.code?.toLowerCase().includes(q) || cleanStr(unit.currentTenant?.code).includes(cleanQ);
+      const matchTenantPhone = unit.currentTenant?.phone?.toLowerCase().includes(q) || cleanStr(unit.currentTenant?.phone).includes(cleanQ);
+      const matchMeter = unit.meterNumber?.toLowerCase().includes(q) || cleanStr(unit.meterNumber).includes(cleanQ);
+      const matchType = unit.type?.toLowerCase().includes(q);
+      const matchSubType = unit.subType?.toLowerCase().includes(q);
+      const matchFloor = unit.floor?.toLowerCase().includes(q);
+      const matchStatus = unit.occupancyStatus?.toLowerCase().includes(q);
+      const matchBilling = unit.billingStatus?.toLowerCase().includes(q);
+      const matchBadgeFootfall = unit.footfallBadge?.toLowerCase().includes(q);
+      const matchNotes = unit.notes?.toLowerCase().includes(q);
+
+      const matchesSearch = Boolean(
+        matchUnitNumber ||
+        matchBadge ||
+        matchTenantName ||
+        matchTenantTrade ||
+        matchTenantCode ||
+        matchTenantPhone ||
+        matchMeter ||
+        matchType ||
+        matchSubType ||
+        matchFloor ||
+        matchStatus ||
+        matchBilling ||
+        matchBadgeFootfall ||
+        matchNotes
+      );
+
+      if (!matchesSearch) return false;
+    }
+
     const isShop = unit.type === 'Shop' || unit.categoryType === 'Shop' || unit.unitNumber.startsWith('G');
     const isSpace = unit.type === 'Space' || unit.categoryType === 'Space' || unit.unitNumber.startsWith('BW');
 
@@ -118,6 +179,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
   };
 
   const handleResetFilters = () => {
+    handleSearchChange('');
     setActiveCategoryTab('All');
     setFloorFilter('All');
     setTypeFilter('All');
@@ -223,15 +285,15 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
       {/* Filter Toolbar - Clean, Single Tier (Replaces large layered box) */}
       <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs space-y-3">
         
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           
           {/* Category Tabs */}
-          <div className="inline-flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
+          <div className="inline-flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-semibold overflow-x-auto max-w-full">
             {(['All', 'Shops', 'Spaces', 'Available'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveCategoryTab(tab)}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
                   activeCategoryTab === tab 
                     ? 'bg-white text-orange-600 shadow-xs font-bold' 
                     : 'text-slate-600 hover:text-slate-900'
@@ -242,12 +304,34 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
             ))}
           </div>
 
-          {/* Quick Select Filters */}
-          <div className="flex items-center gap-2 text-xs">
+          {/* Search Bar & Quick Select Filters */}
+          <div className="flex flex-wrap items-center gap-2 text-xs flex-1 lg:justify-end">
+            {/* Units/Properties Search Bar */}
+            <div className="relative w-full sm:w-64">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                placeholder="Search unit #, tenant, meter, type..."
+                className="w-full pl-9 pr-8 py-1.5 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => handleSearchChange('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5 rounded-full hover:bg-slate-200/50"
+                  title="Clear search"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
             <select
               value={floorFilter}
               onChange={(e) => setFloorFilter(e.target.value)}
-              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:outline-none focus:border-blue-600"
+              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:outline-none focus:border-blue-600 cursor-pointer"
             >
               <option value="All">All Floors</option>
               <option value="Ground Floor">Ground Floor</option>
@@ -259,7 +343,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
             <select
               value={occupancyFilter}
               onChange={(e) => setOccupancyFilter(e.target.value)}
-              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:outline-none focus:border-blue-600"
+              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:outline-none focus:border-blue-600 cursor-pointer"
             >
               <option value="All">All Statuses</option>
               <option value="Occupied">Occupied</option>
@@ -268,10 +352,10 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
               <option value="Maintenance">Maintenance</option>
             </select>
 
-            {(floorFilter !== 'All' || occupancyFilter !== 'All' || activeCategoryTab !== 'All') && (
+            {(floorFilter !== 'All' || occupancyFilter !== 'All' || activeCategoryTab !== 'All' || Boolean(search.trim()) || quickGroundFloor || quickExpiring30 || quickHighArrears || quickAnchor) && (
               <button
                 onClick={handleResetFilters}
-                className="px-2 py-1.5 text-xs text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                className="px-2 py-1.5 text-xs text-blue-600 hover:text-blue-800 font-semibold transition-colors cursor-pointer"
               >
                 Reset
               </button>
@@ -331,7 +415,11 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
           </div>
 
           <div className="text-xs text-slate-500 font-medium">
-            <span className="font-semibold text-slate-800">{filteredUnits.length}</span> units
+            {Boolean(search.trim()) || floorFilter !== 'All' || occupancyFilter !== 'All' || activeCategoryTab !== 'All' || quickGroundFloor || quickExpiring30 || quickHighArrears || quickAnchor ? (
+              <span>Showing <strong className="text-slate-800">{filteredUnits.length}</strong> of {units.length} units</span>
+            ) : (
+              <span><strong className="text-slate-800">{filteredUnits.length}</strong> units</span>
+            )}
           </div>
         </div>
 
@@ -364,21 +452,45 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
               {filteredUnits.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-12 text-center">
-                    <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-slate-500">
-                      <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
-                        <Store className="w-6 h-6 text-slate-400 stroke-[1.5]" />
+                    {units.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-slate-500">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
+                          <Store className="w-6 h-6 text-slate-400 stroke-[1.5]" />
+                        </div>
+                        <p className="font-bold text-slate-800 text-sm">No Commercial Units Registered</p>
+                        <p className="text-xs text-slate-400 mt-1 mb-4">Register your first commercial shop, kiosk, or space to start managing inventory.</p>
+                        <button
+                          type="button"
+                          onClick={onOpenAddUnit}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Register First Unit</span>
+                        </button>
                       </div>
-                      <p className="font-bold text-slate-800 text-sm">No Commercial Units Registered</p>
-                      <p className="text-xs text-slate-400 mt-1 mb-4">Register your first commercial shop, kiosk, or space to start managing inventory.</p>
-                      <button
-                        type="button"
-                        onClick={onOpenAddUnit}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Register First Unit</span>
-                      </button>
-                    </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-slate-500">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
+                          <Search className="w-6 h-6 text-slate-400 stroke-[1.5]" />
+                        </div>
+                        <p className="font-bold text-slate-800 text-sm">No Matching Units Found</p>
+                        <p className="text-xs text-slate-400 mt-1 mb-4">
+                          {search.trim() ? (
+                            <>No properties match <span className="font-semibold text-slate-700">"{search.trim()}"</span> with current filters.</>
+                          ) : (
+                            <>No properties match the currently selected filter criteria.</>
+                          )}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleResetFilters}
+                          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Clear Search & Filters</span>
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ) : (

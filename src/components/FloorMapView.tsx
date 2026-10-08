@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Store, CheckCircle, Clock, AlertTriangle, Wrench, CreditCard } from 'lucide-react';
+import { X, Store, CheckCircle, Clock, AlertTriangle, Wrench, CreditCard, Search } from 'lucide-react';
 import { PropertyUnit } from '../types';
 
 interface FloorMapViewProps {
@@ -17,10 +17,24 @@ export const FloorMapView: React.FC<FloorMapViewProps> = ({
 }) => {
   const [activeFloor, setActiveFloor] = useState<'Ground Floor' | 'Floor 1' | 'Floor 2' | 'Floor 3'>('Ground Floor');
   const [selectedUnit, setSelectedUnit] = useState<PropertyUnit | null>(null);
+  const [mapSearch, setMapSearch] = useState('');
 
   if (!isOpen) return null;
 
-  const floorUnits = units.filter(u => u.floor === activeFloor);
+  const floorUnits = units.filter(u => {
+    if (u.floor !== activeFloor) return false;
+    if (!mapSearch.trim()) return true;
+    const q = mapSearch.trim().toLowerCase();
+    return (
+      u.unitNumber.toLowerCase().includes(q) ||
+      u.codeBadge.toLowerCase().includes(q) ||
+      (u.currentTenant?.name && u.currentTenant.name.toLowerCase().includes(q)) ||
+      (u.currentTenant?.trade && u.currentTenant.trade.toLowerCase().includes(q)) ||
+      u.meterNumber.toLowerCase().includes(q) ||
+      u.subType.toLowerCase().includes(q) ||
+      u.type.toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -40,8 +54,8 @@ export const FloorMapView: React.FC<FloorMapViewProps> = ({
           </button>
         </div>
 
-        {/* Floor selector tabs */}
-        <div className="px-6 pt-4 flex items-center justify-between border-b border-slate-100 pb-3">
+        {/* Floor selector tabs & Search */}
+        <div className="px-6 pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">
             {(['Ground Floor', 'Floor 1', 'Floor 2', 'Floor 3'] as const).map(fl => (
               <button
@@ -61,19 +75,56 @@ export const FloorMapView: React.FC<FloorMapViewProps> = ({
             ))}
           </div>
 
-          <div className="flex items-center gap-4 text-[11px] font-semibold">
-            <span className="flex items-center gap-1.5 text-blue-800">
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-600" /> Occupied
-            </span>
-            <span className="flex items-center gap-1.5 text-emerald-800">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Available
-            </span>
-            <span className="flex items-center gap-1.5 text-amber-800">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Reserved
-            </span>
-            <span className="flex items-center gap-1.5 text-rose-800">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Maint.
-            </span>
+          <div className="flex items-center gap-3">
+            {/* Quick search input */}
+            <div className="relative w-full sm:w-44">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={mapSearch}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setMapSearch(val);
+                  if (val.trim()) {
+                    const matchInOtherFloor = units.find(u => 
+                      u.unitNumber.toLowerCase().includes(val.toLowerCase()) || 
+                      u.codeBadge.toLowerCase().includes(val.toLowerCase()) ||
+                      (u.currentTenant?.name && u.currentTenant.name.toLowerCase().includes(val.toLowerCase()))
+                    );
+                    if (matchInOtherFloor && matchInOtherFloor.floor !== activeFloor) {
+                      setActiveFloor(matchInOtherFloor.floor);
+                      setSelectedUnit(matchInOtherFloor);
+                    }
+                  }
+                }}
+                placeholder="Find bay or tenant..."
+                className="w-full pl-8 pr-7 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500"
+              />
+              {mapSearch && (
+                <button
+                  type="button"
+                  onClick={() => setMapSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            <div className="hidden sm:flex items-center gap-3 text-[11px] font-semibold">
+              <span className="flex items-center gap-1.5 text-blue-800">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600" /> Occupied
+              </span>
+              <span className="flex items-center gap-1.5 text-emerald-800">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Available
+              </span>
+              <span className="flex items-center gap-1.5 text-amber-800">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Reserved
+              </span>
+              <span className="flex items-center gap-1.5 text-rose-800">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Maint.
+              </span>
+            </div>
           </div>
         </div>
 

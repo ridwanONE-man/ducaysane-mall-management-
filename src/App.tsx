@@ -595,7 +595,7 @@ export default function App() {
           searchQuery={searchQuery}
           onSearchChange={(q) => {
             setSearchQuery(q);
-            if (q.trim().length > 0 && activeTab === 'dashboard') {
+            if (q.trim().length > 0 && (activeTab === 'dashboard' || activeTab === 'reports' || activeTab === 'analytics' || activeTab === 'settings' || activeTab === 'notifications')) {
               setActiveTab('units');
             }
           }}
@@ -604,6 +604,8 @@ export default function App() {
           notifications={notifications}
           onMarkNotificationsRead={handleMarkNotificationsRead}
           realtimeStatus={realtimeStatus}
+          units={units}
+          payments={payments}
         />
 
         {/* Dynamic Views with Real Functions */}
@@ -646,6 +648,8 @@ export default function App() {
                 setIsAddUnitModalOpen(true);
               }}
               onDeleteUnit={handleDeleteUnit}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
             />
           )}
 
