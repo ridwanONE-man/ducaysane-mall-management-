@@ -129,13 +129,8 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
   // Available vacant units
   const availableUnits = units.filter(u => u.occupancyStatus === 'Available' || !u.currentTenant);
 
-  // Fallback to initialTenants only if units have not loaded at all
-  const listItems: { tenant: TenantInfo; unit?: PropertyUnit }[] = units.length > 0
-    ? derivedTenants
-    : initialTenants.map(t => ({
-        tenant: t,
-        unit: units.find(u => u.unitNumber === t.unitNumber)
-      }));
+  // Directly connect tenants to live units so any deletion or vacating from Units page reflects 1:1 immediately
+  const listItems: { tenant: TenantInfo; unit?: PropertyUnit }[] = derivedTenants;
 
   // Summary counts
   const totalCount = listItems.length;
@@ -543,8 +538,14 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
           <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-3">
             <Users className="w-6 h-6 text-slate-400 stroke-[1.5]" />
           </div>
-          <h3 className="font-bold text-slate-800 text-sm">No Tenants Found</h3>
-          <p className="text-xs text-slate-400 mt-1">Try changing your search query or tab filter.</p>
+          <h3 className="font-bold text-slate-800 text-sm">
+            {totalCount === 0 ? 'No Active Tenants' : 'No Tenants Found'}
+          </h3>
+          <p className="text-xs text-slate-400 mt-1">
+            {totalCount === 0 
+              ? 'There are currently no active tenants assigned to any commercial units.' 
+              : 'Try changing your search query or tab filter.'}
+          </p>
         </div>
       ) : (
         /* Tenants Grid */

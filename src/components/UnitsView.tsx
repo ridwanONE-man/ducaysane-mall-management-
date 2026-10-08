@@ -14,6 +14,7 @@ import {
   ChevronDown,
   X,
   UserPlus,
+  UserX,
   Edit2,
   Trash2,
   Search
@@ -31,6 +32,9 @@ interface UnitsViewProps {
   onEditUnit?: (unit: PropertyUnit) => void;
   onDeleteUnit?: (unitId: string) => void;
   onAssignTenant?: (unit: PropertyUnit) => void;
+  onDeleteTenant?: (unitId: string) => void;
+  onDeleteAllUnits?: () => void;
+  onDeleteSelectedUnits?: (unitIds: string[]) => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
 }
@@ -45,6 +49,9 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
   onEditUnit,
   onDeleteUnit,
   onAssignTenant,
+  onDeleteTenant,
+  onDeleteAllUnits,
+  onDeleteSelectedUnits,
   searchQuery: externalSearchQuery,
   onSearchChange: externalOnSearchChange
 }) => {
@@ -211,6 +218,22 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
+          {units.length > 0 && onDeleteAllUnits && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`⚠️ Are you sure you want to delete ALL ${units.length} units? This will delete all commercial properties and connected tenants across the system. This cannot be undone.`)) {
+                  onDeleteAllUnits();
+                }
+              }}
+              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Delete all units and properties at once"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>Clear All Units</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleExport}
@@ -549,21 +572,38 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                     {/* Current Tenant & Trade */}
                     <td className="p-4">
                       {unit.currentTenant ? (
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-lg bg-slate-900 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                            {unit.currentTenant.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-lg bg-slate-900 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
+                              {unit.currentTenant.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                            </div>
+                            <div className="truncate max-w-[150px]">
+                              <p className="font-bold text-slate-900 truncate">{unit.currentTenant.name}</p>
+                              <p className="text-[11px] text-slate-500 truncate">{unit.currentTenant.trade}</p>
+                              <p className="text-[10px] text-slate-400 font-mono">ID: {unit.currentTenant.code}</p>
+                            </div>
                           </div>
-                          <div className="truncate max-w-[180px]">
-                            <p className="font-bold text-slate-900 truncate">{unit.currentTenant.name}</p>
-                            <p className="text-[11px] text-slate-500 truncate">{unit.currentTenant.trade}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">ID: {unit.currentTenant.code}</p>
-                          </div>
+                          {onDeleteTenant && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Delete tenant "${unit.currentTenant?.name}" from unit ${unit.unitNumber}? This will remove the tenant from this unit and delete them from the Tenants page.`)) {
+                                  onDeleteTenant(unit.id);
+                                }
+                              }}
+                              className="px-2 py-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0 flex items-center gap-1 text-[11px] font-semibold border border-transparent hover:border-rose-200"
+                              title={`Delete tenant ${unit.currentTenant.name} from unit & Tenants directory`}
+                            >
+                              <UserX className="w-3.5 h-3.5 text-rose-500" />
+                              <span className="hidden xl:inline">Delete Tenant</span>
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div>
                           <p className="text-slate-400 italic">No Active Tenant</p>
                           <button
-                            onClick={() => onAssignTenant ? onAssignTenant(unit) : onOpenAddUnit()}
+                            onClick={() => onAssignTenant ? onAssignTenant(unit) : (onEditUnit ? onEditUnit(unit) : onOpenAddUnit())}
                             className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-0.5 cursor-pointer"
                           >
                             <UserPlus className="w-3 h-3" />
@@ -645,6 +685,20 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                     {/* Actions */}
                     <td className="p-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        {unit.currentTenant && onDeleteTenant && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Delete tenant "${unit.currentTenant?.name}" from unit ${unit.unitNumber}? This will remove the tenant from this unit and delete them from the Tenants page.`)) {
+                                onDeleteTenant(unit.id);
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title={`Delete tenant "${unit.currentTenant.name}" from unit & Tenants page`}
+                          >
+                            <UserX className="w-3.5 h-3.5 text-rose-500" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => onEditUnit ? onEditUnit(unit) : onOpenAddUnit()}
@@ -657,7 +711,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                           <button
                             type="button"
                             onClick={() => {
-                              if (window.confirm(`Delete ${unit.unitNumber}? This change will sync instantly to all users.`)) {
+                              if (window.confirm(`Delete ${unit.unitNumber}? This will remove the unit and any connected tenant from the system.`)) {
                                 onDeleteUnit(unit.id);
                               }
                             }}
@@ -677,11 +731,26 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
           <span>
             Selected {selectedUnitIds.length} of {filteredUnits.length} total units
           </span>
           <div className="flex items-center gap-2">
+            {selectedUnitIds.length > 0 && onDeleteSelectedUnits && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm(`Delete ${selectedUnitIds.length} selected unit(s)? This will also remove any connected tenants.`)) {
+                    onDeleteSelectedUnits(selectedUnitIds);
+                    setSelectedUnitIds([]);
+                  }
+                }}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Selected ({selectedUnitIds.length})</span>
+              </button>
+            )}
             <button
               disabled={selectedUnitIds.length === 0}
               onClick={handleExport}

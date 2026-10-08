@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Store, Check, Layers, Calendar, DollarSign, Phone, UserCheck, AlertCircle } from 'lucide-react';
+import { X, Store, Check, Layers, Calendar, DollarSign, Phone, UserCheck, AlertCircle, Trash2 } from 'lucide-react';
 import { PropertyUnit, UnitType, OccupancyStatus } from '../types';
 
 interface AddUnitModalProps {
@@ -151,10 +151,10 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
     const rateUSD = numRent;
     const numDeposit = rateUSD * Math.max(1, Number(depositMonths) || 1);
 
-    const hasTenant = Boolean(tenantName.trim().length > 0 || status === 'Occupied');
+    const hasTenant = Boolean(tenantName.trim().length > 0 && status !== 'Available');
     const assignedTenant = hasTenant ? {
       id: editingUnit?.currentTenant?.id || `t-${Date.now()}`,
-      name: tenantName.trim() || 'Commercial Tenant',
+      name: tenantName.trim(),
       trade: trade.trim() || (selectedCategory === 'Shop' ? 'General Retail' : 'Commercial Space'),
       code: `TNT-${finalUnitNumber}`,
       phone: tenantPhone.trim() || '+211 928 000 000',
@@ -187,17 +187,17 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       escrowDepositUSD: numDeposit,
       escrowDepositSSP: 0,
       depositMonths: Math.max(1, Number(depositMonths) || 1),
-      occupancyStatus: hasTenant ? 'Occupied' : status,
+      occupancyStatus: hasTenant ? 'Occupied' : (status === 'Occupied' ? 'Available' : status),
       billingStatus: hasTenant ? (editingUnit?.billingStatus || 'Paid') : 'No Balance',
-      billingMonthText: editingUnit?.billingMonthText || (hasTenant ? 'Paid • Sept 2026' : undefined),
-      arrearsUSD: editingUnit?.arrearsUSD || 0,
+      billingMonthText: hasTenant ? (editingUnit?.billingMonthText || 'Paid • Sept 2026') : undefined,
+      arrearsUSD: hasTenant ? (editingUnit?.arrearsUSD || 0) : 0,
       arrearsSSP: 0,
       currentTenant: assignedTenant,
-      leaseStart,
-      leaseEnd: calculatedEnd,
-      leaseTermMonths: leaseDurationMonths,
-      daysRemaining: calculatedDaysRemaining,
-      daysToExpiry: calculatedDaysRemaining,
+      leaseStart: hasTenant ? leaseStart : undefined,
+      leaseEnd: hasTenant ? calculatedEnd : undefined,
+      leaseTermMonths: hasTenant ? leaseDurationMonths : undefined,
+      daysRemaining: hasTenant ? calculatedDaysRemaining : undefined,
+      daysToExpiry: hasTenant ? calculatedDaysRemaining : undefined,
       notes: notes.trim() || undefined,
     };
 
@@ -378,9 +378,26 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
 
           {/* Tenant Information Section */}
           <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3">
-            <div className="flex items-center gap-2">
-              <UserCheck className="w-4 h-4 text-orange-600" />
-              <span className="text-xs font-bold text-slate-900">Tenant & Business Profile</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-orange-600" />
+                <span className="text-xs font-bold text-slate-900">Tenant & Business Profile</span>
+              </div>
+              {tenantName.trim().length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTenantName('');
+                    setTenantPhone('');
+                    setStatus('Available');
+                  }}
+                  className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 flex items-center gap-1 cursor-pointer hover:bg-rose-50 px-2 py-0.5 rounded-md transition-colors"
+                  title="Remove tenant from this unit"
+                >
+                  <Trash2 className="w-3 h-3 text-rose-500" />
+                  <span>Remove Tenant</span>
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

@@ -285,6 +285,12 @@ export async function saveUnitsBulkToSupabase(units: PropertyUnit[]): Promise<bo
 
 export async function deleteUnitFromSupabase(unitId: string): Promise<boolean> {
   try {
+    const { data: unitData } = await supabase
+      .from('units')
+      .select('unit_number')
+      .eq('id', unitId)
+      .maybeSingle();
+
     const { error } = await supabase
       .from('units')
       .delete()
@@ -294,9 +300,141 @@ export async function deleteUnitFromSupabase(unitId: string): Promise<boolean> {
       console.warn('Could not delete unit from Supabase:', error.message);
       return false;
     }
+
+    // Delete associated tenant from public.tenants table to keep them 100% connected
+    try {
+      await supabase.from('tenants').delete().eq('id', `t-${unitId}`);
+      if (unitData?.unit_number) {
+        await supabase.from('tenants').delete().eq('unit_number', unitData.unit_number);
+      }
+    } catch (tErr) {
+      console.warn('Could not delete associated tenant from Supabase:', tErr);
+    }
+
     return true;
   } catch (err) {
     console.warn('Network error deleting unit from Supabase:', err);
+    return false;
+  }
+}
+
+export async function deleteTenantFromUnitInSupabase(
+  unitId: string, 
+  unitNumber?: string
+): Promise<{ success: boolean; unit?: PropertyUnit; error?: string }> {
+  try {
+    const updateRow = {
+      occupancy_status: 'Available',
+      current_tenant: null,
+      tenant_phone: null,
+      tenant_email: null,
+      tenant_trade: null,
+      tenant_code: null,
+      lease_start: null,
+      lease_end: null,
+      billing_status: 'No Balance',
+      billing_month_text: null,
+      arrears_usd: 0,
+      arrears_ssp: 0,
+      notes: null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from('units')
+      .update(updateRow)
+      .eq('id', unitId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error clearing tenant from unit in Supabase:', error);
+      return { success: false, error: error.message };
+    }
+
+    // Delete tenant from public.tenants table so they are removed from tenants page
+    try {
+      await supabase.from('tenants').delete().eq('id', `t-${unitId}`);
+      const targetUnitNumber = unitNumber || data.unit_number;
+      if (targetUnitNumber) {
+        await supabase.from('tenants').delete().eq('unit_number', targetUnitNumber);
+      }
+    } catch (tErr) {
+      console.warn('Could not delete tenant from tenants table in Supabase:', tErr);
+    }
+
+    const updatedUnit = mapRowToUnit(data);
+    return { success: true, unit: updatedUnit };
+  } catch (err: any) {
+    console.error('Network error deleting tenant from unit in Supabase:', err);
+    return { success: false, error: err?.message || 'Network error' };
+  }
+}
+
+export async function deleteAllUnitsFromSupabase(): Promise<boolean> {
+  try {
+    const { error: unitsError } = await supabase
+      .from('units')
+      .delete()
+      .neq('id', '___');
+
+    if (unitsError) {
+      console.warn('Could not delete all units from Supabase:', unitsError.message);
+    }
+
+    // Also delete all tenants from tenants table
+    try {
+      await supabase
+        .from('tenants')
+        .delete()
+        .neq('id', '___');
+    } catch (tErr) {
+      console.warn('Could not delete all tenants from Supabase:', tErr);
+    }
+
+    return true;
+  } catch (err) {
+    console.warn('Network error deleting all units from Supabase:', err);
+    return false;
+  }
+}
+
+export async function deleteUnitsBulkFromSupabase(unitIds: string[]): Promise<boolean> {
+  try {
+    if (unitIds.length === 0) return true;
+
+    // Get unit numbers first for tenant cleanup
+    const { data: unitsList } = await supabase
+      .from('units')
+      .select('id, unit_number')
+      .in('id', unitIds);
+
+    const { error } = await supabase
+      .from('units')
+      .delete()
+      .in('id', unitIds);
+
+    if (error) {
+      console.warn('Could not bulk delete units from Supabase:', error.message);
+      return false;
+    }
+
+    try {
+      const tenantIds = unitIds.map(id => `t-${id}`);
+      await supabase.from('tenants').delete().in('id', tenantIds);
+      if (unitsList && unitsList.length > 0) {
+        const unitNums = unitsList.map(u => u.unit_number).filter(Boolean);
+        if (unitNums.length > 0) {
+          await supabase.from('tenants').delete().in('unit_number', unitNums);
+        }
+      }
+    } catch (tErr) {
+      console.warn('Could not bulk delete tenants from Supabase:', tErr);
+    }
+
+    return true;
+  } catch (err) {
+    console.warn('Network error bulk deleting units from Supabase:', err);
     return false;
   }
 }
@@ -669,6 +807,7 @@ export async function clearAllSupabaseData(): Promise<boolean> {
     await supabase.from('deposits').delete().neq('id', '___');
     await supabase.from('cashflow_transactions').delete().neq('id', '___');
     await supabase.from('units').delete().neq('id', '___');
+    await supabase.from('tenants').delete().neq('id', '___');
     return true;
   } catch (err) {
     console.warn('Network error clearing Supabase data:', err);

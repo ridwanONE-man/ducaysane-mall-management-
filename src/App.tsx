@@ -40,6 +40,9 @@ import {
   saveUnitToSupabase, 
   saveUnitsBulkToSupabase,
   deleteUnitFromSupabase,
+  deleteTenantFromUnitInSupabase,
+  deleteAllUnitsFromSupabase,
+  deleteUnitsBulkFromSupabase,
   updateTenantAndPricingInSupabase,
   vacateUnitInSupabase,
   ModifyTenantPricingPayload,
@@ -223,8 +226,9 @@ export default function App() {
 
         if (!isMounted) return;
 
-        // 1. Units Hydration / Seeding
-        if (dbUnits.length === 0) {
+        // 1. Units Hydration / Seeding (avoid re-seeding if user intentionally cleared units)
+        const unitsWereCleared = localStorage.getItem('nbc_units_cleared') === 'true';
+        if (dbUnits.length === 0 && !unitsWereCleared) {
           console.log('Supabase units table empty. Auto-seeding initial inventory...');
           await saveUnitsBulkToSupabase(initialUnits);
           setUnits(initialUnits);
@@ -416,6 +420,9 @@ export default function App() {
 
   // Add / Edit Unit Handler
   const handleSaveUnit = async (unitToSave: PropertyUnit) => {
+    try {
+      localStorage.removeItem('nbc_units_cleared');
+    } catch {}
     const isExisting = units.some(u => u.id === unitToSave.id);
     if (isExisting) {
       setUnits(prev => prev.map(u => u.id === unitToSave.id ? unitToSave : u));
@@ -431,8 +438,78 @@ export default function App() {
   const handleDeleteUnit = async (unitId: string) => {
     const found = units.find(u => u.id === unitId);
     setUnits(prev => prev.filter(u => u.id !== unitId));
-    showToast(`Unit ${found?.unitNumber || ''} deleted from inventory.`);
+    showToast(`Unit ${found?.unitNumber || ''} and connected tenant removed from system.`);
     await deleteUnitFromSupabase(unitId);
+  };
+
+  // Delete Tenant from Unit Handler (removes tenant from unit & deletes from Tenants page)
+  const handleDeleteTenantFromUnit = async (unitId: string) => {
+    const targetUnit = units.find(u => u.id === unitId);
+    if (!targetUnit) return;
+    const tenantName = targetUnit.currentTenant?.name || 'Tenant';
+
+    const clearedUnit: PropertyUnit = {
+      ...targetUnit,
+      currentTenant: undefined,
+      occupancyStatus: 'Available',
+      billingStatus: 'No Balance',
+      billingMonthText: undefined,
+      leaseStart: undefined,
+      leaseEnd: undefined,
+      daysRemaining: undefined,
+      daysToExpiry: undefined,
+      arrearsUSD: 0,
+      arrearsSSP: 0,
+    };
+
+    setUnits(prev => prev.map(u => u.id === unitId ? clearedUnit : u));
+
+    // Commercial notification
+    const notif: CommercialNotification = {
+      id: `notif-${Date.now()}`,
+      title: `Tenant Deleted: ${tenantName} (${targetUnit.unitNumber})`,
+      description: `Tenant ${tenantName} was removed from unit ${targetUnit.unitNumber} and deleted from the Tenants directory.`,
+      timestamp: 'Just now',
+      type: 'lease',
+      read: false,
+      priority: 'high'
+    };
+    setNotifications(prev => [notif, ...prev]);
+    showToast(`Tenant "${tenantName}" deleted from ${targetUnit.unitNumber} and removed from Tenants page.`);
+
+    await deleteTenantFromUnitInSupabase(unitId, targetUnit.unitNumber);
+  };
+
+  // Clear All Units at Once Handler
+  const handleDeleteAllUnits = async () => {
+    setUnits([]);
+    try {
+      localStorage.setItem('nbc_units', JSON.stringify([]));
+      localStorage.setItem('nbc_units_cleared', 'true');
+    } catch {}
+
+    const notif: CommercialNotification = {
+      id: `notif-${Date.now()}`,
+      title: `All Units Cleared`,
+      description: `All commercial units and connected tenants were removed from the inventory.`,
+      timestamp: 'Just now',
+      type: 'maintenance',
+      read: false,
+      priority: 'high'
+    };
+    setNotifications(prev => [notif, ...prev]);
+    showToast('All units and connected tenants have been deleted.');
+
+    await deleteAllUnitsFromSupabase();
+  };
+
+  // Delete Selected Units Batch Handler
+  const handleDeleteSelectedUnits = async (unitIds: string[]) => {
+    if (unitIds.length === 0) return;
+    const count = unitIds.length;
+    setUnits(prev => prev.filter(u => !unitIds.includes(u.id)));
+    showToast(`${count} unit(s) and connected tenant(s) deleted.`);
+    await deleteUnitsBulkFromSupabase(unitIds);
   };
 
   // Modify Tenant & Lease Pricing Handler from Tenants Page
@@ -648,6 +725,9 @@ export default function App() {
                 setIsAddUnitModalOpen(true);
               }}
               onDeleteUnit={handleDeleteUnit}
+              onDeleteTenant={handleDeleteTenantFromUnit}
+              onDeleteAllUnits={handleDeleteAllUnits}
+              onDeleteSelectedUnits={handleDeleteSelectedUnits}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
             />
