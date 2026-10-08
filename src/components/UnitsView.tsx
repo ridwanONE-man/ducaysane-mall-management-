@@ -14,7 +14,6 @@ import {
   ChevronDown,
   X,
   UserPlus,
-  UserX,
   Edit2,
   Trash2,
   Search
@@ -572,32 +571,15 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                     {/* Current Tenant & Trade */}
                     <td className="p-4">
                       {unit.currentTenant ? (
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-7 h-7 rounded-lg bg-slate-900 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                              {unit.currentTenant.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                            </div>
-                            <div className="truncate max-w-[150px]">
-                              <p className="font-bold text-slate-900 truncate">{unit.currentTenant.name}</p>
-                              <p className="text-[11px] text-slate-500 truncate">{unit.currentTenant.trade}</p>
-                              <p className="text-[10px] text-slate-400 font-mono">ID: {unit.currentTenant.code}</p>
-                            </div>
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-slate-900 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
+                            {unit.currentTenant.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                           </div>
-                          {onDeleteTenant && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (window.confirm(`Delete tenant "${unit.currentTenant?.name}" from unit ${unit.unitNumber}? This will remove the tenant from this unit and delete them from the Tenants page.`)) {
-                                  onDeleteTenant(unit.id);
-                                }
-                              }}
-                              className="px-2 py-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0 flex items-center gap-1 text-[11px] font-semibold border border-transparent hover:border-rose-200"
-                              title={`Delete tenant ${unit.currentTenant.name} from unit & Tenants directory`}
-                            >
-                              <UserX className="w-3.5 h-3.5 text-rose-500" />
-                              <span className="hidden xl:inline">Delete Tenant</span>
-                            </button>
-                          )}
+                          <div className="truncate max-w-[180px]">
+                            <p className="font-bold text-slate-900 truncate">{unit.currentTenant.name}</p>
+                            <p className="text-[11px] text-slate-500 truncate">{unit.currentTenant.trade}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">ID: {unit.currentTenant.code}</p>
+                          </div>
                         </div>
                       ) : (
                         <div>
@@ -685,20 +667,6 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                     {/* Actions */}
                     <td className="p-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        {unit.currentTenant && onDeleteTenant && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm(`Delete tenant "${unit.currentTenant?.name}" from unit ${unit.unitNumber}? This will remove the tenant from this unit and delete them from the Tenants page.`)) {
-                                onDeleteTenant(unit.id);
-                              }
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title={`Delete tenant "${unit.currentTenant.name}" from unit & Tenants page`}
-                          >
-                            <UserX className="w-3.5 h-3.5 text-rose-500" />
-                          </button>
-                        )}
                         <button
                           type="button"
                           onClick={() => onEditUnit ? onEditUnit(unit) : onOpenAddUnit()}
