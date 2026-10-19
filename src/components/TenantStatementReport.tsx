@@ -13,6 +13,8 @@ import {
   Mail,
   Store,
   X,
+  CalendarCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import { PropertyUnit, PaymentRecord, DepositRecord } from '../types';
 import { getTenantPaymentsFromSupabase } from '../lib/supabaseService';
@@ -23,6 +25,16 @@ import {
   normalizeName,
   normalizeUnitNumber,
 } from '../utils/printUtils';
+import {
+  MONTH_NAMES,
+  LedgerMonth,
+  LedgerStatus,
+  RentLedger,
+  buildRentLedger,
+  paymentRentMonths,
+  monthKey,
+  summarizeLedger,
+} from '../utils/rentLedger';
 import { BUSINESS_PROFILE } from '../data/businessProfile';
 import { Letterhead } from './ReceiptDocument';
 import { PrintPortal } from './PrintPortal';
@@ -43,11 +55,7 @@ interface TenantEntry {
 }
 
 type PeriodMode = 'all' | 'year' | 'month' | 'range';
-
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
+type LedgerFilter = 'all' | 'paid' | 'owing';
 
 const tenantKey = (name: string, unitNumber: string) =>
   `${normalizeName(name)}|${normalizeUnitNumber(unitNumber)}`;
@@ -57,6 +65,39 @@ const paymentBelongsTo = (p: PaymentRecord, tenant: TenantEntry) =>
 
 const sumBy = (list: PaymentRecord[], currency: 'USD' | 'SSP') =>
   list.filter(p => p.currency === currency).reduce((s, p) => s + p.amount, 0);
+
+const sortByDateDesc = (list: PaymentRecord[]) =>
+  [...list].sort((a, b) => (parsePaymentDate(b.date)?.getTime() || 0) - (parsePaymentDate(a.date)?.getTime() || 0));
+
+// Rent and currency come from the unit; former tenants fall back to their last receipt.
+function ledgerForTenant(tenant: TenantEntry, list: PaymentRecord[]): RentLedger {
+  const latest = sortByDateDesc(list)[0];
+  const rentUSD = tenant.unit?.monthlyRateUSD || 0;
+  const rentSSP = tenant.unit?.monthlyRateSSP || 0;
+  let currency: 'USD' | 'SSP' = 'USD';
+  let monthlyRent = rentUSD;
+  if (rentUSD <= 0 && rentSSP > 0) {
+    currency = 'SSP';
+    monthlyRent = rentSSP;
+  } else if (rentUSD <= 0) {
+    currency = latest?.currency || 'USD';
+    monthlyRent = latest?.monthlyBaseRent || 0;
+  }
+  return buildRentLedger({
+    payments: list,
+    monthlyRent,
+    currency,
+    leaseStart: tenant.unit?.leaseStart,
+    leaseEnd: tenant.unit?.leaseEnd,
+    isCurrent: tenant.isCurrent,
+  });
+}
+
+const STATUS_STYLES: Record<LedgerStatus, string> = {
+  Paid: 'bg-emerald-50 text-emerald-700',
+  Partial: 'bg-amber-50 text-amber-700',
+  Unpaid: 'bg-rose-50 text-rose-700',
+};
 
 export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
   units,
@@ -73,9 +114,12 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
   const [month, setMonth] = useState(now.getMonth());
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('all');
+  const [selectedMonths, setSelectedMonths] = useState<Set<string>>(new Set());
   const [dbPayments, setDbPayments] = useState<PaymentRecord[] | null>(null);
   const [dbStatus, setDbStatus] = useState<'idle' | 'loading' | 'synced' | 'offline'>('idle');
-  const [isPrinting, setIsPrinting] = useState(false);
+  // null = not printing; keys = only those rent months; 'period' = everything in the current period
+  const [printRequest, setPrintRequest] = useState<{ keys: string[] | 'period' } | null>(null);
   const latestRequestKey = useRef<string | null>(null);
 
   // Every tenant who currently leases a unit, plus former tenants who still have payment history.
@@ -116,22 +160,34 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
   useEffect(() => {
     setDbPayments(null);
     setDbStatus('idle');
+    setSelectedMonths(new Set());
     latestRequestKey.current = null;
     if (selectedTenant) loadTenantFromDb(selectedTenant);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKey]);
 
-  const isInPeriod = (p: PaymentRecord) => {
+  // Year / month filters use the rent month a payment covers; custom dates use the payment date.
+  const isMonthInPeriod = (y: number, m: number) => {
     if (periodMode === 'all') return true;
-    const d = parsePaymentDate(p.date);
-    if (!d) return false;
-    if (periodMode === 'year') return d.getFullYear() === year;
-    if (periodMode === 'month') return d.getFullYear() === year && d.getMonth() === month;
+    if (periodMode === 'year') return y === year;
+    if (periodMode === 'month') return y === year && m === month;
     const from = parsePaymentDate(fromDate);
     const to = parsePaymentDate(toDate);
-    if (from && d < from) return false;
-    if (to && d > to) return false;
+    if (from && new Date(y, m + 1, 0) < from) return false;
+    if (to && new Date(y, m, 1) > to) return false;
     return true;
+  };
+
+  const isPaymentInPeriod = (p: PaymentRecord) => {
+    if (periodMode === 'all') return true;
+    if (periodMode === 'range') {
+      const d = parsePaymentDate(p.date);
+      if (!d) return false;
+      const from = parsePaymentDate(fromDate);
+      const to = parsePaymentDate(toDate);
+      return !(from && d < from) && !(to && d > to);
+    }
+    return paymentRentMonths(p).some(({ year: y, month: m }) => isMonthInPeriod(y, m));
   };
 
   const matchesSearch = (p: PaymentRecord) => {
@@ -140,9 +196,6 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
     return [p.receiptNumber, p.accountingPeriod, p.paymentMethod, p.notes, p.date, p.status, p.receivedBy]
       .some(v => (v || '').toLowerCase().includes(q));
   };
-
-  const sortByDateDesc = (list: PaymentRecord[]) =>
-    [...list].sort((a, b) => (parsePaymentDate(b.date)?.getTime() || 0) - (parsePaymentDate(a.date)?.getTime() || 0));
 
   // Database rows win; locally cached rows that haven't synced yet are kept too.
   const tenantAllPayments = useMemo(() => {
@@ -153,20 +206,28 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
     return [...dbPayments, ...local.filter(p => !dbIds.has(p.id))];
   }, [selectedTenant, payments, dbPayments]);
 
-  const statementPayments = sortByDateDesc(tenantAllPayments.filter(p => isInPeriod(p) && matchesSearch(p)));
+  const ledger = useMemo(
+    () => (selectedTenant ? ledgerForTenant(selectedTenant, tenantAllPayments) : null),
+    [selectedTenant, tenantAllPayments]
+  );
+
+  const periodMonths = (ledger?.months || []).filter(m => isMonthInPeriod(m.year, m.month));
+  const ledgerSummary = summarizeLedger(periodMonths);
+  const visibleMonths = [...periodMonths]
+    .filter(m => ledgerFilter === 'all' || (ledgerFilter === 'paid' ? m.paid > 0 : m.status !== 'Paid'))
+    .reverse();
+
+  const statementPayments = sortByDateDesc(tenantAllPayments.filter(p => isPaymentInPeriod(p) && matchesSearch(p)));
 
   const periodLabel =
     periodMode === 'all' ? 'All Time'
     : periodMode === 'year' ? `Year ${year}`
-    : periodMode === 'month' ? `${MONTHS[month]} ${year}`
+    : periodMode === 'month' ? `${MONTH_NAMES[month]} ${year}`
     : `${fromDate ? formatLongDate(fromDate) : 'Beginning'} – ${toDate ? formatLongDate(toDate) : 'Today'}`;
 
   const availableYears = useMemo(() => {
     const years = new Set<number>([now.getFullYear()]);
-    payments.forEach(p => {
-      const d = parsePaymentDate(p.date);
-      if (d) years.add(d.getFullYear());
-    });
+    payments.forEach(p => paymentRentMonths(p).forEach(m => years.add(m.year)));
     return [...years].sort((a, b) => b - a);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payments]);
@@ -179,62 +240,80 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
         || (t.unit?.currentTenant?.code || '').toLowerCase().includes(q)
         || (t.unit?.currentTenant?.phone || '').toLowerCase().includes(q))
       .map(t => {
-        const list = payments.filter(p => paymentBelongsTo(p, t) && isInPeriod(p));
-        const last = sortByDateDesc(list)[0];
+        const all = payments.filter(p => paymentBelongsTo(p, t));
+        const inPeriod = all.filter(isPaymentInPeriod);
+        const tLedger = ledgerForTenant(t, all);
+        const tSummary = summarizeLedger(tLedger.months.filter(m => isMonthInPeriod(m.year, m.month)));
         return {
           tenant: t,
-          count: list.length,
-          paidUSD: sumBy(list, 'USD'),
-          paidSSP: sumBy(list, 'SSP'),
-          lastDate: last?.date,
+          count: inPeriod.length,
+          paidUSD: sumBy(inPeriod, 'USD'),
+          paidSSP: sumBy(inPeriod, 'SSP'),
+          lastDate: sortByDateDesc(inPeriod)[0]?.date,
+          unpaidMonths: tSummary.unpaidCount + tSummary.partialCount,
+          balance: tSummary.outstanding,
+          currency: tLedger.currency,
         };
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenants, payments, tenantSearch, periodMode, year, month, fromDate, toDate]);
 
-  const monthlyBreakdown = useMemo(() => {
-    if (!selectedTenant || periodMode !== 'year') return [];
-    return MONTHS.map((label, idx) => {
-      const list = tenantAllPayments.filter(p => {
-        const d = parsePaymentDate(p.date);
-        return d && d.getFullYear() === year && d.getMonth() === idx;
-      });
-      return { label, idx, usd: sumBy(list, 'USD'), ssp: sumBy(list, 'SSP'), count: list.length };
-    });
-  }, [selectedTenant, periodMode, year, tenantAllPayments]);
-
   const deposit = selectedTenant
     ? deposits.find(d => tenantKey(d.tenantName, d.unitNumber) === selectedTenant.key && d.status !== 'Refunded')
     : undefined;
 
-  const summary = {
-    count: statementPayments.length,
-    paidUSD: sumBy(statementPayments, 'USD'),
-    paidSSP: sumBy(statementPayments, 'SSP'),
-    arrearsUSD: selectedTenant?.unit?.arrearsUSD || 0,
-    arrearsSSP: selectedTenant?.unit?.arrearsSSP || 0,
-    lastPayment: statementPayments[0],
+  const toggleMonth = (key: string) => {
+    setSelectedMonths(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const openMonth = (m: LedgerMonth) => {
+    setPeriodMode('month');
+    setYear(m.year);
+    setMonth(m.month);
   };
 
   // Print only once the print copy has been rendered into the portal.
   useEffect(() => {
-    if (!isPrinting) return;
+    if (!printRequest) return;
     const timer = setTimeout(() => {
       window.print();
-      setIsPrinting(false);
+      setPrintRequest(null);
     }, 100);
     return () => clearTimeout(timer);
-  }, [isPrinting]);
+  }, [printRequest]);
+
+  // What goes on the printed statement.
+  const printMonths: LedgerMonth[] = !printRequest || printRequest.keys === 'period'
+    ? periodMonths
+    : (ledger?.months || []).filter(m => (printRequest.keys as string[]).includes(m.key));
+  const printMonthKeys = new Set(printMonths.map(m => m.key));
+  const printPayments = !printRequest || printRequest.keys === 'period'
+    ? statementPayments
+    : sortByDateDesc(tenantAllPayments.filter(p =>
+        paymentRentMonths(p).some(({ year: y, month: m }) => printMonthKeys.has(monthKey(y, m)))
+      ));
+  const printSummary = summarizeLedger(printMonths);
+  const printLabel = !printRequest || printRequest.keys === 'period'
+    ? periodLabel
+    : printMonths.length === 1
+      ? printMonths[0].label
+      : `${printMonths.length} selected months (${printMonths[0]?.label || ''} – ${printMonths[printMonths.length - 1]?.label || ''})`;
 
   const statementNumber = `STM-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${
     selectedTenant ? normalizeUnitNumber(selectedTenant.unitNumber).toUpperCase() : 'ALL'
   }`;
 
+  const ledgerMoney = (n: number) => formatMoney(n, ledger?.currency || 'USD');
+
   // ---------------------------------------------------------------
   // Filters bar
   // ---------------------------------------------------------------
   const filters = (
-    <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-4 space-y-3">
+    <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-4">
       <div className="flex flex-wrap items-center gap-2">
         <Calendar className="w-4 h-4 text-slate-400" />
         <span className="text-xs font-bold text-slate-700 mr-1">Period:</span>
@@ -271,7 +350,7 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
             onChange={e => setMonth(Number(e.target.value))}
             className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600"
           >
-            {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+            {MONTH_NAMES.map((m, i) => <option key={m} value={i}>{m}</option>)}
           </select>
         )}
         {periodMode === 'range' && (
@@ -312,7 +391,7 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
             <h2 className="text-2xl font-black tracking-tight">
               {selectedTenant ? 'TENANT STATEMENT OF ACCOUNT' : 'TENANT PAYMENTS SUMMARY'}
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">Period: <strong className="text-slate-900">{periodLabel}</strong></p>
+            <p className="text-xs text-slate-500 mt-0.5">Period: <strong className="text-slate-900">{printLabel}</strong></p>
           </div>
           <div className="text-right text-xs space-y-0.5">
             <p className="font-mono font-black text-rose-700 text-sm">{statementNumber}</p>
@@ -320,7 +399,7 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
           </div>
         </div>
 
-        {selectedTenant ? (
+        {selectedTenant && ledger ? (
           <>
             <div className="grid grid-cols-2 gap-4 print-avoid-break">
               <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-xs space-y-1">
@@ -336,13 +415,11 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
               <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-xs space-y-1.5">
                 <div className="flex justify-between"><span className="text-slate-500">Unit</span><strong>{selectedTenant.unitNumber}</strong></div>
                 {selectedTenant.unit && (
-                  <>
-                    <div className="flex justify-between"><span className="text-slate-500">Floor / Type</span><strong>{selectedTenant.unit.floor} • {selectedTenant.unit.type}</strong></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Monthly Rent</span><strong>{formatMoney(selectedTenant.unit.monthlyRateUSD, 'USD')}</strong></div>
-                    {selectedTenant.unit.leaseEnd && (
-                      <div className="flex justify-between"><span className="text-slate-500">Lease</span><strong>{formatLongDate(selectedTenant.unit.leaseStart) || '—'} → {formatLongDate(selectedTenant.unit.leaseEnd)}</strong></div>
-                    )}
-                  </>
+                  <div className="flex justify-between"><span className="text-slate-500">Floor / Type</span><strong>{selectedTenant.unit.floor} • {selectedTenant.unit.type}</strong></div>
+                )}
+                <div className="flex justify-between"><span className="text-slate-500">Monthly Rent</span><strong>{ledgerMoney(ledger.monthlyRent)}</strong></div>
+                {selectedTenant.unit?.leaseStart && (
+                  <div className="flex justify-between"><span className="text-slate-500">Lease</span><strong>{formatLongDate(selectedTenant.unit.leaseStart)} → {formatLongDate(selectedTenant.unit.leaseEnd) || 'Open'}</strong></div>
                 )}
                 {deposit && (
                   <div className="flex justify-between"><span className="text-slate-500">Security Deposit</span><strong>{formatMoney(deposit.amountUSD, 'USD')}</strong></div>
@@ -351,65 +428,92 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 print-avoid-break">
+            <div className="grid grid-cols-4 gap-3 print-avoid-break">
+              <div className="rounded-2xl border border-slate-200 p-3">
+                <p className="text-[10px] font-bold uppercase text-slate-500">Rent Due</p>
+                <p className="font-mono text-base font-black">{ledgerMoney(printSummary.totalDue)}</p>
+              </div>
               <div className="rounded-2xl border-2 border-slate-900 bg-emerald-50 p-3">
                 <p className="text-[10px] font-bold uppercase text-slate-500">Total Paid</p>
-                <p className="font-mono text-lg font-black text-emerald-700">{formatMoney(summary.paidUSD, 'USD')}</p>
-                {summary.paidSSP > 0 && <p className="font-mono text-xs font-bold text-emerald-700">{formatMoney(summary.paidSSP, 'SSP')}</p>}
+                <p className="font-mono text-base font-black text-emerald-700">{ledgerMoney(printSummary.totalPaid)}</p>
               </div>
               <div className="rounded-2xl border border-slate-200 p-3">
-                <p className="text-[10px] font-bold uppercase text-slate-500">Payments</p>
-                <p className="text-lg font-black">{summary.count}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 p-3">
-                <p className="text-[10px] font-bold uppercase text-slate-500">Current Balance Due</p>
-                <p className={`font-mono text-lg font-black ${summary.arrearsUSD > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
-                  {formatMoney(summary.arrearsUSD, 'USD')}
+                <p className="text-[10px] font-bold uppercase text-slate-500">Months Not Paid</p>
+                <p className="text-base font-black text-rose-600">
+                  {printSummary.unpaidCount}
+                  {printSummary.partialCount > 0 && <span className="text-xs text-amber-600"> + {printSummary.partialCount} partial</span>}
                 </p>
-                {summary.arrearsSSP > 0 && <p className="font-mono text-xs font-bold text-rose-600">{formatMoney(summary.arrearsSSP, 'SSP')}</p>}
+              </div>
+              <div className="rounded-2xl border border-slate-200 p-3">
+                <p className="text-[10px] font-bold uppercase text-slate-500">Balance Due</p>
+                <p className={`font-mono text-base font-black ${printSummary.outstanding > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+                  {ledgerMoney(printSummary.outstanding)}
+                </p>
+                {printSummary.credit > 0 && <p className="text-[10px] font-bold text-blue-700">Credit {ledgerMoney(printSummary.credit)}</p>}
               </div>
             </div>
 
-            <table className="w-full text-[11px] border border-slate-200">
-              <thead>
-                <tr className="bg-slate-900 text-white text-left">
-                  <th className="py-2 px-2.5">Date</th>
-                  <th className="py-2 px-2.5">Receipt #</th>
-                  <th className="py-2 px-2.5">Rent Period</th>
-                  <th className="py-2 px-2.5">Method</th>
-                  <th className="py-2 px-2.5 text-right">Amount</th>
-                  <th className="py-2 px-2.5 text-right">Balance</th>
-                  <th className="py-2 px-2.5">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {statementPayments.length === 0 ? (
-                  <tr><td colSpan={7} className="py-6 text-center text-slate-400">No payments recorded in this period.</td></tr>
-                ) : statementPayments.map((p, i) => (
-                  <tr key={p.id} className={`print-avoid-break ${i % 2 ? 'bg-slate-50' : ''}`}>
-                    <td className="py-1.5 px-2.5 whitespace-nowrap">{formatLongDate(p.date)}</td>
-                    <td className="py-1.5 px-2.5 font-mono">{p.receiptNumber}</td>
-                    <td className="py-1.5 px-2.5">{p.accountingPeriod}</td>
-                    <td className="py-1.5 px-2.5">{p.paymentMethod}</td>
-                    <td className="py-1.5 px-2.5 text-right font-mono font-bold">{formatMoney(p.amount, p.currency)}</td>
-                    <td className="py-1.5 px-2.5 text-right font-mono">{formatMoney(Math.max(0, p.remainingBalance), p.currency)}</td>
-                    <td className="py-1.5 px-2.5">{p.status}</td>
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">Monthly Rent Ledger</h3>
+              <table className="w-full text-[11px] border border-slate-200">
+                <thead>
+                  <tr className="bg-slate-900 text-white text-left">
+                    <th className="py-2 px-2.5">Rent Month</th>
+                    <th className="py-2 px-2.5 text-right">Rent Due</th>
+                    <th className="py-2 px-2.5 text-right">Paid</th>
+                    <th className="py-2 px-2.5 text-right">Balance</th>
+                    <th className="py-2 px-2.5 text-right">Running Balance</th>
+                    <th className="py-2 px-2.5">Status</th>
+                    <th className="py-2 px-2.5">Receipts</th>
                   </tr>
-                ))}
-              </tbody>
-              {statementPayments.length > 0 && (
-                <tfoot>
-                  <tr className="bg-slate-100 font-black">
-                    <td colSpan={4} className="py-2 px-2.5 text-right uppercase text-[10px]">Total Paid in Period</td>
-                    <td className="py-2 px-2.5 text-right font-mono">
-                      {formatMoney(summary.paidUSD, 'USD')}
-                      {summary.paidSSP > 0 && <div>{formatMoney(summary.paidSSP, 'SSP')}</div>}
-                    </td>
-                    <td colSpan={2} />
-                  </tr>
-                </tfoot>
-              )}
-            </table>
+                </thead>
+                <tbody>
+                  {printMonths.length === 0 ? (
+                    <tr><td colSpan={7} className="py-6 text-center text-slate-400">No rent months in this period.</td></tr>
+                  ) : printMonths.map((m, i) => (
+                    <tr key={m.key} className={`print-avoid-break ${i % 2 ? 'bg-slate-50' : ''}`}>
+                      <td className="py-1.5 px-2.5 font-bold">{m.label}</td>
+                      <td className="py-1.5 px-2.5 text-right font-mono">{ledgerMoney(m.due)}</td>
+                      <td className="py-1.5 px-2.5 text-right font-mono font-bold text-emerald-700">{ledgerMoney(m.paid)}</td>
+                      <td className={`py-1.5 px-2.5 text-right font-mono ${m.balance > 0 ? 'text-rose-600 font-bold' : ''}`}>{ledgerMoney(Math.max(0, m.balance))}</td>
+                      <td className={`py-1.5 px-2.5 text-right font-mono ${m.running > 0 ? 'text-rose-600' : ''}`}>{ledgerMoney(m.running)}</td>
+                      <td className={`py-1.5 px-2.5 font-bold ${m.status === 'Paid' ? 'text-emerald-700' : m.status === 'Partial' ? 'text-amber-600' : 'text-rose-600'}`}>{m.status}</td>
+                      <td className="py-1.5 px-2.5 font-mono text-[10px]">{m.payments.map(p => p.receiptNumber).join(', ') || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {printPayments.length > 0 && (
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">Payment Receipts</h3>
+                <table className="w-full text-[11px] border border-slate-200">
+                  <thead>
+                    <tr className="bg-slate-900 text-white text-left">
+                      <th className="py-2 px-2.5">Date Paid</th>
+                      <th className="py-2 px-2.5">Receipt #</th>
+                      <th className="py-2 px-2.5">Rent Period</th>
+                      <th className="py-2 px-2.5">Method</th>
+                      <th className="py-2 px-2.5 text-right">Amount</th>
+                      <th className="py-2 px-2.5">Received By</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {printPayments.map((p, i) => (
+                      <tr key={p.id} className={`print-avoid-break ${i % 2 ? 'bg-slate-50' : ''}`}>
+                        <td className="py-1.5 px-2.5 whitespace-nowrap">{formatLongDate(p.date)}</td>
+                        <td className="py-1.5 px-2.5 font-mono">{p.receiptNumber}</td>
+                        <td className="py-1.5 px-2.5">{p.accountingPeriod}</td>
+                        <td className="py-1.5 px-2.5">{p.paymentMethod}</td>
+                        <td className="py-1.5 px-2.5 text-right font-mono font-bold">{formatMoney(p.amount, p.currency)}</td>
+                        <td className="py-1.5 px-2.5">{p.receivedBy || BUSINESS_PROFILE.managerName}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </>
         ) : (
           <table className="w-full text-[11px] border border-slate-200">
@@ -421,7 +525,8 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
                 <th className="py-2 px-2.5 text-right">Payments</th>
                 <th className="py-2 px-2.5 text-right">Paid (USD)</th>
                 <th className="py-2 px-2.5 text-right">Paid (SSP)</th>
-                <th className="py-2 px-2.5">Last Payment</th>
+                <th className="py-2 px-2.5 text-right">Months Not Paid</th>
+                <th className="py-2 px-2.5 text-right">Balance Due</th>
               </tr>
             </thead>
             <tbody>
@@ -433,19 +538,11 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
                   <td className="py-1.5 px-2.5 text-right">{row.count}</td>
                   <td className="py-1.5 px-2.5 text-right font-mono">{formatMoney(row.paidUSD, 'USD')}</td>
                   <td className="py-1.5 px-2.5 text-right font-mono">{row.paidSSP ? formatMoney(row.paidSSP, 'SSP') : '—'}</td>
-                  <td className="py-1.5 px-2.5">{row.lastDate ? formatLongDate(row.lastDate) : '—'}</td>
+                  <td className={`py-1.5 px-2.5 text-right font-bold ${row.unpaidMonths ? 'text-rose-600' : ''}`}>{row.unpaidMonths}</td>
+                  <td className={`py-1.5 px-2.5 text-right font-mono font-bold ${row.balance > 0 ? 'text-rose-600' : ''}`}>{formatMoney(row.balance, row.currency)}</td>
                 </tr>
               ))}
             </tbody>
-            <tfoot>
-              <tr className="bg-slate-100 font-black">
-                <td colSpan={3} className="py-2 px-2.5 text-right uppercase text-[10px]">Totals</td>
-                <td className="py-2 px-2.5 text-right">{tenantOverview.reduce((s, r) => s + r.count, 0)}</td>
-                <td className="py-2 px-2.5 text-right font-mono">{formatMoney(tenantOverview.reduce((s, r) => s + r.paidUSD, 0), 'USD')}</td>
-                <td className="py-2 px-2.5 text-right font-mono">{formatMoney(tenantOverview.reduce((s, r) => s + r.paidSSP, 0), 'SSP')}</td>
-                <td />
-              </tr>
-            </tfoot>
           </table>
         )}
 
@@ -468,21 +565,10 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
     </div>
   );
 
-  const printButton = (
-    <button
-      type="button"
-      onClick={() => setIsPrinting(true)}
-      className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold shadow-sm shadow-orange-500/20 cursor-pointer"
-    >
-      <Printer className="w-3.5 h-3.5" />
-      <span>{selectedTenant ? 'Print Statement' : 'Print Summary'}</span>
-    </button>
-  );
-
   // ---------------------------------------------------------------
   // Screen: all tenants overview
   // ---------------------------------------------------------------
-  if (!selectedTenant) {
+  if (!selectedTenant || !ledger) {
     return (
       <div className="space-y-5 animate-in fade-in">
         {filters}
@@ -493,7 +579,7 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
               <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                 <Users className="w-4 h-4 text-blue-600" /> Select a Tenant
               </h4>
-              <p className="text-[11px] text-slate-500">Click any tenant to open their full payment statement.</p>
+              <p className="text-[11px] text-slate-500">Click any tenant to see paid and unpaid months, balance and receipts.</p>
             </div>
             <div className="flex items-center gap-2">
               <div className="relative">
@@ -510,7 +596,14 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
                   </button>
                 )}
               </div>
-              {printButton}
+              <button
+                type="button"
+                onClick={() => setPrintRequest({ keys: 'period' })}
+                className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold shadow-sm shadow-orange-500/20 cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Summary</span>
+              </button>
             </div>
           </div>
 
@@ -522,13 +615,15 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
                   <th className="py-3 px-4">Unit</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4 text-right">Payments</th>
-                  <th className="py-3 px-4 text-right">Paid ({periodLabel})</th>
+                  <th className="py-3 px-4 text-right">Paid</th>
+                  <th className="py-3 px-4 text-right">Months Not Paid</th>
+                  <th className="py-3 px-4 text-right">Balance Due</th>
                   <th className="py-3 px-4">Last Payment</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {tenantOverview.length === 0 ? (
-                  <tr><td colSpan={6} className="py-10 text-center text-slate-400">No tenants match your search.</td></tr>
+                  <tr><td colSpan={8} className="py-10 text-center text-slate-400">No tenants match your search.</td></tr>
                 ) : tenantOverview.map(row => (
                   <tr
                     key={row.tenant.key}
@@ -554,6 +649,18 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
                       {formatMoney(row.paidUSD, 'USD')}
                       {row.paidSSP > 0 && <div className="text-[11px]">{formatMoney(row.paidSSP, 'SSP')}</div>}
                     </td>
+                    <td className="py-3 px-4 text-right">
+                      {row.unpaidMonths > 0 ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700">
+                          {row.unpaidMonths} month{row.unpaidMonths > 1 ? 's' : ''}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-bold text-emerald-600">All paid</span>
+                      )}
+                    </td>
+                    <td className={`py-3 px-4 text-right font-bold ${row.balance > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                      {formatMoney(row.balance, row.currency)}
+                    </td>
                     <td className="py-3 px-4 text-slate-500">{row.lastDate ? formatLongDate(row.lastDate) : '—'}</td>
                   </tr>
                 ))}
@@ -562,7 +669,7 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
           </div>
         </div>
 
-        {isPrinting && <PrintPortal>{printDocument}</PrintPortal>}
+        {printRequest && <PrintPortal>{printDocument}</PrintPortal>}
       </div>
     );
   }
@@ -571,7 +678,8 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
   // Screen: single tenant statement
   // ---------------------------------------------------------------
   const contact = selectedTenant.unit?.currentTenant;
-  const maxMonthUSD = Math.max(1, ...monthlyBreakdown.map(m => m.usd));
+  const paidMonthKeys = periodMonths.filter(m => m.paid > 0).map(m => m.key);
+  const allVisibleSelected = visibleMonths.length > 0 && visibleMonths.every(m => selectedMonths.has(m.key));
 
   return (
     <div className="space-y-5 animate-in fade-in">
@@ -603,7 +711,7 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={selectedTenant.key}
             onChange={e => setSelectedKey(e.target.value)}
@@ -624,7 +732,14 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
               : <Database className="w-3.5 h-3.5 text-emerald-600" />}
             <span>{dbStatus === 'loading' ? 'Syncing…' : dbStatus === 'offline' ? 'Offline (cached)' : 'Live from database'}</span>
           </button>
-          {printButton}
+          <button
+            type="button"
+            onClick={() => setPrintRequest({ keys: 'period' })}
+            className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold shadow-sm shadow-orange-500/20 cursor-pointer"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print Statement</span>
+          </button>
         </div>
       </div>
 
@@ -634,67 +749,196 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
           <span className="text-xs font-medium text-slate-500 block">Total Paid</span>
-          <span className="text-2xl font-black text-emerald-600">{formatMoney(summary.paidUSD, 'USD')}</span>
-          {summary.paidSSP > 0 && <span className="text-xs font-bold text-emerald-600 block">{formatMoney(summary.paidSSP, 'SSP')}</span>}
-          <span className="text-[11px] text-slate-400 block mt-0.5">{periodLabel}</span>
+          <span className="text-2xl font-black text-emerald-600">{ledgerMoney(ledgerSummary.totalPaid)}</span>
+          <span className="text-[11px] text-slate-400 block mt-0.5">
+            {ledgerSummary.paidCount} month{ledgerSummary.paidCount === 1 ? '' : 's'} paid • {periodLabel}
+          </span>
         </div>
         <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
-          <span className="text-xs font-medium text-slate-500 block">Payments Made</span>
-          <span className="text-2xl font-black text-slate-900">{summary.count}</span>
+          <span className="text-xs font-medium text-slate-500 block">Months Not Paid</span>
+          <span className={`text-2xl font-black ${ledgerSummary.unpaidCount ? 'text-rose-600' : 'text-slate-900'}`}>
+            {ledgerSummary.unpaidCount}
+          </span>
           <span className="text-[11px] text-slate-400 block mt-0.5">
-            Last: {summary.lastPayment ? formatLongDate(summary.lastPayment.date) : '—'}
+            {ledgerSummary.partialCount > 0 ? `+ ${ledgerSummary.partialCount} partially paid` : 'No partial months'}
           </span>
         </div>
         <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
           <span className="text-xs font-medium text-slate-500 block">Monthly Rent</span>
-          <span className="text-2xl font-black text-blue-600">{formatMoney(selectedTenant.unit?.monthlyRateUSD || 0, 'USD')}</span>
+          <span className="text-2xl font-black text-blue-600">{ledgerMoney(ledger.monthlyRent)}</span>
           <span className="text-[11px] text-slate-400 block mt-0.5">
-            Deposit: {deposit ? formatMoney(deposit.amountUSD, 'USD') : formatMoney(selectedTenant.unit?.escrowDepositUSD || 0, 'USD')}
+            Rent due in period: {ledgerMoney(ledgerSummary.totalDue)}
           </span>
         </div>
-        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
-          <span className="text-xs font-medium text-slate-500 block">Current Balance Due</span>
-          <span className={`text-2xl font-black ${summary.arrearsUSD > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
-            {formatMoney(summary.arrearsUSD, 'USD')}
+        <div className={`rounded-2xl p-5 border shadow-2xs ${ledgerSummary.outstanding > 0 ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200/80'}`}>
+          <span className="text-xs font-medium text-slate-500 block">Balance Due</span>
+          <span className={`text-2xl font-black ${ledgerSummary.outstanding > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+            {ledgerMoney(ledgerSummary.outstanding)}
           </span>
-          <span className="text-[11px] text-slate-400 block mt-0.5">{selectedTenant.unit?.billingStatus || '—'}</span>
+          <span className="text-[11px] text-slate-400 block mt-0.5">
+            {ledgerSummary.credit > 0 ? `In credit: ${ledgerMoney(ledgerSummary.credit)}` : `As at end of ${periodMonths[periodMonths.length - 1]?.label || 'period'}`}
+          </span>
         </div>
       </div>
 
-      {/* Month-by-month for the selected year */}
-      {periodMode === 'year' && (
-        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5">
-          <h4 className="font-bold text-slate-900 text-sm mb-3">Month-by-Month Payments — {year}</h4>
-          <div className="grid grid-cols-6 lg:grid-cols-12 gap-2">
-            {monthlyBreakdown.map(m => (
+      {/* Monthly rent ledger */}
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+        <div className="p-4 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
+          <div>
+            <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+              <CalendarCheck className="w-4 h-4 text-blue-600" /> Monthly Rent Ledger
+            </h4>
+            <p className="text-[11px] text-slate-500">
+              Each month of the tenancy with rent due, amount paid and running balance. Tick months to print them.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {([
+              ['all', 'All Months'],
+              ['paid', 'Paid Months'],
+              ['owing', 'Not Paid / Partial'],
+            ] as [LedgerFilter, string][]).map(([f, label]) => (
               <button
-                key={m.label}
+                key={f}
                 type="button"
-                onClick={() => { setPeriodMode('month'); setMonth(m.idx); }}
-                className="group flex flex-col items-center gap-1 cursor-pointer"
-                title={`View ${m.label} ${year}`}
+                onClick={() => setLedgerFilter(f)}
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${
+                  ledgerFilter === f ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
               >
-                <div className="h-20 w-full bg-slate-50 rounded-lg flex items-end overflow-hidden">
-                  <div
-                    className={`w-full rounded-lg transition-all ${m.count ? 'bg-blue-600 group-hover:bg-blue-700' : 'bg-slate-200'}`}
-                    style={{ height: m.count ? `${Math.max(8, (m.usd / maxMonthUSD) * 100)}%` : '4px' }}
-                  />
-                </div>
-                <span className="text-[10px] font-bold text-slate-600">{m.label.slice(0, 3)}</span>
-                <span className={`text-[10px] font-mono ${m.count ? 'text-emerald-600 font-bold' : 'text-slate-300'}`}>
-                  {m.count ? `$${m.usd.toLocaleString()}` : 'unpaid'}
-                </span>
+                {label}
               </button>
             ))}
+            <button
+              type="button"
+              disabled={paidMonthKeys.length === 0}
+              onClick={() => setPrintRequest({ keys: paidMonthKeys })}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print Paid Months
+            </button>
+            <button
+              type="button"
+              disabled={selectedMonths.size === 0}
+              onClick={() => setPrintRequest({ keys: [...selectedMonths] })}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print Selected ({selectedMonths.size})
+            </button>
           </div>
         </div>
-      )}
+
+        {ledger.monthlyRent <= 0 && (
+          <div className="px-4 py-2.5 bg-amber-50 text-amber-800 text-[11px] font-semibold flex items-center gap-2 border-b border-amber-100">
+            <AlertTriangle className="w-3.5 h-3.5" /> No monthly rent is set for this unit, so unpaid months and balance can't be calculated.
+          </div>
+        )}
+
+        {visibleMonths.length === 0 ? (
+          <div className="p-10 text-center text-slate-400 text-xs">No rent months in this period.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-700">
+              <thead className="bg-slate-50/80 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="py-3 px-4 w-8">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={() => setSelectedMonths(prev => {
+                        const next = new Set(prev);
+                        visibleMonths.forEach(m => allVisibleSelected ? next.delete(m.key) : next.add(m.key));
+                        return next;
+                      })}
+                      className="accent-orange-500 cursor-pointer"
+                      title="Select all shown months"
+                    />
+                  </th>
+                  <th className="py-3 px-4">Rent Month</th>
+                  <th className="py-3 px-4 text-right">Rent Due</th>
+                  <th className="py-3 px-4 text-right">Paid</th>
+                  <th className="py-3 px-4 text-right">Balance</th>
+                  <th className="py-3 px-4 text-right">Running Balance</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Receipts</th>
+                  <th className="py-3 px-4 text-right">Print</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {visibleMonths.map(m => (
+                  <tr
+                    key={m.key}
+                    className={`${selectedMonths.has(m.key) ? 'bg-orange-50/60' : m.status === 'Unpaid' ? 'bg-rose-50/30' : ''} hover:bg-slate-50`}
+                  >
+                    <td className="py-3 px-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedMonths.has(m.key)}
+                        onChange={() => toggleMonth(m.key)}
+                        className="accent-orange-500 cursor-pointer"
+                      />
+                    </td>
+                    <td className="py-3 px-4">
+                      <button
+                        type="button"
+                        onClick={() => openMonth(m)}
+                        className="font-bold text-slate-900 hover:text-blue-600 cursor-pointer"
+                        title="Show only this month"
+                      >
+                        {m.label}
+                      </button>
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono">{ledgerMoney(m.due)}</td>
+                    <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">{ledgerMoney(m.paid)}</td>
+                    <td className={`py-3 px-4 text-right font-mono ${m.balance > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>
+                      {ledgerMoney(Math.max(0, m.balance))}
+                    </td>
+                    <td className={`py-3 px-4 text-right font-mono font-semibold ${m.running > 0 ? 'text-rose-600' : m.running < 0 ? 'text-blue-600' : 'text-slate-400'}`}>
+                      {m.running < 0 ? `${ledgerMoney(-m.running)} CR` : ledgerMoney(m.running)}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${STATUS_STYLES[m.status]}`}>
+                        {m.status === 'Unpaid' ? 'Not Paid' : m.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex flex-wrap gap-1">
+                        {m.payments.length === 0 ? <span className="text-slate-300">—</span> : m.payments.map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => onSelectReceiptForPrint?.(p)}
+                            className="font-mono text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
+                            title="Open and print this receipt"
+                          >
+                            {p.receiptNumber}
+                          </button>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setPrintRequest({ keys: [m.key] })}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold cursor-pointer"
+                        title={`Print statement for ${m.label}`}
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* Payment history */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
           <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-            <Receipt className="w-4 h-4 text-blue-600" /> Payment History
+            <Receipt className="w-4 h-4 text-blue-600" /> Payment Receipts
             <span className="text-xs text-slate-400 font-semibold">({statementPayments.length})</span>
           </h4>
           <div className="relative">
@@ -719,12 +963,11 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
             <table className="w-full text-left text-xs text-slate-700">
               <thead className="bg-slate-50/80 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-4">Date</th>
+                  <th className="py-3 px-4">Date Paid</th>
                   <th className="py-3 px-4">Receipt #</th>
                   <th className="py-3 px-4">Rent Period</th>
                   <th className="py-3 px-4">Method</th>
                   <th className="py-3 px-4 text-right">Amount</th>
-                  <th className="py-3 px-4 text-right">Balance</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4 text-right">Receipt</th>
                 </tr>
@@ -737,9 +980,6 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
                     <td className="py-3 px-4">{p.accountingPeriod}</td>
                     <td className="py-3 px-4 text-slate-600">{p.paymentMethod}</td>
                     <td className="py-3 px-4 text-right font-bold text-emerald-600 whitespace-nowrap">{formatMoney(p.amount, p.currency)}</td>
-                    <td className={`py-3 px-4 text-right font-semibold whitespace-nowrap ${p.remainingBalance > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
-                      {formatMoney(Math.max(0, p.remainingBalance), p.currency)}
-                    </td>
                     <td className="py-3 px-4">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                         p.status === 'Paid' ? 'bg-emerald-50 text-emerald-700'
@@ -766,7 +1006,7 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
         )}
       </div>
 
-      {isPrinting && <PrintPortal>{printDocument}</PrintPortal>}
+      {printRequest && <PrintPortal>{printDocument}</PrintPortal>}
     </div>
   );
 };
