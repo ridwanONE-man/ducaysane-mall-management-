@@ -21,7 +21,6 @@ import {
   DoorOpen,
   DollarSign,
   Loader2,
-  RefreshCw,
   Database,
   Check,
   AlertCircle,
@@ -74,9 +73,6 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
   const [modEmail, setModEmail] = useState('');
   const [modCode, setModCode] = useState('');
   const [modMonthlyUSD, setModMonthlyUSD] = useState('');
-  const [modMonthlySSP, setModMonthlySSP] = useState('');
-  const [modDepositUSD, setModDepositUSD] = useState('');
-  const [modDepositSSP, setModDepositSSP] = useState('');
   const [modLeaseStart, setModLeaseStart] = useState('');
   const [modLeaseEnd, setModLeaseEnd] = useState('');
   const [modBillingStatus, setModBillingStatus] = useState<BillingStatus>('Paid');
@@ -257,9 +253,6 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
     setModEmail(tenant.email || '');
     setModCode(tenant.code || '');
     setModMonthlyUSD(String(unit.monthlyRateUSD || 0));
-    setModMonthlySSP(String(unit.monthlyRateSSP || (unit.monthlyRateUSD ? unit.monthlyRateUSD * 1300 : 0)));
-    setModDepositUSD(String(unit.escrowDepositUSD || unit.monthlyRateUSD || 0));
-    setModDepositSSP(String(unit.escrowDepositSSP || (unit.monthlyRateSSP || (unit.monthlyRateUSD ? unit.monthlyRateUSD * 1300 : 0))));
     setModLeaseStart(unit.leaseStart || tenant.leaseStart || '2026-09-01');
     setModLeaseEnd(unit.leaseEnd || tenant.leaseEnd || '2026-10-01');
     setModBillingStatus(unit.billingStatus || 'Paid');
@@ -288,9 +281,11 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
     }
 
     const monthlyUSD = parseFloat(modMonthlyUSD) || 0;
-    const monthlySSP = parseFloat(modMonthlySSP) || 0;
-    const depositUSD = parseFloat(modDepositUSD) || 0;
-    const depositSSP = parseFloat(modDepositSSP) || 0;
+    // SSP rent and security deposits aren't edited here; keep the unit's current values.
+    const { unit: currentUnit } = modifyingTarget;
+    const monthlySSP = currentUnit.monthlyRateSSP || 0;
+    const depositUSD = currentUnit.escrowDepositUSD || 0;
+    const depositSSP = currentUnit.escrowDepositSSP || 0;
 
     setIsModSaving(true);
     setModError(null);
@@ -1070,29 +1065,9 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
 
                 {/* Section 2: Monthly Rent & Security Deposit */}
                 <div className="space-y-3 pb-4 border-b border-slate-100">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                      Lease Rates & Security Deposit
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const usd = parseFloat(modMonthlyUSD) || 0;
-                        if (usd > 0) {
-                          setModMonthlySSP(String(Math.round(usd * 1300)));
-                        }
-                        const depUSD = parseFloat(modDepositUSD) || 0;
-                        if (depUSD > 0) {
-                          setModDepositSSP(String(Math.round(depUSD * 1300)));
-                        }
-                      }}
-                      className="text-[10px] text-amber-700 hover:text-amber-800 font-bold flex items-center gap-1 cursor-pointer bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200/50"
-                      title="Calculate SSP at rate 1 USD = 1,300 SSP"
-                    >
-                      <RefreshCw className="w-3 h-3" />
-                      <span>Sync SSP @ 1,300 Rate</span>
-                    </button>
-                  </div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                    Lease Rate
+                  </span>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
@@ -1108,45 +1083,6 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                           className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white font-semibold"
                         />
                       </div>
-                    </div>
-
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Monthly Rent (SSP)</label>
-                      <input
-                        type="number"
-                        step="any"
-                        value={modMonthlySSP}
-                        onChange={(e) => setModMonthlySSP(e.target.value)}
-                        placeholder="780000"
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white font-semibold"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Security Deposit (USD $)</label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
-                        <input
-                          type="number"
-                          step="any"
-                          value={modDepositUSD}
-                          onChange={(e) => setModDepositUSD(e.target.value)}
-                          placeholder="600"
-                          className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Security Deposit (SSP)</label>
-                      <input
-                        type="number"
-                        step="any"
-                        value={modDepositSSP}
-                        onChange={(e) => setModDepositSSP(e.target.value)}
-                        placeholder="780000"
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white"
-                      />
                     </div>
                   </div>
                 </div>
