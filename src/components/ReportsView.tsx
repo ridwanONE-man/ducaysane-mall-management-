@@ -15,24 +15,28 @@ import {
   ShieldCheck,
   Store,
   DollarSign,
-  PieChart
+  PieChart,
+  Users
 } from 'lucide-react';
 import { PropertyUnit, PaymentRecord, DepositRecord } from '../types';
+import { TenantStatementReport } from './TenantStatementReport';
 
 interface ReportsViewProps {
   units: PropertyUnit[];
   payments: PaymentRecord[];
   deposits?: DepositRecord[];
+  onSelectReceiptForPrint?: (payment: PaymentRecord) => void;
 }
 
-type ReportTab = 'revenue' | 'spatial' | 'arrears' | 'deposits' | 'expirations';
+type ReportTab = 'tenants' | 'revenue' | 'spatial' | 'arrears' | 'deposits' | 'expirations';
 
 export const ReportsView: React.FC<ReportsViewProps> = ({ 
   units, 
   payments, 
-  deposits = [] 
+  deposits = [],
+  onSelectReceiptForPrint
 }) => {
-  const [activeReportTab, setActiveReportTab] = useState<ReportTab>('revenue');
+  const [activeReportTab, setActiveReportTab] = useState<ReportTab>('tenants');
   const [revenuePeriodFilter, setRevenuePeriodFilter] = useState<'6months' | 'year' | 'all'>('6months');
   const [hoveredChartMonth, setHoveredChartMonth] = useState<number | null>(null);
 
@@ -211,7 +215,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className={`flex items-center gap-2.5 ${activeReportTab === 'tenants' ? 'hidden' : ''}`}>
           <button
             type="button"
             onClick={handlePrint}
@@ -235,6 +239,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       {/* Report Module Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
         {[
+          { id: 'tenants' as const, label: 'Tenant Statements', icon: Users },
           { id: 'revenue' as const, label: 'Revenue & Monthly Trends', icon: TrendingUp },
           { id: 'spatial' as const, label: 'Spatial Yield & Floor Area', icon: Layers },
           { id: 'arrears' as const, label: 'Arrears & Delinquency Aging', icon: AlertTriangle, count: unitsInArrears.length },
@@ -268,6 +273,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           );
         })}
       </div>
+
+      {/* TAB 0: PER-TENANT PAYMENT STATEMENTS */}
+      {activeReportTab === 'tenants' && (
+        <TenantStatementReport
+          units={units}
+          payments={payments}
+          deposits={deposits}
+          onSelectReceiptForPrint={onSelectReceiptForPrint}
+        />
+      )}
 
       {/* TAB 1: REVENUE & MONTHLY TRENDS */}
       {activeReportTab === 'revenue' && (

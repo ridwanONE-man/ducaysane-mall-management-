@@ -606,6 +606,29 @@ export async function getPaymentsFromSupabase(): Promise<PaymentRecord[]> {
   }
 }
 
+// Fetches the latest payment history for one tenant straight from the database
+// (case-insensitive name match; callers narrow it down to the unit).
+// Returns null when the database can't be reached so callers can fall back to cached data.
+export async function getTenantPaymentsFromSupabase(tenantName: string): Promise<PaymentRecord[] | null> {
+  try {
+    const escapedName = tenantName.trim().replace(/[\\%_]/g, ch => `\\${ch}`);
+    const { data, error } = await supabase
+      .from('payments')
+      .select('*')
+      .ilike('tenant_name', escapedName)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Could not load tenant payments from Supabase:', error.message);
+      return null;
+    }
+    return (data || []).map(mapRowToPayment);
+  } catch (err) {
+    console.warn('Network error loading tenant payments from Supabase:', err);
+    return null;
+  }
+}
+
 export async function savePaymentToSupabase(payment: PaymentRecord): Promise<boolean> {
   try {
     const row = mapPaymentToRow(payment);

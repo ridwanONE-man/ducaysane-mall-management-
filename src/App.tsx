@@ -797,6 +797,8 @@ export default function App() {
             <ReportsView
               units={units}
               payments={payments}
+              deposits={deposits}
+              onSelectReceiptForPrint={(p) => setSelectedReceiptForPrint(p)}
             />
           )}
 

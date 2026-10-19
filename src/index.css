@@ -1,1 +1,39 @@
 @import "tailwindcss";
+
+/* Print-only documents (receipts, tenant statements) rendered via PrintPortal */
+.print-portal {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  body.print-portal-active > *:not(.print-portal) {
+    display: none !important;
+  }
+
+  body.print-portal-active {
+    background: #fff !important;
+  }
+
+  body.print-portal-active .print-portal {
+    display: block;
+  }
+
+  .print-portal,
+  .print-portal * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-avoid-break {
+    break-inside: avoid;
+  }
+
+  .print-portal + .print-portal {
+    break-before: page;
+  }
+}
