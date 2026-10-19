@@ -182,7 +182,10 @@ export function mapPaymentToRow(payment: PaymentRecord) {
   return {
     id: payment.id,
     receipt_number: payment.receiptNumber || `#RCP-${Date.now()}`,
-    unit_id: payment.tenantId || null,
+    // Left empty on purpose: payments.unit_id is a foreign key to units, so linking it would
+    // reject payments whose unit isn't in the table and could remove payment history when
+    // a unit is deleted. The unit is recorded by unit_number instead.
+    unit_id: null,
     unit_number: payment.unitNumber || 'Unit G-001',
     tenant_name: payment.tenantName || 'Commercial Tenant',
     tenant_id: payment.tenantId || null,

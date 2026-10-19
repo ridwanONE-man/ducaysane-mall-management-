@@ -29,7 +29,7 @@ import {
   CommercialNotification
 } from './types';
 
-import { initialCommercialNotifications } from './data/commercialData';
+import { initialCommercialNotifications, initialPayments } from './data/commercialData';
 
 import { 
   getUnitsFromSupabase, 
@@ -45,7 +45,8 @@ import {
   ModifyTenantPricingPayload,
   VacateUnitPayload,
   getPaymentsFromSupabase, 
-  savePaymentToSupabase, 
+  savePaymentToSupabase,
+  savePaymentsBulkToSupabase, 
   getDepositsFromSupabase,
   saveDepositToSupabase,
   getCashflowFromSupabase,
@@ -74,6 +75,27 @@ function writeCache(key: string, value: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {}
+}
+
+// Before this fix every payment save was rejected by the database, so recorded payments
+// only lived in each browser's cache. Upload them once so that history isn't lost.
+const PAYMENTS_RECOVERED_FLAG = 'nbc_payments_recovered_v1';
+const SAMPLE_PAYMENT_IDS = new Set(initialPayments.map(p => p.id));
+
+async function recoverUnsyncedPayments(dbPayments: PaymentRecord[]): Promise<PaymentRecord[]> {
+  try {
+    if (localStorage.getItem(PAYMENTS_RECOVERED_FLAG) === 'true') return [];
+  } catch {
+    return [];
+  }
+  const cached = readCache<PaymentRecord[]>('nbc_payments', []);
+  const dbIds = new Set(dbPayments.map(p => p.id));
+  const missing = cached.filter(p => p && p.id && !dbIds.has(p.id) && !SAMPLE_PAYMENT_IDS.has(p.id));
+  if (missing.length && !(await savePaymentsBulkToSupabase(missing))) return []; // retry next load
+  try {
+    localStorage.setItem(PAYMENTS_RECOVERED_FLAG, 'true');
+  } catch {}
+  return missing;
 }
 
 const DB_DELETE_FAILED = 'The database refused the delete, so it was restored. Check your connection or database permissions.';
@@ -202,8 +224,10 @@ export default function App() {
         getCashflowFromSupabase(),
       ]);
       if (!isMounted) return;
+      const recovered = dbPayments ? await recoverUnsyncedPayments(dbPayments) : [];
+      if (!isMounted) return;
       if (dbUnits) setUnits(dbUnits);
-      if (dbPayments) setPayments(dbPayments);
+      if (dbPayments) setPayments([...recovered, ...dbPayments]);
       if (dbDeposits) setDeposits(dbDeposits);
       if (dbCashflow) setCashflow(dbCashflow);
     }
@@ -336,7 +360,10 @@ export default function App() {
     }));
 
     // 3. Persist payment & unit in Supabase
-    await savePaymentToSupabase(newPayment);
+    const paymentSaved = await savePaymentToSupabase(newPayment);
+    if (!paymentSaved) {
+      showToast(`Payment ${newPayment.receiptNumber} could not be saved to the database. Check your connection and record it again.`);
+    }
     if (updatedUnitRow) {
       await saveUnitToSupabase(updatedUnitRow);
     }
@@ -373,7 +400,9 @@ export default function App() {
 
     // Open receipt modal for preview/printing
     setSelectedReceiptForPrint(newPayment);
-    showToast(`Payment ${newPayment.receiptNumber} recorded and synced in real time.`);
+    if (paymentSaved) {
+      showToast(`Payment ${newPayment.receiptNumber} recorded and synced in real time.`);
+    }
   };
 
   // Add / Edit Unit Handler
