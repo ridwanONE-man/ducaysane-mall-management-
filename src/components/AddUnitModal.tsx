@@ -72,7 +72,6 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
   const [sizeSqM, setSizeSqM] = useState<string>('30');
   const [meterNumber, setMeterNumber] = useState('');
   const [monthlyRent, setMonthlyRent] = useState<string>('500');
-  const [depositMonths, setDepositMonths] = useState<number>(1);
   const [status, setStatus] = useState<OccupancyStatus>('Available');
 
   // Tenant Fields
@@ -108,7 +107,6 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       setSizeSqM(editingUnit.sizeSqM ? String(editingUnit.sizeSqM) : '30');
       setMeterNumber(editingUnit.meterNumber || '');
       setMonthlyRent(String(editingUnit.monthlyRateUSD || 500));
-      setDepositMonths(editingUnit.depositMonths || (editingUnit.escrowDepositUSD && editingUnit.monthlyRateUSD ? Math.max(1, Math.round(editingUnit.escrowDepositUSD / editingUnit.monthlyRateUSD)) : 1));
 
       setStatus(editingUnit.occupancyStatus || 'Available');
       setTenantName(editingUnit.currentTenant?.name || '');
@@ -127,7 +125,6 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       setSizeSqM('30');
       setMeterNumber('');
       setMonthlyRent('500');
-      setDepositMonths(1);
       setStatus('Available');
       setTenantName('');
       setTenantPhone('');
@@ -176,7 +173,9 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
     const numSize = parseFloat(sizeSqM) || 30;
     const numRent = parseFloat(monthlyRent) || 0;
     const rateUSD = numRent;
-    const numDeposit = rateUSD * Math.max(1, Number(depositMonths) || 1);
+    // Security deposits are recorded on the Deposits page; keep any existing deposit when editing.
+    const numDeposit = editingUnit?.escrowDepositUSD || 0;
+    const existingDepositMonths = editingUnit?.depositMonths;
 
     // Entering a tenant name leases the unit; leaving it empty keeps the unit vacant.
     const hasTenant = tenantName.trim().length > 0;
@@ -191,7 +190,7 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       balanceUSD: editingUnit?.arrearsUSD || 0,
       balanceSSP: 0,
       depositUSD: numDeposit,
-      depositMonths: Math.max(1, Number(depositMonths) || 1),
+      depositMonths: existingDepositMonths,
       balanceStatus: (editingUnit?.arrearsUSD || 0) > 0 ? ('Overdue' as const) : ('Current' as const),
       status: 'Active' as const,
       leaseStart,
@@ -213,8 +212,8 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       monthlyRateUSD: rateUSD,
       monthlyRateSSP: 0,
       escrowDepositUSD: numDeposit,
-      escrowDepositSSP: 0,
-      depositMonths: Math.max(1, Number(depositMonths) || 1),
+      escrowDepositSSP: editingUnit?.escrowDepositSSP || 0,
+      depositMonths: existingDepositMonths,
       occupancyStatus: hasTenant ? 'Occupied' : (status === 'Occupied' ? 'Available' : status),
       billingStatus: hasTenant ? (editingUnit?.billingStatus || 'Paid') : 'No Balance',
       billingMonthText: hasTenant ? (editingUnit?.billingMonthText || 'Paid • Sept 2026') : undefined,
@@ -370,8 +369,8 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
             </div>
           </div>
 
-          {/* Monthly Rent & Security Deposit Months */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Monthly Rent */}
+          <div>
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 Monthly Rent (USD $)
@@ -388,19 +387,6 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
                   className="w-full pl-8 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white"
                 />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Security Deposit</label>
-              <select
-                value={depositMonths}
-                onChange={(e) => setDepositMonths(Number(e.target.value))}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white"
-              >
-                <option value={1}>1 Month Deposit (${(parseFloat(monthlyRent) || 0) * 1})</option>
-                <option value={2}>2 Months Deposit (${(parseFloat(monthlyRent) || 0) * 2})</option>
-                <option value={3}>3 Months Deposit (${(parseFloat(monthlyRent) || 0) * 3})</option>
-              </select>
             </div>
           </div>
 
