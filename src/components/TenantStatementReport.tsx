@@ -15,7 +15,6 @@ import {
   X,
   CalendarCheck,
   AlertTriangle,
-  Trash2,
 } from 'lucide-react';
 import { PropertyUnit, PaymentRecord, DepositRecord } from '../types';
 import { getTenantPaymentsFromSupabase } from '../lib/supabaseService';
@@ -39,6 +38,7 @@ import {
 import { BUSINESS_PROFILE } from '../data/businessProfile';
 import { Letterhead } from './ReceiptDocument';
 import { PrintPortal } from './PrintPortal';
+import { DeleteButton } from './DeleteControls';
 
 interface TenantStatementReportProps {
   units: PropertyUnit[];
@@ -1001,19 +1001,19 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
                         <Printer className="w-3.5 h-3.5" /> Print
                       </button>
                       {onDeletePayment && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm(`Delete payment ${p.receiptNumber}? This cannot be undone.`)) {
-                              onDeletePayment(p);
-                              setDbPayments(prev => prev && prev.filter(x => x.id !== p.id));
-                            }
-                          }}
-                          className="ml-1.5 p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer align-middle"
+                        <DeleteButton
+                          className="ml-1"
                           title="Delete payment"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          onDelete={() => {
+                            onDeletePayment(p);
+                            setDbPayments(prev => prev && prev.filter(x => x.id !== p.id));
+                          }}
+                          confirm={{
+                            title: 'Delete this payment?',
+                            subject: `${p.receiptNumber} • ${formatMoney(p.amount, p.currency)}`,
+                            message: "It is removed from this tenant's statement and from the database. This cannot be undone.",
+                          }}
+                        />
                       )}
                     </td>
                   </tr>

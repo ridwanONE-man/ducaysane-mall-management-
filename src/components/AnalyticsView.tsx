@@ -15,10 +15,10 @@ import {
   ShieldCheck,
   Store,
   DollarSign,
-  PieChart,
-  Trash2
+  PieChart
 } from 'lucide-react';
 import { PropertyUnit, PaymentRecord, DepositRecord } from '../types';
+import { DeleteButton, ClearAllButton } from './DeleteControls';
 
 interface AnalyticsViewProps {
   units: PropertyUnit[];
@@ -427,16 +427,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               <div className="flex items-center gap-3">
                 <span className="text-xs text-slate-400 font-semibold">{payments.length} transactions cleared</span>
                 {onClearAllPayments && (
-                  <button
-                    type="button"
-                    disabled={payments.length === 0}
-                    onClick={() => {
-                      if (window.confirm(`Delete ALL ${payments.length} payment records? This cannot be undone.`)) onClearAllPayments();
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 text-[11px] font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Clear All
-                  </button>
+                  <ClearAllButton size="sm" count={payments.length} itemLabel="payments" onClear={onClearAllPayments} />
                 )}
               </div>
             </div>
@@ -467,16 +458,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                       <td className="py-3 px-4 text-slate-600">{p.paymentMethod}</td>
                       {onDeletePayment && (
                         <td className="py-3 px-4 text-right">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm(`Delete payment ${p.receiptNumber}? This cannot be undone.`)) onDeletePayment(p);
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <DeleteButton
+                            title="Delete payment"
+                            onDelete={() => onDeletePayment(p)}
+                            confirm={{ title: 'Delete this payment?', subject: `${p.receiptNumber} • ${p.tenantName}` }}
+                          />
                         </td>
                       )}
                     </tr>
@@ -682,16 +668,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               <div className="flex items-center gap-3">
                 <span className="text-xs text-slate-400 font-semibold">{deposits.length} escrow vouchers</span>
                 {onClearAllDeposits && (
-                  <button
-                    type="button"
-                    disabled={deposits.length === 0}
-                    onClick={() => {
-                      if (window.confirm(`Delete ALL ${deposits.length} deposit records? This cannot be undone.`)) onClearAllDeposits();
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 text-[11px] font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Clear All
-                  </button>
+                  <ClearAllButton size="sm" count={deposits.length} itemLabel="deposits" onClear={onClearAllDeposits} />
                 )}
               </div>
             </div>
@@ -732,16 +709,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                       </td>
                       {onDeleteDeposit && (
                         <td className="py-3 px-4 text-right">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm(`Delete deposit ${d.depositSlip || d.id}? This cannot be undone.`)) onDeleteDeposit(d);
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <DeleteButton
+                            title="Delete deposit"
+                            onDelete={() => onDeleteDeposit(d)}
+                            confirm={{ title: 'Delete this deposit?', subject: `${d.depositSlip || d.id} • ${d.tenantName}` }}
+                          />
                         </td>
                       )}
                     </tr>

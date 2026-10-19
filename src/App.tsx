@@ -16,6 +16,7 @@ import { RecordPaymentModal } from './components/RecordPaymentModal';
 import { ReceiptPrintModal } from './components/ReceiptPrintModal';
 import { AddUnitModal } from './components/AddUnitModal';
 import { FloorMapView } from './components/FloorMapView';
+import { NotificationsView } from './components/NotificationsView';
 
 import { 
   AdminUser, 
@@ -28,13 +29,7 @@ import {
   CommercialNotification
 } from './types';
 
-import { 
-  initialUnits, 
-  initialPayments, 
-  initialDeposits,
-  initialCashflowTransactions,
-  initialCommercialNotifications 
-} from './data/commercialData';
+import { initialCommercialNotifications } from './data/commercialData';
 
 import { 
   getUnitsFromSupabase, 
@@ -50,13 +45,10 @@ import {
   VacateUnitPayload,
   getPaymentsFromSupabase, 
   savePaymentToSupabase, 
-  savePaymentsBulkToSupabase,
   getDepositsFromSupabase,
   saveDepositToSupabase,
-  saveDepositsBulkToSupabase,
   getCashflowFromSupabase,
   saveCashflowToSupabase,
-  saveCashflowsBulkToSupabase,
   deletePaymentFromSupabase,
   deleteDepositFromSupabase,
   deleteCashflowFromSupabase,
@@ -66,27 +58,24 @@ import {
   RealtimeStatus
 } from './lib/supabaseService';
 
-// Set once the admin deletes records from a table, so the sample data isn't re-seeded into it.
-const CLEARED_FLAGS = {
-  units: 'nbc_units_cleared',
-  payments: 'nbc_payments_cleared',
-  deposits: 'nbc_deposits_cleared',
-  cashflow: 'nbc_cashflow_cleared',
-} as const;
-
-const markCleared = (table: keyof typeof CLEARED_FLAGS) => {
+// Last data seen from the database, shown instantly on load until fresh data arrives.
+// The database is the source of truth: the app never writes sample data into it.
+function readCache<T>(key: string, fallback: T): T {
   try {
-    localStorage.setItem(CLEARED_FLAGS[table], 'true');
-  } catch {}
-};
-
-const wasCleared = (table: keyof typeof CLEARED_FLAGS) => {
-  try {
-    return localStorage.getItem(CLEARED_FLAGS[table]) === 'true';
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : fallback;
   } catch {
-    return false;
+    return fallback;
   }
-};
+}
+
+function writeCache(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
+const DB_DELETE_FAILED = 'The database refused the delete, so it was restored. Check your connection or database permissions.';
 
 // Cashflow entry created automatically when a payment was recorded.
 const isCashflowForPayment = (tx: CashflowTransaction, payment: PaymentRecord) =>
@@ -151,44 +140,14 @@ export default function App() {
     } catch {}
   }, [activeTab]);
 
-  // Core Data States (initialized with defaults, then hydrated from Supabase)
-  const [units, setUnits] = useState<PropertyUnit[]>(() => {
-    try {
-      const saved = localStorage.getItem('nbc_units');
-      return saved ? JSON.parse(saved) : initialUnits;
-    } catch {
-      return initialUnits;
-    }
-  });
-
-  const [payments, setPayments] = useState<PaymentRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem('nbc_payments');
-      return saved ? JSON.parse(saved) : initialPayments;
-    } catch {
-      return initialPayments;
-    }
-  });
-
-  const [deposits, setDeposits] = useState<DepositRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem('nbc_deposits');
-      return saved ? JSON.parse(saved) : initialDeposits;
-    } catch {
-      return initialDeposits;
-    }
-  });
-
-  const [cashflow, setCashflow] = useState<CashflowTransaction[]>(() => {
-    try {
-      const saved = localStorage.getItem('nbc_cashflow');
-      return saved ? JSON.parse(saved) : initialCashflowTransactions;
-    } catch {
-      return initialCashflowTransactions;
-    }
-  });
-
-  const [notifications, setNotifications] = useState<CommercialNotification[]>(initialCommercialNotifications);
+  // Core Data States (cached copy first, then loaded from Supabase)
+  const [units, setUnits] = useState<PropertyUnit[]>(() => readCache('nbc_units', []));
+  const [payments, setPayments] = useState<PaymentRecord[]>(() => readCache('nbc_payments', []));
+  const [deposits, setDeposits] = useState<DepositRecord[]>(() => readCache('nbc_deposits', []));
+  const [cashflow, setCashflow] = useState<CashflowTransaction[]>(() => readCache('nbc_cashflow', []));
+  const [notifications, setNotifications] = useState<CommercialNotification[]>(
+    () => readCache('nbc_notifications', initialCommercialNotifications)
+  );
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeBuilding] = useState('Nyakuron Business Centre');
@@ -200,29 +159,11 @@ export default function App() {
   const [editingUnit, setEditingUnit] = useState<PropertyUnit | null>(null);
 
   // Persistence to localStorage for offline cache
-  useEffect(() => {
-    try {
-      localStorage.setItem('nbc_units', JSON.stringify(units));
-    } catch (e) {}
-  }, [units]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('nbc_payments', JSON.stringify(payments));
-    } catch (e) {}
-  }, [payments]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('nbc_deposits', JSON.stringify(deposits));
-    } catch (e) {}
-  }, [deposits]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('nbc_cashflow', JSON.stringify(cashflow));
-    } catch (e) {}
-  }, [cashflow]);
+  useEffect(() => writeCache('nbc_units', units), [units]);
+  useEffect(() => writeCache('nbc_payments', payments), [payments]);
+  useEffect(() => writeCache('nbc_deposits', deposits), [deposits]);
+  useEffect(() => writeCache('nbc_cashflow', cashflow), [cashflow]);
+  useEffect(() => writeCache('nbc_notifications', notifications), [notifications]);
 
   // Modal States
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -244,66 +185,49 @@ export default function App() {
   // ==========================================
   useEffect(() => {
     let isMounted = true;
+    let lastRefresh = 0;
 
-    async function hydrateAndSync() {
-      try {
-        setRealtimeStatus('connecting');
+    // Replace local data with what is in the database. A table that fails to load
+    // keeps its current data instead of being wiped.
+    async function refreshFromDatabase() {
+      const now = Date.now();
+      if (now - lastRefresh < 3000) return;
+      lastRefresh = now;
 
-        const [dbUnits, dbPayments, dbDeposits, dbCashflow] = await Promise.all([
-          getUnitsFromSupabase(),
-          getPaymentsFromSupabase(),
-          getDepositsFromSupabase(),
-          getCashflowFromSupabase(),
-        ]);
-
-        if (!isMounted) return;
-
-        // 1. Units Hydration / Seeding (avoid re-seeding if user intentionally cleared units)
-        if (dbUnits.length === 0 && !wasCleared('units')) {
-          console.log('Supabase units table empty. Auto-seeding initial inventory...');
-          await saveUnitsBulkToSupabase(initialUnits);
-          setUnits(initialUnits);
-        } else {
-          setUnits(dbUnits);
-        }
-
-        // 2. Payments Hydration / Seeding
-        if (dbPayments.length === 0 && !wasCleared('payments')) {
-          console.log('Supabase payments table empty. Auto-seeding initial ledger...');
-          await savePaymentsBulkToSupabase(initialPayments);
-          setPayments(initialPayments);
-        } else {
-          setPayments(dbPayments);
-        }
-
-        // 3. Deposits Hydration / Seeding
-        if (dbDeposits.length === 0 && !wasCleared('deposits')) {
-          console.log('Supabase deposits table empty. Auto-seeding initial escrow...');
-          await saveDepositsBulkToSupabase(initialDeposits);
-          setDeposits(initialDeposits);
-        } else {
-          setDeposits(dbDeposits);
-        }
-
-        // 4. Cashflow Hydration / Seeding
-        if (dbCashflow.length === 0 && !wasCleared('cashflow')) {
-          console.log('Supabase cashflow table empty. Auto-seeding initial cashflow...');
-          await saveCashflowsBulkToSupabase(initialCashflowTransactions);
-          setCashflow(initialCashflowTransactions);
-        } else {
-          setCashflow(dbCashflow);
-        }
-      } catch (err) {
-        console.warn('Supabase initial fetch failed:', err);
-      }
+      const [dbUnits, dbPayments, dbDeposits, dbCashflow] = await Promise.all([
+        getUnitsFromSupabase(),
+        getPaymentsFromSupabase(),
+        getDepositsFromSupabase(),
+        getCashflowFromSupabase(),
+      ]);
+      if (!isMounted) return;
+      if (dbUnits) setUnits(dbUnits);
+      if (dbPayments) setPayments(dbPayments);
+      if (dbDeposits) setDeposits(dbDeposits);
+      if (dbCashflow) setCashflow(dbCashflow);
     }
 
-    hydrateAndSync();
+    setRealtimeStatus('connecting');
+    refreshFromDatabase();
+
+    // Changes made while this tab was hidden or offline may have been missed by
+    // realtime; reload so stale records (e.g. ones deleted elsewhere) disappear.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshFromDatabase();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', refreshFromDatabase);
+    let wasConnected = false;
 
     // Subscribe to multi-user changes across all tables
     const unsubscribe = subscribeToRealtimeChanges({
       onStatusChange: (status) => {
-        if (isMounted) setRealtimeStatus(status);
+        if (!isMounted) return;
+        setRealtimeStatus(status);
+        if (status === 'connected') {
+          if (wasConnected) refreshFromDatabase();
+          wasConnected = true;
+        }
       },
       onUnitChange: (event, unit, oldId) => {
         if (!isMounted) return;
@@ -365,6 +289,8 @@ export default function App() {
 
     return () => {
       isMounted = false;
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', refreshFromDatabase);
       unsubscribe();
     };
   }, []);
@@ -380,7 +306,6 @@ export default function App() {
       localStorage.clear();
       localStorage.setItem('nbc_cache_v1_purged', 'true');
     } catch (e) {}
-    (Object.keys(CLEARED_FLAGS) as (keyof typeof CLEARED_FLAGS)[]).forEach(markCleared);
     await clearAllSupabaseData();
     showToast('All system records and cache cleared across Supabase and local store.');
   };
@@ -452,9 +377,6 @@ export default function App() {
 
   // Add / Edit Unit Handler
   const handleSaveUnit = async (unitToSave: PropertyUnit) => {
-    try {
-      localStorage.removeItem('nbc_units_cleared');
-    } catch {}
     const isExisting = units.some(u => u.id === unitToSave.id);
     const tenantName = unitToSave.currentTenant?.name;
     if (isExisting) {
@@ -476,12 +398,36 @@ export default function App() {
     }
   };
 
+  // Reload everything from the database, e.g. after a delete the database refused,
+  // so the screen never shows a record as deleted when it still exists.
+  const restoreFromDatabase = async () => {
+    const [dbUnits, dbPayments, dbDeposits, dbCashflow] = await Promise.all([
+      getUnitsFromSupabase(),
+      getPaymentsFromSupabase(),
+      getDepositsFromSupabase(),
+      getCashflowFromSupabase(),
+    ]);
+    if (dbUnits) setUnits(dbUnits);
+    if (dbPayments) setPayments(dbPayments);
+    if (dbDeposits) setDeposits(dbDeposits);
+    if (dbCashflow) setCashflow(dbCashflow);
+  };
+
+  const reportDeleteResult = async (ok: boolean, successMessage: string) => {
+    if (ok) {
+      showToast(successMessage);
+    } else {
+      showToast(DB_DELETE_FAILED);
+      await restoreFromDatabase();
+    }
+  };
+
   // Delete Unit Handler
   const handleDeleteUnit = async (unitId: string) => {
     const found = units.find(u => u.id === unitId);
     setUnits(prev => prev.filter(u => u.id !== unitId));
-    showToast(`Unit ${found?.unitNumber || ''} and connected tenant removed from system.`);
-    await deleteUnitFromSupabase(unitId);
+    const ok = await deleteUnitFromSupabase(unitId);
+    await reportDeleteResult(ok, `Unit ${found?.unitNumber || ''} and connected tenant deleted.`);
   };
 
   // Delete Tenant from Unit Handler (removes tenant from unit & deletes from Tenants page)
@@ -506,52 +452,52 @@ export default function App() {
 
     setUnits(prev => prev.map(u => u.id === unitId ? clearedUnit : u));
 
-    // Commercial notification
-    const notif: CommercialNotification = {
-      id: `notif-${Date.now()}`,
-      title: `Tenant Deleted: ${tenantName} (${targetUnit.unitNumber})`,
-      description: `Tenant ${tenantName} was removed from unit ${targetUnit.unitNumber} and deleted from the Tenants directory.`,
-      timestamp: 'Just now',
-      type: 'lease',
-      read: false,
-      priority: 'high'
-    };
-    setNotifications(prev => [notif, ...prev]);
-    showToast(`Tenant "${tenantName}" deleted from ${targetUnit.unitNumber} and removed from Tenants page.`);
-
-    await deleteTenantFromUnitInSupabase(unitId, targetUnit.unitNumber);
+    let res = await deleteTenantFromUnitInSupabase(unitId, targetUnit.unitNumber);
+    // Unit missing from the database (never synced): save it as vacant instead.
+    if (!res.success && (await saveUnitToSupabase(clearedUnit))) {
+      res = { success: true, unit: clearedUnit };
+    }
+    if (res.success) {
+      if (res.unit) setUnits(prev => prev.map(u => u.id === unitId ? res.unit! : u));
+      const notif: CommercialNotification = {
+        id: `notif-${Date.now()}`,
+        title: `Tenant Deleted: ${tenantName} (${targetUnit.unitNumber})`,
+        description: `Tenant ${tenantName} was removed from unit ${targetUnit.unitNumber}. The unit is now Available.`,
+        timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        type: 'lease',
+        read: false,
+        priority: 'high'
+      };
+      setNotifications(prev => [notif, ...prev]);
+    }
+    await reportDeleteResult(res.success, `Tenant "${tenantName}" deleted. ${targetUnit.unitNumber} is now Available.`);
   };
 
   // Clear All Units at Once Handler
   const handleDeleteAllUnits = async () => {
     setUnits([]);
-    try {
-      localStorage.setItem('nbc_units', JSON.stringify([]));
-    } catch {}
-    markCleared('units');
-
-    const notif: CommercialNotification = {
-      id: `notif-${Date.now()}`,
-      title: `All Units Cleared`,
-      description: `All commercial units and connected tenants were removed from the inventory.`,
-      timestamp: 'Just now',
-      type: 'maintenance',
-      read: false,
-      priority: 'high'
-    };
-    setNotifications(prev => [notif, ...prev]);
-    showToast('All units and connected tenants have been deleted.');
-
-    await deleteAllUnitsFromSupabase();
+    const ok = await deleteAllUnitsFromSupabase();
+    if (ok) {
+      const notif: CommercialNotification = {
+        id: `notif-${Date.now()}`,
+        title: `All Units Cleared`,
+        description: `All commercial units and connected tenants were removed from the inventory.`,
+        timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        type: 'maintenance',
+        read: false,
+        priority: 'high'
+      };
+      setNotifications(prev => [notif, ...prev]);
+    }
+    await reportDeleteResult(ok, 'All units and connected tenants have been deleted.');
   };
 
   // Delete Selected Units Batch Handler
   const handleDeleteSelectedUnits = async (unitIds: string[]) => {
     if (unitIds.length === 0) return;
-    const count = unitIds.length;
     setUnits(prev => prev.filter(u => !unitIds.includes(u.id)));
-    showToast(`${count} unit(s) and connected tenant(s) deleted.`);
-    await deleteUnitsBulkFromSupabase(unitIds);
+    const ok = await deleteUnitsBulkFromSupabase(unitIds);
+    await reportDeleteResult(ok, `${unitIds.length} unit(s) and connected tenant(s) deleted.`);
   };
 
   // Modify Tenant & Lease Pricing Handler from Tenants Page
@@ -663,38 +609,31 @@ export default function App() {
     const linked = cashflow.filter(tx => isCashflowForPayment(tx, payment));
     setPayments(prev => prev.filter(p => p.id !== payment.id));
     setCashflow(prev => prev.filter(tx => !linked.some(l => l.id === tx.id)));
-    markCleared('payments');
     const ok = await deletePaymentFromSupabase(payment.id);
-    await Promise.all(linked.map(tx => deleteCashflowFromSupabase(tx.id)));
-    showToast(ok
-      ? `Payment ${payment.receiptNumber} deleted.`
-      : `Payment ${payment.receiptNumber} removed here, but the database delete failed.`);
+    if (ok) await Promise.all(linked.map(tx => deleteCashflowFromSupabase(tx.id)));
+    await reportDeleteResult(ok, `Payment ${payment.receiptNumber} deleted.`);
   };
 
   const handleClearAllPayments = async () => {
     const linked = cashflow.filter(tx => payments.some(p => isCashflowForPayment(tx, p)));
     setPayments([]);
     setCashflow(prev => prev.filter(tx => !linked.some(l => l.id === tx.id)));
-    markCleared('payments');
     const ok = await clearTableInSupabase('payments');
-    await Promise.all(linked.map(tx => deleteCashflowFromSupabase(tx.id)));
-    showToast(ok ? 'All payments cleared.' : 'Payments cleared here, but the database delete failed.');
+    if (ok) await Promise.all(linked.map(tx => deleteCashflowFromSupabase(tx.id)));
+    await reportDeleteResult(ok, 'All payments cleared.');
   };
 
   // Delete a deposit; a deposit still held is also taken off its unit
   const handleDeleteDeposit = async (dep: DepositRecord) => {
     setDeposits(prev => prev.filter(d => d.id !== dep.id));
-    markCleared('deposits');
     const ok = await deleteDepositFromSupabase(dep.id);
     const unit = units.find(u => u.unitNumber === dep.unitNumber);
-    if (unit && dep.status === 'Held in Escrow' && unit.escrowDepositUSD) {
+    if (ok && unit && dep.status === 'Held in Escrow' && unit.escrowDepositUSD) {
       const updatedUnit = { ...unit, escrowDepositUSD: 0, escrowDepositSSP: 0, depositMonths: 0 };
       setUnits(prev => prev.map(u => u.id === unit.id ? updatedUnit : u));
       await saveUnitToSupabase(updatedUnit);
     }
-    showToast(ok
-      ? `Deposit ${dep.depositSlip || dep.id} deleted.`
-      : `Deposit removed here, but the database delete failed.`);
+    await reportDeleteResult(ok, `Deposit ${dep.depositSlip || dep.id} deleted.`);
   };
 
   const handleClearAllDeposits = async () => {
@@ -703,29 +642,24 @@ export default function App() {
       .filter(u => heldUnitNumbers.has(u.unitNumber) && u.escrowDepositUSD)
       .map(u => ({ ...u, escrowDepositUSD: 0, escrowDepositSSP: 0, depositMonths: 0 }));
     setDeposits([]);
-    if (affectedUnits.length) {
-      setUnits(prev => prev.map(u => affectedUnits.find(a => a.id === u.id) || u));
-    }
-    markCleared('deposits');
     const ok = await clearTableInSupabase('deposits');
-    if (affectedUnits.length) await saveUnitsBulkToSupabase(affectedUnits);
-    showToast(ok ? 'All deposits cleared.' : 'Deposits cleared here, but the database delete failed.');
+    if (ok && affectedUnits.length) {
+      setUnits(prev => prev.map(u => affectedUnits.find(a => a.id === u.id) || u));
+      await saveUnitsBulkToSupabase(affectedUnits);
+    }
+    await reportDeleteResult(ok, 'All deposits cleared.');
   };
 
   const handleDeleteCashflow = async (tx: CashflowTransaction) => {
     setCashflow(prev => prev.filter(c => c.id !== tx.id));
-    markCleared('cashflow');
     const ok = await deleteCashflowFromSupabase(tx.id);
-    showToast(ok
-      ? `Cashflow entry ${tx.referenceNumber} deleted.`
-      : `Entry removed here, but the database delete failed.`);
+    await reportDeleteResult(ok, `Cashflow entry ${tx.referenceNumber} deleted.`);
   };
 
   const handleClearAllCashflow = async () => {
     setCashflow([]);
-    markCleared('cashflow');
     const ok = await clearTableInSupabase('cashflow_transactions');
-    showToast(ok ? 'All cashflow entries cleared.' : 'Cashflow cleared here, but the database delete failed.');
+    await reportDeleteResult(ok, 'All cashflow entries cleared.');
   };
 
   // Quick action: record payment for specific unit (navigates to payments page)
@@ -743,6 +677,15 @@ export default function App() {
     }
     setActiveTab('payments');
     setIsPaymentModalOpen(true);
+  };
+
+  const handleDeleteNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  const handleClearNotifications = () => {
+    setNotifications([]);
+    showToast('All notifications cleared.');
   };
 
   // Mark all notifications read
@@ -878,6 +821,7 @@ export default function App() {
               onSelectReceiptForPrint={(p) => setSelectedReceiptForPrint(p)}
               onModifyTenantPricing={handleModifyTenantPricing}
               onVacateUnit={handleVacateUnit}
+              onDeleteTenant={handleDeleteTenantFromUnit}
             />
           )}
 
@@ -930,6 +874,8 @@ export default function App() {
                 setPaymentSelectedUnitId(undefined);
                 setIsPaymentModalOpen(true);
               }}
+              onDeletePayment={handleDeletePayment}
+              onClearAllPayments={handleClearAllPayments}
             />
           )}
 
@@ -963,43 +909,15 @@ export default function App() {
             <SettingsView onClearAllData={handleClearAllData} />
           )}
 
-          {/* 11. AUDIT NOTIFICATIONS */}
+          {/* 11. NOTIFICATIONS */}
           {activeTab === 'notifications' && (
-            <div className="p-6 sm:p-8 max-w-4xl mx-auto space-y-4">
-              <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-slate-900">Commercial Audit Notifications</h1>
-                {notifications.length > 0 && (
-                  <button
-                    onClick={handleMarkNotificationsRead}
-                    className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
-                  >
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-
-              <div className="bg-white rounded-3xl border border-slate-200 divide-y divide-slate-100 shadow-xs overflow-hidden">
-                {notifications.length === 0 ? (
-                  <div className="p-12 text-center text-slate-400">
-                    <p className="font-semibold text-slate-700 text-xs">No Audit Notifications</p>
-                    <p className="text-[11px] text-slate-400 mt-1">Audit notices, payment alerts, and lease warnings will appear here.</p>
-                  </div>
-                ) : (
-                  notifications.map(n => (
-                    <div key={n.id} className="p-4 flex items-start justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs text-slate-900">{n.title}</span>
-                          {!n.read && <span className="w-2 h-2 rounded-full bg-blue-600" />}
-                        </div>
-                        <p className="text-xs text-slate-500 mt-0.5">{n.description}</p>
-                        <span className="text-[10px] text-slate-400 mt-1 block">{n.timestamp}</span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+            <NotificationsView
+              notifications={notifications}
+              onMarkAllRead={handleMarkNotificationsRead}
+              onMarkRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
+              onDelete={handleDeleteNotification}
+              onClearAll={handleClearNotifications}
+            />
           )}
         </main>
 

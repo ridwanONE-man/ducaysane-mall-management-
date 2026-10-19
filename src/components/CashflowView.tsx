@@ -15,11 +15,10 @@ import {
   FileSpreadsheet, 
   CheckCircle2,
   DollarSign,
-  Wallet,
-  Trash2
+  Wallet
 } from 'lucide-react';
 import { CashflowTransaction, CurrencyMode, CashflowCategory } from '../types';
-import { initialCashflowTransactions } from '../data/commercialData';
+import { DeleteButton, ClearAllButton } from './DeleteControls';
 
 interface CashflowViewProps {
   currencyMode: CurrencyMode;
@@ -36,7 +35,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   onDeleteTransaction,
   onClearAllTransactions
 }) => {
-  const [localTransactions, setLocalTransactions] = useState<CashflowTransaction[]>(initialCashflowTransactions);
+  const [localTransactions, setLocalTransactions] = useState<CashflowTransaction[]>([]);
   const transactions = propTransactions || localTransactions;
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'Inflow' | 'Outflow'>('ALL');
@@ -163,19 +162,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           </button>
 
           {onClearAllTransactions && (
-            <button
-              type="button"
-              disabled={transactions.length === 0}
-              onClick={() => {
-                if (window.confirm(`Delete ALL ${transactions.length} cashflow entries? This cannot be undone.`)) {
-                  onClearAllTransactions();
-                }
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Clear All</span>
-            </button>
+            <ClearAllButton count={transactions.length} itemLabel="cashflow entries" onClear={onClearAllTransactions} />
           )}
 
           <button
@@ -337,18 +324,14 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                     </td>
                     {onDeleteTransaction && (
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm(`Delete cashflow entry ${t.referenceNumber} (${t.title})? This cannot be undone.`)) {
-                              onDeleteTransaction(t);
-                            }
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        <DeleteButton
                           title="Delete entry"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          onDelete={() => onDeleteTransaction(t)}
+                          confirm={{
+                            title: 'Delete this cashflow entry?',
+                            subject: `${t.referenceNumber} • ${t.title}`,
+                          }}
+                        />
                       </td>
                     )}
                   </tr>

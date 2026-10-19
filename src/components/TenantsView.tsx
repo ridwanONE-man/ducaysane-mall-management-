@@ -29,9 +29,9 @@ import {
   UserPlus,
   Plus
 } from 'lucide-react';
-import { initialTenants } from '../data/commercialData';
 import { TenantInfo, PropertyUnit, PaymentRecord, DepositRecord, BillingStatus } from '../types';
 import { ModifyTenantPricingPayload, VacateUnitPayload } from '../lib/supabaseService';
+import { DeleteButton } from './DeleteControls';
 
 interface TenantsViewProps {
   units?: PropertyUnit[];
@@ -44,6 +44,7 @@ interface TenantsViewProps {
   onSaveUnit?: (unit: PropertyUnit) => void;
   onSaveDeposit?: (deposit: DepositRecord) => void;
   onOpenAssignUnit?: (unit: PropertyUnit) => void;
+  onDeleteTenant?: (unitId: string) => void;
 }
 
 export const TenantsView: React.FC<TenantsViewProps> = ({ 
@@ -56,7 +57,8 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
   onVacateUnit,
   onSaveUnit,
   onSaveDeposit,
-  onOpenAssignUnit
+  onOpenAssignUnit,
+  onDeleteTenant
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategoryTab, setActiveCategoryTab] = useState<'All' | 'Shops' | 'Spaces' | 'Overdue' | 'Expiring Soon' | 'Available Units'>('All');
@@ -691,6 +693,20 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                     <CreditCard className="w-3.5 h-3.5" />
                     <span>Pay</span>
                   </button>
+
+                  {onDeleteTenant && unit && (
+                    <DeleteButton
+                      className="py-2 px-2 border border-transparent hover:border-rose-200"
+                      title="Delete tenant"
+                      onDelete={() => onDeleteTenant(unit.id)}
+                      confirm={{
+                        title: 'Delete this tenant?',
+                        subject: `${tenant.name} • ${unit.unitNumber}`,
+                        message: `The tenant is removed from the database and ${unit.unitNumber} becomes Available. Payment history is kept. This cannot be undone.`,
+                        confirmLabel: 'Delete tenant',
+                      }}
+                    />
+                  )}
                 </div>
               </div>
             );
@@ -882,6 +898,23 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                     <DoorOpen className="w-3.5 h-3.5 text-rose-600" />
                     <span>Vacate Unit</span>
                   </button>
+                )}
+
+                {onDeleteTenant && selectedTenant.unit && (
+                  <DeleteButton
+                    label="Delete Tenant"
+                    title="Delete tenant"
+                    onDelete={() => {
+                      onDeleteTenant(selectedTenant.unit!.id);
+                      setSelectedTenant(null);
+                    }}
+                    confirm={{
+                      title: 'Delete this tenant?',
+                      subject: `${selectedTenant.tenant.name} • ${selectedTenant.unit.unitNumber}`,
+                      message: `The tenant is removed from the database and ${selectedTenant.unit.unitNumber} becomes Available. Payment history is kept. This cannot be undone.`,
+                      confirmLabel: 'Delete tenant',
+                    }}
+                  />
                 )}
 
                 <div className="flex items-center gap-2 ml-auto">

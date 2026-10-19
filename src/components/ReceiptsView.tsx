@@ -14,19 +14,24 @@ import {
   Plus
 } from 'lucide-react';
 import { PaymentRecord, CurrencyMode } from '../types';
+import { DeleteButton, ClearAllButton } from './DeleteControls';
 
 interface ReceiptsViewProps {
   payments: PaymentRecord[];
   currencyMode: CurrencyMode;
   onSelectReceiptForPrint: (payment: PaymentRecord) => void;
   onOpenRecordPayment: () => void;
+  onDeletePayment?: (payment: PaymentRecord) => void;
+  onClearAllPayments?: () => void;
 }
 
 export const ReceiptsView: React.FC<ReceiptsViewProps> = ({
   payments,
   currencyMode,
   onSelectReceiptForPrint,
-  onOpenRecordPayment
+  onOpenRecordPayment,
+  onDeletePayment,
+  onClearAllPayments
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'Paid' | 'Partially Paid'>('ALL');
@@ -138,6 +143,15 @@ Generated electronically by Nyakuron Business Centre Management.
             <Download className="w-3.5 h-3.5 text-slate-500" />
             <span>Export</span>
           </button>
+
+          {onClearAllPayments && (
+            <ClearAllButton
+              count={payments.length}
+              itemLabel="receipts"
+              onClear={onClearAllPayments}
+              message="Every receipt is a payment record, so all payments are removed from the database. This cannot be undone."
+            />
+          )}
 
           <button
             type="button"
@@ -288,6 +302,17 @@ Generated electronically by Nyakuron Business Centre Management.
                         >
                           <Download className="w-3.5 h-3.5" />
                         </button>
+                        {onDeletePayment && (
+                          <DeleteButton
+                            title="Delete receipt"
+                            onDelete={() => onDeletePayment(p)}
+                            confirm={{
+                              title: 'Delete this receipt?',
+                              subject: `${p.receiptNumber} • ${p.tenantName}`,
+                              message: 'The receipt and its payment record are removed from the database. This cannot be undone.',
+                            }}
+                          />
+                        )}
                       </div>
                     </td>
                   </tr>

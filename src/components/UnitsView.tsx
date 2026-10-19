@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import { PropertyUnit, CurrencyMode, OccupancyStatus } from '../types';
 import { exportUnitsToCSV } from '../utils/exportUtils';
+import { DeleteButton, ClearAllButton } from './DeleteControls';
+import { useConfirm } from './ConfirmDialog';
 
 interface UnitsViewProps {
   units: PropertyUnit[];
@@ -55,6 +57,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
   onSearchChange: externalOnSearchChange
 }) => {
   // Search query state (support controlled from App/Header and local state)
+  const confirm = useConfirm();
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
   const search = externalSearchQuery !== undefined ? externalSearchQuery : internalSearchQuery;
 
@@ -217,20 +220,13 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
-          {units.length > 0 && onDeleteAllUnits && (
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm(`⚠️ Are you sure you want to delete ALL ${units.length} units? This will delete all commercial properties and connected tenants across the system. This cannot be undone.`)) {
-                  onDeleteAllUnits();
-                }
-              }}
-              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-              title="Delete all units and properties at once"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-              <span>Clear All Units</span>
-            </button>
+          {onDeleteAllUnits && (
+            <ClearAllButton
+              count={units.length}
+              itemLabel="units"
+              onClear={onDeleteAllUnits}
+              message="All units and properties are deleted, together with their connected tenants, for every user. This cannot be undone."
+            />
           )}
 
           <button
@@ -676,18 +672,15 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         {onDeleteUnit && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm(`Delete ${unit.unitNumber}? This will remove the unit and any connected tenant from the system.`)) {
-                                onDeleteUnit(unit.id);
-                              }
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          <DeleteButton
                             title="Delete unit"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                            onDelete={() => onDeleteUnit(unit.id)}
+                            confirm={{
+                              title: `Delete unit ${unit.unitNumber}?`,
+                              subject: unit.currentTenant ? `${unit.unitNumber} • leased to ${unit.currentTenant.name}` : `${unit.unitNumber} • vacant`,
+                              message: 'The unit and any connected tenant are removed from the database. This cannot be undone.',
+                            }}
+                          />
                         )}
                       </div>
                     </td>
@@ -707,8 +700,12 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
             {selectedUnitIds.length > 0 && onDeleteSelectedUnits && (
               <button
                 type="button"
-                onClick={() => {
-                  if (window.confirm(`Delete ${selectedUnitIds.length} selected unit(s)? This will also remove any connected tenants.`)) {
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: `Delete ${selectedUnitIds.length} selected unit(s)?`,
+                    subject: `${selectedUnitIds.length} unit(s) and their connected tenants`,
+                  });
+                  if (ok) {
                     onDeleteSelectedUnits(selectedUnitIds);
                     setSelectedUnitIds([]);
                   }

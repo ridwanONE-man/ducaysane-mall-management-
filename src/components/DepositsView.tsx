@@ -14,11 +14,10 @@ import {
   Store,
   DollarSign,
   Calendar,
-  X,
-  Trash2
+  X
 } from 'lucide-react';
 import { DepositRecord, PropertyUnit, CurrencyMode } from '../types';
-import { initialDeposits } from '../data/commercialData';
+import { DeleteButton, ClearAllButton } from './DeleteControls';
 
 interface DepositsViewProps {
   units: PropertyUnit[];
@@ -39,7 +38,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
   onDeleteDeposit,
   onClearAllDeposits
 }) => {
-  const [localDeposits, setLocalDeposits] = useState<DepositRecord[]>(initialDeposits);
+  const [localDeposits, setLocalDeposits] = useState<DepositRecord[]>([]);
   const deposits = propDeposits || localDeposits;
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'Held in Escrow' | 'Under Review' | 'Refunded'>('ALL');
@@ -210,19 +209,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
           </button>
 
           {onClearAllDeposits && (
-            <button
-              type="button"
-              disabled={deposits.length === 0}
-              onClick={() => {
-                if (window.confirm(`Delete ALL ${deposits.length} deposit records? This cannot be undone.`)) {
-                  onClearAllDeposits();
-                }
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Clear All</span>
-            </button>
+            <ClearAllButton count={deposits.length} itemLabel="deposits" onClear={onClearAllDeposits} />
           )}
 
           <button
@@ -411,18 +398,15 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
                           <span className="text-[11px] text-slate-400 font-medium italic">Settled</span>
                         )}
                         {onDeleteDeposit && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm(`Delete deposit ${d.depositSlip || d.id} for ${d.tenantName}? This cannot be undone.`)) {
-                                onDeleteDeposit(d);
-                              }
-                            }}
-                            className="ml-1.5 p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer align-middle"
+                          <DeleteButton
+                            className="ml-1"
                             title="Delete deposit"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                            onDelete={() => onDeleteDeposit(d)}
+                            confirm={{
+                              title: 'Delete this deposit?',
+                              subject: `${d.depositSlip || d.id} • ${d.tenantName} • $${d.amountUSD.toLocaleString()}`,
+                            }}
+                          />
                         )}
                       </td>
                     </tr>

@@ -10,11 +10,11 @@ import {
   Search,
   Receipt,
   AlertTriangle,
-  ArrowUpRight,
-  Trash2
+  ArrowUpRight
 } from 'lucide-react';
 import { PaymentRecord, CurrencyMode, PropertyUnit } from '../types';
 import { exportPaymentsToCSV } from '../utils/exportUtils';
+import { DeleteButton, ClearAllButton } from './DeleteControls';
 
 interface PaymentsViewProps {
   payments: PaymentRecord[];
@@ -129,19 +129,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           </button>
 
           {onClearAllPayments && (
-            <button
-              type="button"
-              disabled={payments.length === 0}
-              onClick={() => {
-                if (window.confirm(`Delete ALL ${payments.length} payment records? Their linked cashflow entries are removed too. This cannot be undone.`)) {
-                  onClearAllPayments();
-                }
-              }}
-              className="px-3.5 py-2 bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Clear All</span>
-            </button>
+            <ClearAllButton
+              count={payments.length}
+              itemLabel="payments"
+              onClear={onClearAllPayments}
+              message="Every payment record is removed from the database, along with the cashflow entries created for them. This cannot be undone."
+            />
           )}
 
           <button
@@ -429,18 +422,16 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                           <span>Print Voucher</span>
                         </button>
                         {onDeletePayment && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm(`Delete payment ${item.receiptNumber} from ${item.tenantName}? This cannot be undone.`)) {
-                                onDeletePayment(item);
-                              }
-                            }}
-                            className="ml-1.5 p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer align-middle"
+                          <DeleteButton
+                            className="ml-1"
                             title="Delete payment"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                            onDelete={() => onDeletePayment(item)}
+                            confirm={{
+                              title: 'Delete this payment?',
+                              subject: `${item.receiptNumber} • ${item.tenantName} • $${item.amount.toLocaleString()}`,
+                              message: 'The payment and its cashflow entry are removed from the database. This cannot be undone.',
+                            }}
+                          />
                         )}
                       </td>
                     </tr>

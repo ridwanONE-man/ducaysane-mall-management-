@@ -8,6 +8,53 @@ import {
 } from '../types';
 
 // ==========================================
+// 0. VERIFIED DELETES
+// ==========================================
+
+type DeletableTable = 'units' | 'payments' | 'deposits' | 'cashflow_transactions' | 'tenants';
+
+// Supabase reports success even when a row-level-security policy silently blocks a
+// delete, so check that the row is really gone before reporting success.
+async function deleteRowById(table: DeletableTable, id: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.from(table).delete().eq('id', id).select('id');
+    if (error) {
+      console.warn(`Could not delete from ${table}:`, error.message);
+      return false;
+    }
+    if (data && data.length > 0) return true;
+    const { data: stillThere } = await supabase.from(table).select('id').eq('id', id).maybeSingle();
+    if (stillThere) {
+      console.warn(`Delete from ${table} was blocked by the database (row ${id} still exists).`);
+      return false;
+    }
+    return true; // row never existed in the database
+  } catch (err) {
+    console.warn(`Network error deleting from ${table}:`, err);
+    return false;
+  }
+}
+
+async function clearTable(table: DeletableTable): Promise<boolean> {
+  try {
+    const { error } = await supabase.from(table).delete().neq('id', '___');
+    if (error) {
+      console.warn(`Could not clear ${table}:`, error.message);
+      return false;
+    }
+    const { count } = await supabase.from(table).select('id', { count: 'exact', head: true });
+    if (count) {
+      console.warn(`Clearing ${table} was blocked by the database (${count} rows remain).`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`Network error clearing ${table}:`, err);
+    return false;
+  }
+}
+
+// ==========================================
 // 1. MAPPING FUNCTIONS
 // ==========================================
 
@@ -228,7 +275,8 @@ export function mapCashflowToRow(item: CashflowTransaction) {
 // 2. UNITS API
 // ==========================================
 
-export async function getUnitsFromSupabase(): Promise<PropertyUnit[]> {
+// Returns null (not []) when the database is unreachable, so callers keep what they have.
+export async function getUnitsFromSupabase(): Promise<PropertyUnit[] | null> {
   try {
     const { data, error } = await supabase
       .from('units')
@@ -237,12 +285,12 @@ export async function getUnitsFromSupabase(): Promise<PropertyUnit[]> {
 
     if (error) {
       console.warn('Could not load units from Supabase:', error.message);
-      return [];
+      return null;
     }
     return (data || []).map(mapRowToUnit);
   } catch (err) {
     console.warn('Network error loading units from Supabase:', err);
-    return [];
+    return null;
   }
 }
 
@@ -313,15 +361,7 @@ export async function deleteUnitFromSupabase(unitId: string): Promise<boolean> {
       .eq('id', unitId)
       .maybeSingle();
 
-    const { error } = await supabase
-      .from('units')
-      .delete()
-      .eq('id', unitId);
-
-    if (error) {
-      console.warn('Could not delete unit from Supabase:', error.message);
-      return false;
-    }
+    if (!(await deleteRowById('units', unitId))) return false;
 
     // Delete associated tenant from public.tenants table to keep them 100% connected
     try {
@@ -395,14 +435,7 @@ export async function deleteTenantFromUnitInSupabase(
 
 export async function deleteAllUnitsFromSupabase(): Promise<boolean> {
   try {
-    const { error: unitsError } = await supabase
-      .from('units')
-      .delete()
-      .neq('id', '___');
-
-    if (unitsError) {
-      console.warn('Could not delete all units from Supabase:', unitsError.message);
-    }
+    const unitsCleared = await clearTable('units');
 
     // Also delete all tenants from tenants table
     try {
@@ -414,7 +447,7 @@ export async function deleteAllUnitsFromSupabase(): Promise<boolean> {
       console.warn('Could not delete all tenants from Supabase:', tErr);
     }
 
-    return true;
+    return unitsCleared;
   } catch (err) {
     console.warn('Network error deleting all units from Supabase:', err);
     return false;
@@ -610,7 +643,8 @@ export async function vacateUnitInSupabase(
 // 3. PAYMENTS API
 // ==========================================
 
-export async function getPaymentsFromSupabase(): Promise<PaymentRecord[]> {
+// Returns null (not []) when the database is unreachable, so callers keep what they have.
+export async function getPaymentsFromSupabase(): Promise<PaymentRecord[] | null> {
   try {
     const { data, error } = await supabase
       .from('payments')
@@ -619,12 +653,12 @@ export async function getPaymentsFromSupabase(): Promise<PaymentRecord[]> {
 
     if (error) {
       console.warn('Could not load payments from Supabase:', error.message);
-      return [];
+      return null;
     }
     return (data || []).map(mapRowToPayment);
   } catch (err) {
     console.warn('Network error loading payments from Supabase:', err);
-    return [];
+    return null;
   }
 }
 
@@ -689,49 +723,22 @@ export async function savePaymentsBulkToSupabase(payments: PaymentRecord[]): Pro
 }
 
 export async function deletePaymentFromSupabase(id: string): Promise<boolean> {
-  try {
-    const { error } = await supabase
-      .from('payments')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      console.warn('Could not delete payment from Supabase:', error.message);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.warn('Network error deleting payment from Supabase:', err);
-    return false;
-  }
+  return deleteRowById('payments', id);
 }
 
 // Deletes every row of a table (payments, deposits or cashflow_transactions).
 export async function clearTableInSupabase(
   table: 'payments' | 'deposits' | 'cashflow_transactions'
 ): Promise<boolean> {
-  try {
-    const { error } = await supabase
-      .from(table)
-      .delete()
-      .neq('id', '___');
-
-    if (error) {
-      console.warn(`Could not clear ${table} in Supabase:`, error.message);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.warn(`Network error clearing ${table} in Supabase:`, err);
-    return false;
-  }
+  return clearTable(table);
 }
 
 // ==========================================
 // 4. DEPOSITS API
 // ==========================================
 
-export async function getDepositsFromSupabase(): Promise<DepositRecord[]> {
+// Returns null (not []) when the database is unreachable, so callers keep what they have.
+export async function getDepositsFromSupabase(): Promise<DepositRecord[] | null> {
   try {
     const { data, error } = await supabase
       .from('deposits')
@@ -740,12 +747,12 @@ export async function getDepositsFromSupabase(): Promise<DepositRecord[]> {
 
     if (error) {
       console.warn('Could not load deposits from Supabase:', error.message);
-      return [];
+      return null;
     }
     return (data || []).map(mapRowToDeposit);
   } catch (err) {
     console.warn('Network error loading deposits from Supabase:', err);
-    return [];
+    return null;
   }
 }
 
@@ -787,28 +794,15 @@ export async function saveDepositsBulkToSupabase(deposits: DepositRecord[]): Pro
 }
 
 export async function deleteDepositFromSupabase(id: string): Promise<boolean> {
-  try {
-    const { error } = await supabase
-      .from('deposits')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      console.warn('Could not delete deposit from Supabase:', error.message);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.warn('Network error deleting deposit from Supabase:', err);
-    return false;
-  }
+  return deleteRowById('deposits', id);
 }
 
 // ==========================================
 // 5. CASHFLOW API
 // ==========================================
 
-export async function getCashflowFromSupabase(): Promise<CashflowTransaction[]> {
+// Returns null (not []) when the database is unreachable, so callers keep what they have.
+export async function getCashflowFromSupabase(): Promise<CashflowTransaction[] | null> {
   try {
     const { data, error } = await supabase
       .from('cashflow_transactions')
@@ -817,12 +811,12 @@ export async function getCashflowFromSupabase(): Promise<CashflowTransaction[]> 
 
     if (error) {
       console.warn('Could not load cashflow from Supabase:', error.message);
-      return [];
+      return null;
     }
     return (data || []).map(mapRowToCashflow);
   } catch (err) {
     console.warn('Network error loading cashflow from Supabase:', err);
-    return [];
+    return null;
   }
 }
 
@@ -864,21 +858,7 @@ export async function saveCashflowsBulkToSupabase(items: CashflowTransaction[]):
 }
 
 export async function deleteCashflowFromSupabase(id: string): Promise<boolean> {
-  try {
-    const { error } = await supabase
-      .from('cashflow_transactions')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      console.warn('Could not delete cashflow from Supabase:', error.message);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.warn('Network error deleting cashflow from Supabase:', err);
-    return false;
-  }
+  return deleteRowById('cashflow_transactions', id);
 }
 
 // ==========================================
