@@ -433,6 +433,52 @@ export async function deleteTenantFromUnitInSupabase(
   }
 }
 
+// Removes every tenant: occupied units become Available and public.tenants is emptied.
+// Units, payments, deposits and cashflow are NOT touched, so receipts, reports and
+// analytics keep their full history.
+export async function clearAllTenantsInSupabase(): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('units')
+      .update({
+        occupancy_status: 'Available',
+        current_tenant: null,
+        tenant_phone: null,
+        tenant_email: null,
+        tenant_trade: null,
+        tenant_code: null,
+        lease_start: null,
+        lease_end: null,
+        billing_status: 'No Balance',
+        billing_month_text: null,
+        arrears_usd: 0,
+        arrears_ssp: 0,
+        updated_at: new Date().toISOString(),
+      })
+      .not('current_tenant', 'is', null);
+
+    if (error) {
+      console.warn('Could not clear tenants from units in Supabase:', error.message);
+      return false;
+    }
+
+    const { count } = await supabase
+      .from('units')
+      .select('id', { count: 'exact', head: true })
+      .not('current_tenant', 'is', null);
+    if (count) {
+      console.warn(`Clearing tenants was blocked by the database (${count} units still leased).`);
+      return false;
+    }
+
+    await clearTable('tenants');
+    return true;
+  } catch (err) {
+    console.warn('Network error clearing tenants in Supabase:', err);
+    return false;
+  }
+}
+
 export async function deleteAllUnitsFromSupabase(): Promise<boolean> {
   try {
     const unitsCleared = await clearTable('units');

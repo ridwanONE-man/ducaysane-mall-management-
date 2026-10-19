@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { TenantInfo, PropertyUnit, PaymentRecord, DepositRecord, BillingStatus } from '../types';
 import { ModifyTenantPricingPayload, VacateUnitPayload } from '../lib/supabaseService';
-import { DeleteButton } from './DeleteControls';
+import { DeleteButton, ClearAllButton } from './DeleteControls';
 
 interface TenantsViewProps {
   units?: PropertyUnit[];
@@ -45,6 +45,7 @@ interface TenantsViewProps {
   onSaveDeposit?: (deposit: DepositRecord) => void;
   onOpenAssignUnit?: (unit: PropertyUnit) => void;
   onDeleteTenant?: (unitId: string) => void;
+  onClearAllTenants?: () => void;
 }
 
 export const TenantsView: React.FC<TenantsViewProps> = ({ 
@@ -58,7 +59,8 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
   onSaveUnit,
   onSaveDeposit,
   onOpenAssignUnit,
-  onDeleteTenant
+  onDeleteTenant,
+  onClearAllTenants
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategoryTab, setActiveCategoryTab] = useState<'All' | 'Shops' | 'Spaces' | 'Overdue' | 'Expiring Soon' | 'Available Units'>('All');
@@ -419,6 +421,15 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
             />
           </div>
 
+          {onClearAllTenants && (
+            <ClearAllButton
+              count={listItems.length}
+              itemLabel="tenants"
+              onClear={onClearAllTenants}
+              message={<>All tenants are removed and their units become <strong>Available</strong>. Units, payments, deposits, cashflow, receipts, reports and analytics are <strong>kept</strong>.</>}
+            />
+          )}
+
           {availableUnits.length > 0 && onOpenAssignUnit && (
             <button
               onClick={() => onOpenAssignUnit(availableUnits[0])}
@@ -702,7 +713,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                       confirm={{
                         title: 'Delete this tenant?',
                         subject: `${tenant.name} • ${unit.unitNumber}`,
-                        message: `The tenant is removed from the database and ${unit.unitNumber} becomes Available. Payment history is kept. This cannot be undone.`,
+                        message: `The tenant is removed from the database and ${unit.unitNumber} becomes Available. Payments, deposits, cashflow and reports are kept.`,
                         confirmLabel: 'Delete tenant',
                       }}
                     />
@@ -911,7 +922,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                     confirm={{
                       title: 'Delete this tenant?',
                       subject: `${selectedTenant.tenant.name} • ${selectedTenant.unit.unitNumber}`,
-                      message: `The tenant is removed from the database and ${selectedTenant.unit.unitNumber} becomes Available. Payment history is kept. This cannot be undone.`,
+                      message: `The tenant is removed from the database and ${selectedTenant.unit.unitNumber} becomes Available. Payments, deposits, cashflow and reports are kept.`,
                       confirmLabel: 'Delete tenant',
                     }}
                   />

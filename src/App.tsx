@@ -38,6 +38,7 @@ import {
   deleteUnitFromSupabase,
   deleteTenantFromUnitInSupabase,
   deleteAllUnitsFromSupabase,
+  clearAllTenantsInSupabase,
   deleteUnitsBulkFromSupabase,
   updateTenantAndPricingInSupabase,
   vacateUnitInSupabase,
@@ -473,6 +474,40 @@ export default function App() {
     await reportDeleteResult(res.success, `Tenant "${tenantName}" deleted. ${targetUnit.unitNumber} is now Available.`);
   };
 
+  // Remove every tenant but keep units, payments, deposits and cashflow
+  const handleClearAllTenants = async () => {
+    const leased = units.filter(u => u.currentTenant);
+    if (leased.length === 0) return;
+    setUnits(prev => prev.map(u => u.currentTenant ? {
+      ...u,
+      currentTenant: undefined,
+      occupancyStatus: 'Available',
+      billingStatus: 'No Balance',
+      billingMonthText: undefined,
+      leaseStart: undefined,
+      leaseEnd: undefined,
+      daysRemaining: undefined,
+      daysToExpiry: undefined,
+      arrearsUSD: 0,
+      arrearsSSP: 0,
+    } : u));
+
+    const ok = await clearAllTenantsInSupabase();
+    if (ok) {
+      const notif: CommercialNotification = {
+        id: `notif-${Date.now()}`,
+        title: `All Tenants Cleared`,
+        description: `${leased.length} tenant(s) removed; their units are now Available. Payments, deposits, cashflow and reports were kept.`,
+        timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        type: 'lease',
+        read: false,
+        priority: 'high'
+      };
+      setNotifications(prev => [notif, ...prev]);
+    }
+    await reportDeleteResult(ok, `${leased.length} tenant(s) cleared. Payment, deposit and cashflow history was kept.`);
+  };
+
   // Clear All Units at Once Handler
   const handleDeleteAllUnits = async () => {
     setUnits([]);
@@ -822,6 +857,7 @@ export default function App() {
               onModifyTenantPricing={handleModifyTenantPricing}
               onVacateUnit={handleVacateUnit}
               onDeleteTenant={handleDeleteTenantFromUnit}
+              onClearAllTenants={handleClearAllTenants}
             />
           )}
 
