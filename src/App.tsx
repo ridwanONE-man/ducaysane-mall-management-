@@ -10,6 +10,7 @@ import { CashflowView } from './components/CashflowView';
 import { ReceiptsView } from './components/ReceiptsView';
 import { TenantsView } from './components/TenantsView';
 import { ReportsView } from './components/ReportsView';
+import { AnalyticsView } from './components/AnalyticsView';
 import { SettingsView } from './components/SettingsView';
 import { RecordPaymentModal } from './components/RecordPaymentModal';
 import { ReceiptPrintModal } from './components/ReceiptPrintModal';
@@ -792,13 +793,22 @@ export default function App() {
             />
           )}
 
-          {/* 9. REPORTS & ANALYTICS */}
-          {(activeTab === 'reports' || activeTab === 'analytics') && (
+          {/* 9. TENANT PAYMENT REPORTS */}
+          {activeTab === 'reports' && (
             <ReportsView
               units={units}
               payments={payments}
               deposits={deposits}
               onSelectReceiptForPrint={(p) => setSelectedReceiptForPrint(p)}
+            />
+          )}
+
+          {/* 10. ANALYTICS */}
+          {activeTab === 'analytics' && (
+            <AnalyticsView
+              units={units}
+              payments={payments}
+              deposits={deposits}
             />
           )}
 
