@@ -1062,6 +1062,7 @@ export default function App() {
       {/* Record Tenant Payment Modal */}
       <RecordPaymentModal
         existingReceiptNumbers={payments.map(p => p.receiptNumber)}
+        payments={payments}
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
         units={units}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   X, 
   CreditCard, 
@@ -9,6 +9,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { PropertyUnit, PaymentRecord, PaymentMethodType } from '../types';
+import { buildRentPeriodOptions, RentPeriodOption } from '../utils/rentPeriods';
 
 interface RecordPaymentModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ interface RecordPaymentModalProps {
   onConfirmPayment: (payment: PaymentRecord) => void;
   selectedUnitId?: string;
   existingReceiptNumbers?: string[];
+  payments?: PaymentRecord[];
 }
 
 export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
@@ -25,7 +27,8 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   units,
   onConfirmPayment,
   selectedUnitId,
-  existingReceiptNumbers = []
+  existingReceiptNumbers = [],
+  payments = []
 }) => {
   // Find units that have active tenants or any units
   const occupiedUnits = units.filter(u => u.currentTenant);
@@ -56,6 +59,16 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   const [notes, setNotes] = useState('');
   const [autoGenerateReceipt, setAutoGenerateReceipt] = useState(true);
 
+  // Rent months for the selected tenant, marked Paid / Partial / Not paid from their history
+  const periods = useMemo(() => buildRentPeriodOptions(selectedUnit, payments), [selectedUnit, payments]);
+
+  // Choosing a month fills in what is still owed for it (or a full month's rent)
+  const applyPeriod = (option: RentPeriodOption | undefined, unit: PropertyUnit | null) => {
+    setAccountingPeriod(option?.value || currentMonthPeriod);
+    const rent = unit?.monthlyRateUSD || 0;
+    setAmountReceived(option && option.remaining > 0 ? option.remaining : rent);
+  };
+
   // The form stays mounted, so reset it to the tenant that was clicked each time it opens.
   useEffect(() => {
     if (!isOpen) return;
@@ -64,9 +77,8 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
       (selectedUnitId ? null : occupiedUnits[0] || units[0] || null);
     setSelectedUnit(target);
     setCurrency('USD');
-    setAmountReceived(target ? target.monthlyRateUSD : 0);
+    applyPeriod(buildRentPeriodOptions(target, payments).suggested, target);
     setPaymentDate(new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }));
-    setAccountingPeriod(`${new Date().toLocaleString('en-US', { month: 'long' })} ${new Date().getFullYear()}`);
     setPaymentMethod('Cash (Office Management Desk)');
     setNotes('');
     setManualTenantName('');
@@ -105,8 +117,8 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
     const found = units.find(u => u.unitNumber === unitNumber);
     if (found) {
       setSelectedUnit(found);
-      const rent = currency === 'USD' ? found.monthlyRateUSD : (found.monthlyRateSSP || (found.monthlyRateUSD * 1300));
-      setAmountReceived(rent);
+      setCurrency('USD');
+      applyPeriod(buildRentPeriodOptions(found, payments).suggested, found);
       setNotes('');
     }
   };
@@ -256,14 +268,39 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">Rent Accounting Period</label>
               <select
                 value={accountingPeriod}
-                onChange={(e) => setAccountingPeriod(e.target.value)}
+                onChange={(e) => {
+                  const option = periods.options.find(o => o.value === e.target.value);
+                  if (currency === 'USD') applyPeriod(option, selectedUnit);
+                  else setAccountingPeriod(e.target.value);
+                }}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white"
               >
-                <option value="October 2024">October 2024</option>
-                <option value="November 2024">November 2024</option>
-                <option value="December 2024">December 2024</option>
-                <option value="September 2024">September 2024</option>
+                {!periods.options.some(o => o.value === accountingPeriod) && (
+                  <option value={accountingPeriod}>{accountingPeriod}</option>
+                )}
+                {periods.options.map(o => (
+                  <option key={o.value} value={o.value}>
+                    {o.value}
+                    {o.status === 'Paid' ? '  ✓ Paid'
+                      : o.status === 'Partial' ? `  — Partial, $${o.remaining.toLocaleString()} left`
+                      : o.status === 'Not paid' ? `  — Not paid, $${o.remaining.toLocaleString()} due`
+                      : o.status === 'Advance' ? '  — Advance'
+                      : o.status === 'Outside lease' ? '  — Outside lease'
+                      : ''}
+                  </option>
+                ))}
               </select>
+              {selectedUnit?.currentTenant && (
+                periods.owing.length > 0 ? (
+                  <p className="mt-1.5 text-[11px] font-semibold text-rose-600 leading-snug">
+                    {periods.owing.length} month{periods.owing.length > 1 ? 's' : ''} not fully paid:{' '}
+                    {periods.owing.map(o => o.value.replace(/^(\w{3})\w*/, '$1')).join(', ')}
+                    {' '}• ${periods.owing.reduce((sum, o) => sum + o.remaining, 0).toLocaleString()} owed
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-[11px] font-semibold text-emerald-600">All months paid up to date</p>
+                )
+              )}
             </div>
           </div>
 
