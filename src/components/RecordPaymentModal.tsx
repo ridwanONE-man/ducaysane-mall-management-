@@ -1,4 +1,4 @@
-import React, { useState, useId } from 'react';
+import React, { useState } from 'react';
 import { 
   X, 
   CreditCard, 
@@ -15,6 +15,7 @@ interface RecordPaymentModalProps {
   units: PropertyUnit[];
   onConfirmPayment: (payment: PaymentRecord) => void;
   selectedUnitId?: string;
+  existingReceiptNumbers?: string[];
 }
 
 export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
@@ -22,7 +23,8 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   onClose,
   units,
   onConfirmPayment,
-  selectedUnitId
+  selectedUnitId,
+  existingReceiptNumbers = []
 }) => {
   // Find units that have active tenants or any units
   const occupiedUnits = units.filter(u => u.currentTenant);
@@ -54,8 +56,13 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   const [autoGenerateReceipt, setAutoGenerateReceipt] = useState(true);
 
   // Generate dynamic receipt number matching official NBC voucher
-  const receiptNumberId = useId();
-  const nextReceiptNumber = `#REC-2026-${String(Math.abs(receiptNumberId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 894)) % 900 + 100).padStart(4, '0')}`;
+  // Next number in this year's sequence (#REC-2026-0001, #REC-2026-0002, ...)
+  const receiptYear = new Date().getFullYear();
+  const lastReceiptSeq = existingReceiptNumbers.reduce((max, r) => {
+    const m = new RegExp(`REC-${receiptYear}-(\\d+)`).exec(r || '');
+    return m ? Math.max(max, Number(m[1])) : max;
+  }, 0);
+  const nextReceiptNumber = `#REC-${receiptYear}-${String(lastReceiptSeq + 1).padStart(4, '0')}`;
 
   if (!isOpen) return null;
 

@@ -49,8 +49,10 @@ import {
   savePaymentsBulkToSupabase, 
   getDepositsFromSupabase,
   saveDepositToSupabase,
+  saveDepositsBulkToSupabase,
   getCashflowFromSupabase,
   saveCashflowToSupabase,
+  saveCashflowsBulkToSupabase,
   deletePaymentFromSupabase,
   deleteDepositFromSupabase,
   deleteCashflowFromSupabase,
@@ -77,33 +79,107 @@ function writeCache(key: string, value: unknown) {
   } catch {}
 }
 
-// Before this fix every payment save was rejected by the database, so recorded payments
-// only lived in each browser's cache. Upload them once so that history isn't lost.
-const PAYMENTS_RECOVERED_FLAG = 'nbc_payments_recovered_v1';
+// ---------------------------------------------------------------------------
+// Records the database hasn't accepted yet. A reload from the database must never
+// wipe them: they are kept on screen and saved again on every reload until it works.
+// ---------------------------------------------------------------------------
+type SyncTable = 'units' | 'payments' | 'deposits' | 'cashflow';
+const CACHE_KEYS: Record<SyncTable, string> = {
+  units: 'nbc_units',
+  payments: 'nbc_payments',
+  deposits: 'nbc_deposits',
+  cashflow: 'nbc_cashflow',
+};
+const PENDING_KEY = 'nbc_pending_sync';
+
+function getPending(): Record<SyncTable, string[]> {
+  return { units: [], payments: [], deposits: [], cashflow: [], ...readCache(PENDING_KEY, {}) };
+}
+
+function setPending(table: SyncTable, id: string, pending: boolean) {
+  const all = getPending();
+  const ids = new Set(all[table]);
+  if (pending) ids.add(id); else ids.delete(id);
+  writeCache(PENDING_KEY, { ...all, [table]: [...ids] });
+}
+
+function clearPending(table: SyncTable) {
+  writeCache(PENDING_KEY, { ...getPending(), [table]: [] });
+}
+
+// Payments recorded before the unit_id fix were all rejected by the database and only
+// exist in this browser's cache. Queue them once for upload.
+const LEGACY_PAYMENTS_FLAG = 'nbc_payments_recovered_v1';
 const SAMPLE_PAYMENT_IDS = new Set(initialPayments.map(p => p.id));
 
-async function recoverUnsyncedPayments(dbPayments: PaymentRecord[]): Promise<PaymentRecord[]> {
+function queueLegacyPayments(dbPayments: PaymentRecord[]) {
   try {
-    if (localStorage.getItem(PAYMENTS_RECOVERED_FLAG) === 'true') return [];
-  } catch {
-    return [];
-  }
-  const cached = readCache<PaymentRecord[]>('nbc_payments', []);
-  const dbIds = new Set(dbPayments.map(p => p.id));
-  const missing = cached.filter(p => p && p.id && !dbIds.has(p.id) && !SAMPLE_PAYMENT_IDS.has(p.id));
-  if (missing.length && !(await savePaymentsBulkToSupabase(missing))) return []; // retry next load
-  try {
-    localStorage.setItem(PAYMENTS_RECOVERED_FLAG, 'true');
+    if (localStorage.getItem(LEGACY_PAYMENTS_FLAG) === 'true') return;
+    const dbIds = new Set(dbPayments.map(p => p.id));
+    readCache<PaymentRecord[]>(CACHE_KEYS.payments, [])
+      .filter(p => p?.id && !dbIds.has(p.id) && !SAMPLE_PAYMENT_IDS.has(p.id))
+      .forEach(p => setPending('payments', p.id, true));
+    localStorage.setItem(LEGACY_PAYMENTS_FLAG, 'true');
   } catch {}
-  return missing;
+}
+
+// Database rows plus any local rows still waiting to be saved (which are retried here).
+async function mergeWithPending<T extends { id: string }>(
+  table: SyncTable,
+  dbRows: T[],
+  saveBulk: (rows: T[]) => Promise<boolean>
+): Promise<T[]> {
+  const pendingIds = new Set(getPending()[table]);
+  if (pendingIds.size === 0) return dbRows;
+
+  const local = readCache<T[]>(CACHE_KEYS[table], []).filter(r => r?.id && pendingIds.has(r.id));
+  pendingIds.forEach(id => {
+    if (!local.some(r => r.id === id)) setPending(table, id, false); // deleted locally since
+  });
+  if (local.length && (await saveBulk(local))) {
+    local.forEach(r => setPending(table, r.id, false));
+  }
+
+  const localById = new Map(local.map(r => [r.id, r]));
+  const dbIds = new Set(dbRows.map(r => r.id));
+  return [...local.filter(r => !dbIds.has(r.id)), ...dbRows.map(r => localById.get(r.id) || r)];
+}
+
+// Loads every table; a table that can't be loaded comes back as null (keep what's on screen).
+async function loadAllFromDatabase() {
+  const [dbUnits, dbPayments, dbDeposits, dbCashflow] = await Promise.all([
+    getUnitsFromSupabase(),
+    getPaymentsFromSupabase(),
+    getDepositsFromSupabase(),
+    getCashflowFromSupabase(),
+  ]);
+  if (dbPayments) queueLegacyPayments(dbPayments);
+  return {
+    units: dbUnits && (await mergeWithPending('units', dbUnits, saveUnitsBulkToSupabase)),
+    payments: dbPayments && (await mergeWithPending('payments', dbPayments, savePaymentsBulkToSupabase)),
+    deposits: dbDeposits && (await mergeWithPending('deposits', dbDeposits, saveDepositsBulkToSupabase)),
+    cashflow: dbCashflow && (await mergeWithPending('cashflow', dbCashflow, saveCashflowsBulkToSupabase)),
+  };
+}
+
+// Saves one row and remembers it if the database didn't accept it.
+async function persist<T extends { id: string }>(table: SyncTable, row: T, save: (r: T) => Promise<boolean>) {
+  const ok = await save(row);
+  setPending(table, row.id, !ok);
+  return ok;
 }
 
 const DB_DELETE_FAILED = 'The database refused the delete, so it was restored. Check your connection or database permissions.';
 
-// Cashflow entry created automatically when a payment was recorded.
-const isCashflowForPayment = (tx: CashflowTransaction, payment: PaymentRecord) =>
-  tx.referenceNumber === `CF-${payment.receiptNumber.replace(/[^a-zA-Z0-9]/g, '')}` ||
-  Boolean(tx.notes?.includes(`Receipt: ${payment.receiptNumber}`));
+// Cashflow entry created automatically when a payment was recorded. Newer entries carry
+// the payment id; older ones are matched by receipt number, but only when no other
+// payment shares that number (old receipt numbers were not unique).
+const isCashflowForPayment = (tx: CashflowTransaction, payment: PaymentRecord, allPayments: PaymentRecord[]) => {
+  if (tx.id === `cf-${payment.id}`) return true;
+  if (!tx.id.startsWith('cf-pay-')) return false;
+  const receiptIsUnique = allPayments.filter(p => p.receiptNumber === payment.receiptNumber).length === 1;
+  return receiptIsUnique && Boolean(tx.notes?.includes(`Receipt: ${payment.receiptNumber}`));
+};
 
 export default function App() {
   // Authentication State with localStorage persistence
@@ -217,19 +293,12 @@ export default function App() {
       if (now - lastRefresh < 3000) return;
       lastRefresh = now;
 
-      const [dbUnits, dbPayments, dbDeposits, dbCashflow] = await Promise.all([
-        getUnitsFromSupabase(),
-        getPaymentsFromSupabase(),
-        getDepositsFromSupabase(),
-        getCashflowFromSupabase(),
-      ]);
+      const data = await loadAllFromDatabase();
       if (!isMounted) return;
-      const recovered = dbPayments ? await recoverUnsyncedPayments(dbPayments) : [];
-      if (!isMounted) return;
-      if (dbUnits) setUnits(dbUnits);
-      if (dbPayments) setPayments([...recovered, ...dbPayments]);
-      if (dbDeposits) setDeposits(dbDeposits);
-      if (dbCashflow) setCashflow(dbCashflow);
+      if (data.units) setUnits(data.units);
+      if (data.payments) setPayments(data.payments);
+      if (data.deposits) setDeposits(data.deposits);
+      if (data.cashflow) setCashflow(data.cashflow);
     }
 
     setRealtimeStatus('connecting');
@@ -360,17 +429,17 @@ export default function App() {
     }));
 
     // 3. Persist payment & unit in Supabase
-    const paymentSaved = await savePaymentToSupabase(newPayment);
+    const paymentSaved = await persist('payments', newPayment, savePaymentToSupabase);
     if (!paymentSaved) {
-      showToast(`Payment ${newPayment.receiptNumber} could not be saved to the database. Check your connection and record it again.`);
+      showToast(`Payment ${newPayment.receiptNumber} is saved on this device and will be uploaded to the database automatically when it's reachable.`);
     }
     if (updatedUnitRow) {
-      await saveUnitToSupabase(updatedUnitRow);
+      await persist('units', updatedUnitRow, saveUnitToSupabase);
     }
 
     // 4. Record corresponding Cashflow transaction
     const newTx: CashflowTransaction = {
-      id: `cf-pay-${Date.now()}`,
+      id: `cf-${newPayment.id}`,
       referenceNumber: `CF-${newPayment.receiptNumber.replace(/[^a-zA-Z0-9]/g, '') || Date.now().toString().slice(-6)}`,
       date: newPayment.date,
       title: `Rent: ${newPayment.tenantName} (${newPayment.unitNumber})`,
@@ -384,7 +453,7 @@ export default function App() {
       notes: `Rent payment for ${newPayment.accountingPeriod}. Receipt: ${newPayment.receiptNumber}`
     };
     setCashflow(prev => [newTx, ...prev]);
-    await saveCashflowToSupabase(newTx);
+    await persist('cashflow', newTx, saveCashflowToSupabase);
 
     // 5. Add notification
     const newNotification: CommercialNotification = {
@@ -422,25 +491,20 @@ export default function App() {
         showToast(`Unit ${unitToSave.unitNumber} (${unitToSave.floor}) registered as Available.`);
       }
     }
-    const saved = await saveUnitToSupabase(unitToSave);
+    const saved = await persist('units', unitToSave, saveUnitToSupabase);
     if (!saved) {
-      showToast(`Unit ${unitToSave.unitNumber} saved on this device, but the database sync failed.`);
+      showToast(`Unit ${unitToSave.unitNumber} is saved on this device and will be uploaded to the database automatically.`);
     }
   };
 
   // Reload everything from the database, e.g. after a delete the database refused,
   // so the screen never shows a record as deleted when it still exists.
   const restoreFromDatabase = async () => {
-    const [dbUnits, dbPayments, dbDeposits, dbCashflow] = await Promise.all([
-      getUnitsFromSupabase(),
-      getPaymentsFromSupabase(),
-      getDepositsFromSupabase(),
-      getCashflowFromSupabase(),
-    ]);
-    if (dbUnits) setUnits(dbUnits);
-    if (dbPayments) setPayments(dbPayments);
-    if (dbDeposits) setDeposits(dbDeposits);
-    if (dbCashflow) setCashflow(dbCashflow);
+    const data = await loadAllFromDatabase();
+    if (data.units) setUnits(data.units);
+    if (data.payments) setPayments(data.payments);
+    if (data.deposits) setDeposits(data.deposits);
+    if (data.cashflow) setCashflow(data.cashflow);
   };
 
   const reportDeleteResult = async (ok: boolean, successMessage: string) => {
@@ -455,6 +519,7 @@ export default function App() {
   // Delete Unit Handler
   const handleDeleteUnit = async (unitId: string) => {
     const found = units.find(u => u.id === unitId);
+    setPending('units', unitId, false);
     setUnits(prev => prev.filter(u => u.id !== unitId));
     const ok = await deleteUnitFromSupabase(unitId);
     await reportDeleteResult(ok, `Unit ${found?.unitNumber || ''} and connected tenant deleted.`);
@@ -484,7 +549,7 @@ export default function App() {
 
     let res = await deleteTenantFromUnitInSupabase(unitId, targetUnit.unitNumber);
     // Unit missing from the database (never synced): save it as vacant instead.
-    if (!res.success && (await saveUnitToSupabase(clearedUnit))) {
+    if (!res.success && (await persist('units', clearedUnit, saveUnitToSupabase))) {
       res = { success: true, unit: clearedUnit };
     }
     if (res.success) {
@@ -614,7 +679,7 @@ export default function App() {
         arrearsSSP: 0,
         notes: `[Vacated on ${payload?.vacatedDate || new Date().toISOString().slice(0, 10)}]${payload?.reason ? ` Reason: ${payload.reason}` : ''}`,
       };
-      if (await saveUnitToSupabase(vacatedUnit)) {
+      if (await persist('units', vacatedUnit, saveUnitToSupabase)) {
         res = { success: true, unit: vacatedUnit };
       }
     }
@@ -652,7 +717,7 @@ export default function App() {
       setDeposits(prev => [dep, ...prev]);
       showToast(`Deposit recorded for ${dep.tenantName}.`);
     }
-    await saveDepositToSupabase(dep);
+    await persist('deposits', dep, saveDepositToSupabase);
   };
 
   // Save Cashflow Handler
@@ -665,12 +730,13 @@ export default function App() {
       setCashflow(prev => [tx, ...prev]);
       showToast(`Cashflow ${tx.type} voucher ${tx.referenceNumber} recorded.`);
     }
-    await saveCashflowToSupabase(tx);
+    await persist('cashflow', tx, saveCashflowToSupabase);
   };
 
   // Delete a payment and the cashflow entry that was recorded with it
   const handleDeletePayment = async (payment: PaymentRecord) => {
-    const linked = cashflow.filter(tx => isCashflowForPayment(tx, payment));
+    const linked = cashflow.filter(tx => isCashflowForPayment(tx, payment, payments));
+    setPending('payments', payment.id, false);
     setPayments(prev => prev.filter(p => p.id !== payment.id));
     setCashflow(prev => prev.filter(tx => !linked.some(l => l.id === tx.id)));
     const ok = await deletePaymentFromSupabase(payment.id);
@@ -679,7 +745,8 @@ export default function App() {
   };
 
   const handleClearAllPayments = async () => {
-    const linked = cashflow.filter(tx => payments.some(p => isCashflowForPayment(tx, p)));
+    const linked = cashflow.filter(tx => payments.some(p => isCashflowForPayment(tx, p, payments)));
+    clearPending('payments');
     setPayments([]);
     setCashflow(prev => prev.filter(tx => !linked.some(l => l.id === tx.id)));
     const ok = await clearTableInSupabase('payments');
@@ -689,13 +756,14 @@ export default function App() {
 
   // Delete a deposit; a deposit still held is also taken off its unit
   const handleDeleteDeposit = async (dep: DepositRecord) => {
+    setPending('deposits', dep.id, false);
     setDeposits(prev => prev.filter(d => d.id !== dep.id));
     const ok = await deleteDepositFromSupabase(dep.id);
     const unit = units.find(u => u.unitNumber === dep.unitNumber);
     if (ok && unit && dep.status === 'Held in Escrow' && unit.escrowDepositUSD) {
       const updatedUnit = { ...unit, escrowDepositUSD: 0, escrowDepositSSP: 0, depositMonths: 0 };
       setUnits(prev => prev.map(u => u.id === unit.id ? updatedUnit : u));
-      await saveUnitToSupabase(updatedUnit);
+      await persist('units', updatedUnit, saveUnitToSupabase);
     }
     await reportDeleteResult(ok, `Deposit ${dep.depositSlip || dep.id} deleted.`);
   };
@@ -705,6 +773,7 @@ export default function App() {
     const affectedUnits = units
       .filter(u => heldUnitNumbers.has(u.unitNumber) && u.escrowDepositUSD)
       .map(u => ({ ...u, escrowDepositUSD: 0, escrowDepositSSP: 0, depositMonths: 0 }));
+    clearPending('deposits');
     setDeposits([]);
     const ok = await clearTableInSupabase('deposits');
     if (ok && affectedUnits.length) {
@@ -715,12 +784,14 @@ export default function App() {
   };
 
   const handleDeleteCashflow = async (tx: CashflowTransaction) => {
+    setPending('cashflow', tx.id, false);
     setCashflow(prev => prev.filter(c => c.id !== tx.id));
     const ok = await deleteCashflowFromSupabase(tx.id);
     await reportDeleteResult(ok, `Cashflow entry ${tx.referenceNumber} deleted.`);
   };
 
   const handleClearAllCashflow = async () => {
+    clearPending('cashflow');
     setCashflow([]);
     const ok = await clearTableInSupabase('cashflow_transactions');
     await reportDeleteResult(ok, 'All cashflow entries cleared.');
@@ -885,6 +956,8 @@ export default function App() {
               onSelectReceiptForPrint={(p) => setSelectedReceiptForPrint(p)}
               onModifyTenantPricing={handleModifyTenantPricing}
               onVacateUnit={handleVacateUnit}
+              onSaveDeposit={handleSaveDeposit}
+              onSaveUnit={handleSaveUnit}
               onDeleteTenant={handleDeleteTenantFromUnit}
               onClearAllTenants={handleClearAllTenants}
             />
@@ -990,6 +1063,7 @@ export default function App() {
 
       {/* Record Tenant Payment Modal */}
       <RecordPaymentModal
+        existingReceiptNumbers={payments.map(p => p.receiptNumber)}
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
         units={units}
