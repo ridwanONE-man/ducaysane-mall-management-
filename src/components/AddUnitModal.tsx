@@ -2,6 +2,53 @@ import React, { useState, useEffect } from 'react';
 import { X, Store, Check, Layers, Calendar, DollarSign, Phone, UserCheck, AlertCircle, Trash2 } from 'lucide-react';
 import { PropertyUnit, UnitType, OccupancyStatus } from '../types';
 
+const DAY_MS = 1000 * 60 * 60 * 24;
+
+const toISODate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// "YYYY-MM-DD" as a local date (new Date("YYYY-MM-DD") would be UTC midnight).
+const parseISODate = (s?: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || '');
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+};
+
+// Adds whole months, clamping to the last day of the month (Jan 31 + 1 month = Feb 28/29).
+const addMonths = (start: Date, months: number) => {
+  const target = new Date(start.getFullYear(), start.getMonth() + months, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(start.getDate(), lastDay));
+  return target;
+};
+
+const daysBetween = (from: Date, to: Date) => Math.round((to.getTime() - from.getTime()) / DAY_MS);
+
+function calculateLease(leaseStart: string, durationMonths: number) {
+  const start = parseISODate(leaseStart);
+  if (!start) return null;
+  const end = addMonths(start, Math.max(1, durationMonths || 1));
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return {
+    endStr: toISODate(end),
+    endLabel: end.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }),
+    totalDays: daysBetween(start, end),
+    daysRemaining: daysBetween(today, end),
+    daysUntilStart: daysBetween(today, start),
+  };
+}
+
+// Whole months between two lease dates, used to restore the duration when editing.
+function monthsBetween(startStr?: string, endStr?: string) {
+  const start = parseISODate(startStr);
+  const end = parseISODate(endStr);
+  if (!start || !end) return null;
+  for (let m = 1; m <= 120; m++) {
+    if (addMonths(start, m) >= end) return m;
+  }
+  return null;
+}
+
 interface AddUnitModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -33,39 +80,15 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
   const [tenantPhone, setTenantPhone] = useState('');
 
   // Lease calculations
-  const todayStr = '2026-09-25';
-  const [leaseStart, setLeaseStart] = useState('2026-09-01');
+  const todayStr = toISODate(new Date());
+  const [leaseStart, setLeaseStart] = useState(todayStr);
   const [leaseDurationMonths, setLeaseDurationMonths] = useState<number>(1);
-  const [calculatedEnd, setCalculatedEnd] = useState('2026-10-01');
-  const [calculatedDaysRemaining, setCalculatedDaysRemaining] = useState<number>(7);
 
   const [notes, setNotes] = useState('');
 
-  // Compute calculated end date & days remaining
-  useEffect(() => {
-    if (!leaseStart) return;
-    try {
-      const start = new Date(leaseStart);
-      if (isNaN(start.getTime())) return;
-
-      const end = new Date(start);
-      end.setMonth(end.getMonth() + (Number(leaseDurationMonths) || 1));
-      
-      const year = end.getFullYear();
-      const month = String(end.getMonth() + 1).padStart(2, '0');
-      const day = String(end.getDate()).padStart(2, '0');
-      const endStr = `${year}-${month}-${day}`;
-      setCalculatedEnd(endStr);
-
-      // Calculate days remaining relative to current date (or today)
-      const current = new Date(todayStr);
-      const diffTime = end.getTime() - current.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      setCalculatedDaysRemaining(diffDays);
-    } catch {
-      // fallback
-    }
-  }, [leaseStart, leaseDurationMonths]);
+  const lease = calculateLease(leaseStart, leaseDurationMonths);
+  const calculatedEnd = lease?.endStr || '';
+  const calculatedDaysRemaining = lease?.daysRemaining ?? 0;
 
   // Sync state when editingUnit changes or modal opens
   useEffect(() => {
@@ -90,7 +113,11 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       setStatus(editingUnit.occupancyStatus || 'Available');
       setTenantName(editingUnit.currentTenant?.name || '');
       setTenantPhone(editingUnit.currentTenant?.phone || '');
-      setLeaseStart(editingUnit.leaseStart || '2026-09-01');
+      const editStart = parseISODate(editingUnit.leaseStart) ? editingUnit.leaseStart!.slice(0, 10) : toISODate(new Date());
+      setLeaseStart(editStart);
+      setLeaseDurationMonths(
+        editingUnit.leaseTermMonths || monthsBetween(editingUnit.leaseStart, editingUnit.leaseEnd) || 1
+      );
       setNotes(editingUnit.notes || '');
     } else {
       setSelectedCategory('Shop');
@@ -104,7 +131,7 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       setStatus('Available');
       setTenantName('');
       setTenantPhone('');
-      setLeaseStart('2026-09-01');
+      setLeaseStart(toISODate(new Date()));
       setLeaseDurationMonths(1);
       setNotes('');
     }
@@ -472,24 +499,42 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
             </div>
 
             {/* Auto-calculated results */}
-            <div className="p-3 bg-white rounded-xl border border-orange-200/80 flex items-center justify-between text-xs">
-              <div>
-                <span className="text-[10px] text-slate-500 font-bold uppercase block">Calculated Lease End Date</span>
-                <span className="font-extrabold text-slate-900">{calculatedEnd}</span>
+            {lease ? (
+              <div className="p-3 bg-white rounded-xl border border-orange-200/80 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Calculated Lease End Date</span>
+                  <span className="font-extrabold text-slate-900">{lease.endLabel}</span>
+                  <span className="text-[10px] text-slate-400 block">
+                    {leaseDurationMonths} month{leaseDurationMonths === 1 ? '' : 's'} • {lease.totalDays} days total
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Days Remaining</span>
+                  <span className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-xs ${
+                    lease.daysRemaining > 7
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : lease.daysRemaining > 0
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-rose-100 text-rose-800'
+                  }`}>
+                    {lease.daysRemaining > 0
+                      ? `${lease.daysRemaining} day${lease.daysRemaining === 1 ? '' : 's'} remaining`
+                      : lease.daysRemaining === 0
+                      ? 'Ends today'
+                      : `Expired (${Math.abs(lease.daysRemaining)}d ago)`}
+                  </span>
+                  {lease.daysUntilStart > 0 && (
+                    <span className="text-[10px] text-blue-600 font-semibold block mt-0.5">
+                      Starts in {lease.daysUntilStart} day{lease.daysUntilStart === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-500 font-bold uppercase block">Days Remaining</span>
-                <span className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-xs ${
-                  calculatedDaysRemaining > 7 
-                    ? 'bg-emerald-100 text-emerald-800' 
-                    : calculatedDaysRemaining > 0 
-                    ? 'bg-amber-100 text-amber-800' 
-                    : 'bg-rose-100 text-rose-800'
-                }`}>
-                  {calculatedDaysRemaining > 0 ? `${calculatedDaysRemaining} days remaining` : `Expired (${Math.abs(calculatedDaysRemaining)}d ago)`}
-                </span>
+            ) : (
+              <div className="p-3 bg-white rounded-xl border border-orange-200/80 text-xs text-slate-400">
+                Pick a lease start date to calculate the end date and days remaining.
               </div>
-            </div>
+            )}
           </div>
 
           {/* Additional Notes */}
