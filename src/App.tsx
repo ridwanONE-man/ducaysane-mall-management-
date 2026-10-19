@@ -807,9 +807,7 @@ export default function App() {
   // Quick action: record payment for tenant name or unit number (navigates to payments page)
   const handleRecordPaymentForTenantUnit = (unitNumber: string) => {
     const found = units.find(u => u.unitNumber === unitNumber);
-    if (found) {
-      setPaymentSelectedUnitId(found.id);
-    }
+    setPaymentSelectedUnitId(found?.id);
     setActiveTab('payments');
     setIsPaymentModalOpen(true);
   };

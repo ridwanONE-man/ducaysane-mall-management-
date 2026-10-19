@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, 
   CreditCard, 
   Store, 
   Calendar, 
   Check, 
-  AlertCircle
+  AlertCircle,
+  UserCheck
 } from 'lucide-react';
 import { PropertyUnit, PaymentRecord, PaymentMethodType } from '../types';
 
@@ -54,6 +55,25 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   const [amountReceived, setAmountReceived] = useState<number>(defaultAmount);
   const [notes, setNotes] = useState('');
   const [autoGenerateReceipt, setAutoGenerateReceipt] = useState(true);
+
+  // The form stays mounted, so reset it to the tenant that was clicked each time it opens.
+  useEffect(() => {
+    if (!isOpen) return;
+    const target =
+      units.find(u => u.id === selectedUnitId) ||
+      (selectedUnitId ? null : occupiedUnits[0] || units[0] || null);
+    setSelectedUnit(target);
+    setCurrency('USD');
+    setAmountReceived(target ? target.monthlyRateUSD : 0);
+    setPaymentDate(new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }));
+    setAccountingPeriod(`${new Date().toLocaleString('en-US', { month: 'long' })} ${new Date().getFullYear()}`);
+    setPaymentMethod('Cash (Office Management Desk)');
+    setNotes('');
+    setManualTenantName('');
+    setManualUnitNumber('');
+    // Only when opened or pointed at a different unit, not on every data refresh
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, selectedUnitId]);
 
   // Generate dynamic receipt number matching official NBC voucher
   // Next number in this year's sequence (#REC-2026-0001, #REC-2026-0002, ...)
@@ -141,7 +161,14 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-900 tracking-tight">Record Rent Payment</h2>
-              <p className="text-xs text-slate-500">Apply payments towards rent, advance deposits, or outstanding arrears.</p>
+              {selectedUnit?.currentTenant ? (
+                <p className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+                  <UserCheck className="w-3.5 h-3.5" />
+                  For {selectedUnit.currentTenant.name} • {selectedUnit.unitNumber}
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500">Apply payments towards rent, advance deposits, or outstanding arrears.</p>
+              )}
             </div>
           </div>
           <button 
