@@ -15,7 +15,8 @@ import {
   ShieldCheck,
   Store,
   DollarSign,
-  PieChart
+  PieChart,
+  Trash2
 } from 'lucide-react';
 import { PropertyUnit, PaymentRecord, DepositRecord } from '../types';
 
@@ -23,6 +24,10 @@ interface AnalyticsViewProps {
   units: PropertyUnit[];
   payments: PaymentRecord[];
   deposits?: DepositRecord[];
+  onDeletePayment?: (payment: PaymentRecord) => void;
+  onClearAllPayments?: () => void;
+  onDeleteDeposit?: (deposit: DepositRecord) => void;
+  onClearAllDeposits?: () => void;
 }
 
 type ReportTab = 'revenue' | 'spatial' | 'arrears' | 'deposits' | 'expirations';
@@ -30,7 +35,11 @@ type ReportTab = 'revenue' | 'spatial' | 'arrears' | 'deposits' | 'expirations';
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ 
   units, 
   payments, 
-  deposits = []
+  deposits = [],
+  onDeletePayment,
+  onClearAllPayments,
+  onDeleteDeposit,
+  onClearAllDeposits
 }) => {
   const [activeReportTab, setActiveReportTab] = useState<ReportTab>('revenue');
   const [revenuePeriodFilter, setRevenuePeriodFilter] = useState<'6months' | 'year' | 'all'>('6months');
@@ -415,7 +424,21 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <h4 className="font-bold text-slate-900 text-xs sm:text-sm">Verified Transaction Records</h4>
-              <span className="text-xs text-slate-400 font-semibold">{payments.length} transactions cleared</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-400 font-semibold">{payments.length} transactions cleared</span>
+                {onClearAllPayments && (
+                  <button
+                    type="button"
+                    disabled={payments.length === 0}
+                    onClick={() => {
+                      if (window.confirm(`Delete ALL ${payments.length} payment records? This cannot be undone.`)) onClearAllPayments();
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 text-[11px] font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Clear All
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -429,6 +452,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                     <th className="py-3 px-4">Accounting Period</th>
                     <th className="py-3 px-4">Amount Cleared (USD)</th>
                     <th className="py-3 px-4">Payment Method</th>
+                    {onDeletePayment && <th className="py-3 px-4 w-10" />}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -441,6 +465,20 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                       <td className="py-3 px-4 text-slate-600">{p.accountingPeriod}</td>
                       <td className="py-3 px-4 font-bold text-emerald-600">${p.amount.toFixed(2)} USD</td>
                       <td className="py-3 px-4 text-slate-600">{p.paymentMethod}</td>
+                      {onDeletePayment && (
+                        <td className="py-3 px-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Delete payment ${p.receiptNumber}? This cannot be undone.`)) onDeletePayment(p);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -641,7 +679,21 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
           <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <h4 className="font-bold text-slate-900 text-sm">Escrow Trust Deposits Register</h4>
-              <span className="text-xs text-slate-400">{deposits.length} escrow vouchers</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-400 font-semibold">{deposits.length} escrow vouchers</span>
+                {onClearAllDeposits && (
+                  <button
+                    type="button"
+                    disabled={deposits.length === 0}
+                    onClick={() => {
+                      if (window.confirm(`Delete ALL ${deposits.length} deposit records? This cannot be undone.`)) onClearAllDeposits();
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 text-[11px] font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Clear All
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -655,6 +707,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                     <th className="py-3 px-4">Months Covered</th>
                     <th className="py-3 px-4">Bank Escrow Account</th>
                     <th className="py-3 px-4">Status</th>
+                    {onDeleteDeposit && <th className="py-3 px-4 w-10" />}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -677,6 +730,20 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                           {d.status}
                         </span>
                       </td>
+                      {onDeleteDeposit && (
+                        <td className="py-3 px-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Delete deposit ${d.depositSlip || d.id}? This cannot be undone.`)) onDeleteDeposit(d);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

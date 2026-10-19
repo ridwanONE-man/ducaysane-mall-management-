@@ -57,10 +57,41 @@ import {
   getCashflowFromSupabase,
   saveCashflowToSupabase,
   saveCashflowsBulkToSupabase,
+  deletePaymentFromSupabase,
+  deleteDepositFromSupabase,
+  deleteCashflowFromSupabase,
+  clearTableInSupabase,
   clearAllSupabaseData,
   subscribeToRealtimeChanges,
   RealtimeStatus
 } from './lib/supabaseService';
+
+// Set once the admin deletes records from a table, so the sample data isn't re-seeded into it.
+const CLEARED_FLAGS = {
+  units: 'nbc_units_cleared',
+  payments: 'nbc_payments_cleared',
+  deposits: 'nbc_deposits_cleared',
+  cashflow: 'nbc_cashflow_cleared',
+} as const;
+
+const markCleared = (table: keyof typeof CLEARED_FLAGS) => {
+  try {
+    localStorage.setItem(CLEARED_FLAGS[table], 'true');
+  } catch {}
+};
+
+const wasCleared = (table: keyof typeof CLEARED_FLAGS) => {
+  try {
+    return localStorage.getItem(CLEARED_FLAGS[table]) === 'true';
+  } catch {
+    return false;
+  }
+};
+
+// Cashflow entry created automatically when a payment was recorded.
+const isCashflowForPayment = (tx: CashflowTransaction, payment: PaymentRecord) =>
+  tx.referenceNumber === `CF-${payment.receiptNumber.replace(/[^a-zA-Z0-9]/g, '')}` ||
+  Boolean(tx.notes?.includes(`Receipt: ${payment.receiptNumber}`));
 
 export default function App() {
   // Authentication State with localStorage persistence
@@ -228,8 +259,7 @@ export default function App() {
         if (!isMounted) return;
 
         // 1. Units Hydration / Seeding (avoid re-seeding if user intentionally cleared units)
-        const unitsWereCleared = localStorage.getItem('nbc_units_cleared') === 'true';
-        if (dbUnits.length === 0 && !unitsWereCleared) {
+        if (dbUnits.length === 0 && !wasCleared('units')) {
           console.log('Supabase units table empty. Auto-seeding initial inventory...');
           await saveUnitsBulkToSupabase(initialUnits);
           setUnits(initialUnits);
@@ -238,7 +268,7 @@ export default function App() {
         }
 
         // 2. Payments Hydration / Seeding
-        if (dbPayments.length === 0) {
+        if (dbPayments.length === 0 && !wasCleared('payments')) {
           console.log('Supabase payments table empty. Auto-seeding initial ledger...');
           await savePaymentsBulkToSupabase(initialPayments);
           setPayments(initialPayments);
@@ -247,7 +277,7 @@ export default function App() {
         }
 
         // 3. Deposits Hydration / Seeding
-        if (dbDeposits.length === 0) {
+        if (dbDeposits.length === 0 && !wasCleared('deposits')) {
           console.log('Supabase deposits table empty. Auto-seeding initial escrow...');
           await saveDepositsBulkToSupabase(initialDeposits);
           setDeposits(initialDeposits);
@@ -256,7 +286,7 @@ export default function App() {
         }
 
         // 4. Cashflow Hydration / Seeding
-        if (dbCashflow.length === 0) {
+        if (dbCashflow.length === 0 && !wasCleared('cashflow')) {
           console.log('Supabase cashflow table empty. Auto-seeding initial cashflow...');
           await saveCashflowsBulkToSupabase(initialCashflowTransactions);
           setCashflow(initialCashflowTransactions);
@@ -350,6 +380,7 @@ export default function App() {
       localStorage.clear();
       localStorage.setItem('nbc_cache_v1_purged', 'true');
     } catch (e) {}
+    (Object.keys(CLEARED_FLAGS) as (keyof typeof CLEARED_FLAGS)[]).forEach(markCleared);
     await clearAllSupabaseData();
     showToast('All system records and cache cleared across Supabase and local store.');
   };
@@ -496,8 +527,8 @@ export default function App() {
     setUnits([]);
     try {
       localStorage.setItem('nbc_units', JSON.stringify([]));
-      localStorage.setItem('nbc_units_cleared', 'true');
     } catch {}
+    markCleared('units');
 
     const notif: CommercialNotification = {
       id: `notif-${Date.now()}`,
@@ -625,6 +656,76 @@ export default function App() {
       showToast(`Cashflow ${tx.type} voucher ${tx.referenceNumber} recorded.`);
     }
     await saveCashflowToSupabase(tx);
+  };
+
+  // Delete a payment and the cashflow entry that was recorded with it
+  const handleDeletePayment = async (payment: PaymentRecord) => {
+    const linked = cashflow.filter(tx => isCashflowForPayment(tx, payment));
+    setPayments(prev => prev.filter(p => p.id !== payment.id));
+    setCashflow(prev => prev.filter(tx => !linked.some(l => l.id === tx.id)));
+    markCleared('payments');
+    const ok = await deletePaymentFromSupabase(payment.id);
+    await Promise.all(linked.map(tx => deleteCashflowFromSupabase(tx.id)));
+    showToast(ok
+      ? `Payment ${payment.receiptNumber} deleted.`
+      : `Payment ${payment.receiptNumber} removed here, but the database delete failed.`);
+  };
+
+  const handleClearAllPayments = async () => {
+    const linked = cashflow.filter(tx => payments.some(p => isCashflowForPayment(tx, p)));
+    setPayments([]);
+    setCashflow(prev => prev.filter(tx => !linked.some(l => l.id === tx.id)));
+    markCleared('payments');
+    const ok = await clearTableInSupabase('payments');
+    await Promise.all(linked.map(tx => deleteCashflowFromSupabase(tx.id)));
+    showToast(ok ? 'All payments cleared.' : 'Payments cleared here, but the database delete failed.');
+  };
+
+  // Delete a deposit; a deposit still held is also taken off its unit
+  const handleDeleteDeposit = async (dep: DepositRecord) => {
+    setDeposits(prev => prev.filter(d => d.id !== dep.id));
+    markCleared('deposits');
+    const ok = await deleteDepositFromSupabase(dep.id);
+    const unit = units.find(u => u.unitNumber === dep.unitNumber);
+    if (unit && dep.status === 'Held in Escrow' && unit.escrowDepositUSD) {
+      const updatedUnit = { ...unit, escrowDepositUSD: 0, escrowDepositSSP: 0, depositMonths: 0 };
+      setUnits(prev => prev.map(u => u.id === unit.id ? updatedUnit : u));
+      await saveUnitToSupabase(updatedUnit);
+    }
+    showToast(ok
+      ? `Deposit ${dep.depositSlip || dep.id} deleted.`
+      : `Deposit removed here, but the database delete failed.`);
+  };
+
+  const handleClearAllDeposits = async () => {
+    const heldUnitNumbers = new Set(deposits.filter(d => d.status === 'Held in Escrow').map(d => d.unitNumber));
+    const affectedUnits = units
+      .filter(u => heldUnitNumbers.has(u.unitNumber) && u.escrowDepositUSD)
+      .map(u => ({ ...u, escrowDepositUSD: 0, escrowDepositSSP: 0, depositMonths: 0 }));
+    setDeposits([]);
+    if (affectedUnits.length) {
+      setUnits(prev => prev.map(u => affectedUnits.find(a => a.id === u.id) || u));
+    }
+    markCleared('deposits');
+    const ok = await clearTableInSupabase('deposits');
+    if (affectedUnits.length) await saveUnitsBulkToSupabase(affectedUnits);
+    showToast(ok ? 'All deposits cleared.' : 'Deposits cleared here, but the database delete failed.');
+  };
+
+  const handleDeleteCashflow = async (tx: CashflowTransaction) => {
+    setCashflow(prev => prev.filter(c => c.id !== tx.id));
+    markCleared('cashflow');
+    const ok = await deleteCashflowFromSupabase(tx.id);
+    showToast(ok
+      ? `Cashflow entry ${tx.referenceNumber} deleted.`
+      : `Entry removed here, but the database delete failed.`);
+  };
+
+  const handleClearAllCashflow = async () => {
+    setCashflow([]);
+    markCleared('cashflow');
+    const ok = await clearTableInSupabase('cashflow_transactions');
+    showToast(ok ? 'All cashflow entries cleared.' : 'Cashflow cleared here, but the database delete failed.');
   };
 
   // Quick action: record payment for specific unit (navigates to payments page)
@@ -791,6 +892,8 @@ export default function App() {
                 setIsPaymentModalOpen(true);
               }}
               onSelectReceiptForPrint={(p) => setSelectedReceiptForPrint(p)}
+              onDeletePayment={handleDeletePayment}
+              onClearAllPayments={handleClearAllPayments}
             />
           )}
 
@@ -801,6 +904,8 @@ export default function App() {
               currencyMode={currencyMode}
               deposits={deposits}
               onSaveDeposit={handleSaveDeposit}
+              onDeleteDeposit={handleDeleteDeposit}
+              onClearAllDeposits={handleClearAllDeposits}
             />
           )}
 
@@ -810,6 +915,8 @@ export default function App() {
               currencyMode={currencyMode}
               transactions={cashflow}
               onSaveTransaction={handleSaveCashflow}
+              onDeleteTransaction={handleDeleteCashflow}
+              onClearAllTransactions={handleClearAllCashflow}
             />
           )}
 
@@ -833,6 +940,8 @@ export default function App() {
               payments={payments}
               deposits={deposits}
               onSelectReceiptForPrint={(p) => setSelectedReceiptForPrint(p)}
+              onDeletePayment={handleDeletePayment}
+              onClearAllPayments={handleClearAllPayments}
             />
           )}
 
@@ -842,6 +951,10 @@ export default function App() {
               units={units}
               payments={payments}
               deposits={deposits}
+              onDeletePayment={handleDeletePayment}
+              onClearAllPayments={handleClearAllPayments}
+              onDeleteDeposit={handleDeleteDeposit}
+              onClearAllDeposits={handleClearAllDeposits}
             />
           )}
 

@@ -15,6 +15,7 @@ import {
   X,
   CalendarCheck,
   AlertTriangle,
+  Trash2,
 } from 'lucide-react';
 import { PropertyUnit, PaymentRecord, DepositRecord } from '../types';
 import { getTenantPaymentsFromSupabase } from '../lib/supabaseService';
@@ -44,6 +45,7 @@ interface TenantStatementReportProps {
   payments: PaymentRecord[];
   deposits: DepositRecord[];
   onSelectReceiptForPrint?: (payment: PaymentRecord) => void;
+  onDeletePayment?: (payment: PaymentRecord) => void;
 }
 
 interface TenantEntry {
@@ -104,6 +106,7 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
   payments,
   deposits,
   onSelectReceiptForPrint,
+  onDeletePayment,
 }) => {
   const now = new Date();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -997,6 +1000,21 @@ export const TenantStatementReport: React.FC<TenantStatementReportProps> = ({
                       >
                         <Printer className="w-3.5 h-3.5" /> Print
                       </button>
+                      {onDeletePayment && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Delete payment ${p.receiptNumber}? This cannot be undone.`)) {
+                              onDeletePayment(p);
+                              setDbPayments(prev => prev && prev.filter(x => x.id !== p.id));
+                            }
+                          }}
+                          className="ml-1.5 p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer align-middle"
+                          title="Delete payment"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

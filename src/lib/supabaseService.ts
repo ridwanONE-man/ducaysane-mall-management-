@@ -688,6 +688,45 @@ export async function savePaymentsBulkToSupabase(payments: PaymentRecord[]): Pro
   }
 }
 
+export async function deletePaymentFromSupabase(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('payments')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.warn('Could not delete payment from Supabase:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Network error deleting payment from Supabase:', err);
+    return false;
+  }
+}
+
+// Deletes every row of a table (payments, deposits or cashflow_transactions).
+export async function clearTableInSupabase(
+  table: 'payments' | 'deposits' | 'cashflow_transactions'
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .neq('id', '___');
+
+    if (error) {
+      console.warn(`Could not clear ${table} in Supabase:`, error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`Network error clearing ${table} in Supabase:`, err);
+    return false;
+  }
+}
+
 // ==========================================
 // 4. DEPOSITS API
 // ==========================================

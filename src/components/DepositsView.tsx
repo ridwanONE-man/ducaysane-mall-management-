@@ -14,7 +14,8 @@ import {
   Store,
   DollarSign,
   Calendar,
-  X
+  X,
+  Trash2
 } from 'lucide-react';
 import { DepositRecord, PropertyUnit, CurrencyMode } from '../types';
 import { initialDeposits } from '../data/commercialData';
@@ -26,13 +27,17 @@ interface DepositsViewProps {
   onSaveDeposit?: (deposit: DepositRecord) => void;
   onSaveUnit?: (unit: PropertyUnit) => void;
   onOpenReceiptPrint?: (deposit: DepositRecord) => void;
+  onDeleteDeposit?: (deposit: DepositRecord) => void;
+  onClearAllDeposits?: () => void;
 }
 
 export const DepositsView: React.FC<DepositsViewProps> = ({
   units,
   deposits: propDeposits,
   onSaveDeposit,
-  onSaveUnit
+  onSaveUnit,
+  onDeleteDeposit,
+  onClearAllDeposits
 }) => {
   const [localDeposits, setLocalDeposits] = useState<DepositRecord[]>(initialDeposits);
   const deposits = propDeposits || localDeposits;
@@ -203,6 +208,22 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
             <Download className="w-3.5 h-3.5 text-slate-500" />
             <span>Export CSV</span>
           </button>
+
+          {onClearAllDeposits && (
+            <button
+              type="button"
+              disabled={deposits.length === 0}
+              onClick={() => {
+                if (window.confirm(`Delete ALL ${deposits.length} deposit records? This cannot be undone.`)) {
+                  onClearAllDeposits();
+                }
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Clear All</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -388,6 +409,20 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
                           </button>
                         ) : (
                           <span className="text-[11px] text-slate-400 font-medium italic">Settled</span>
+                        )}
+                        {onDeleteDeposit && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Delete deposit ${d.depositSlip || d.id} for ${d.tenantName}? This cannot be undone.`)) {
+                                onDeleteDeposit(d);
+                              }
+                            }}
+                            className="ml-1.5 p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer align-middle"
+                            title="Delete deposit"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         )}
                       </td>
                     </tr>

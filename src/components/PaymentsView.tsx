@@ -10,7 +10,8 @@ import {
   Search,
   Receipt,
   AlertTriangle,
-  ArrowUpRight
+  ArrowUpRight,
+  Trash2
 } from 'lucide-react';
 import { PaymentRecord, CurrencyMode, PropertyUnit } from '../types';
 import { exportPaymentsToCSV } from '../utils/exportUtils';
@@ -21,6 +22,8 @@ interface PaymentsViewProps {
   currencyMode: CurrencyMode;
   onOpenRecordPayment: () => void;
   onSelectReceiptForPrint: (payment: PaymentRecord) => void;
+  onDeletePayment?: (payment: PaymentRecord) => void;
+  onClearAllPayments?: () => void;
 }
 
 export const PaymentsView: React.FC<PaymentsViewProps> = ({
@@ -28,7 +31,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   units = [],
   currencyMode,
   onOpenRecordPayment,
-  onSelectReceiptForPrint
+  onSelectReceiptForPrint,
+  onDeletePayment,
+  onClearAllPayments
 }) => {
   const [search, setSearch] = useState('');
   const [filterPeriod, setFilterPeriod] = useState('All');
@@ -122,6 +127,22 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             <Printer className="w-3.5 h-3.5 text-slate-500" />
             <span>Print Latest</span>
           </button>
+
+          {onClearAllPayments && (
+            <button
+              type="button"
+              disabled={payments.length === 0}
+              onClick={() => {
+                if (window.confirm(`Delete ALL ${payments.length} payment records? Their linked cashflow entries are removed too. This cannot be undone.`)) {
+                  onClearAllPayments();
+                }
+              }}
+              className="px-3.5 py-2 bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Clear All</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -330,7 +351,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   <th className="p-4">Amount Cleared</th>
                   <th className="p-4">Remaining Balance</th>
                   <th className="p-4">Status</th>
-                  <th className="p-4 text-right">Receipt Voucher</th>
+                  <th className="p-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -407,6 +428,20 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                           <Receipt className="w-3.5 h-3.5" />
                           <span>Print Voucher</span>
                         </button>
+                        {onDeletePayment && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Delete payment ${item.receiptNumber} from ${item.tenantName}? This cannot be undone.`)) {
+                                onDeletePayment(item);
+                              }
+                            }}
+                            className="ml-1.5 p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer align-middle"
+                            title="Delete payment"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))

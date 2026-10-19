@@ -15,7 +15,8 @@ import {
   FileSpreadsheet, 
   CheckCircle2,
   DollarSign,
-  Wallet
+  Wallet,
+  Trash2
 } from 'lucide-react';
 import { CashflowTransaction, CurrencyMode, CashflowCategory } from '../types';
 import { initialCashflowTransactions } from '../data/commercialData';
@@ -24,12 +25,16 @@ interface CashflowViewProps {
   currencyMode: CurrencyMode;
   transactions?: CashflowTransaction[];
   onSaveTransaction?: (tx: CashflowTransaction) => void;
+  onDeleteTransaction?: (tx: CashflowTransaction) => void;
+  onClearAllTransactions?: () => void;
 }
 
 export const CashflowView: React.FC<CashflowViewProps> = ({ 
   currencyMode,
   transactions: propTransactions,
-  onSaveTransaction
+  onSaveTransaction,
+  onDeleteTransaction,
+  onClearAllTransactions
 }) => {
   const [localTransactions, setLocalTransactions] = useState<CashflowTransaction[]>(initialCashflowTransactions);
   const transactions = propTransactions || localTransactions;
@@ -157,6 +162,22 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             <span>Export</span>
           </button>
 
+          {onClearAllTransactions && (
+            <button
+              type="button"
+              disabled={transactions.length === 0}
+              onClick={() => {
+                if (window.confirm(`Delete ALL ${transactions.length} cashflow entries? This cannot be undone.`)) {
+                  onClearAllTransactions();
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Clear All</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setIsRecordModalOpen(true)}
@@ -254,12 +275,13 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 <th className="py-3 px-4">Account / Facility</th>
                 <th className="py-3 px-4">Type</th>
                 <th className="py-3 px-4 text-right">Amount</th>
+                {onDeleteTransaction && <th className="py-3 px-4 w-10" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-12 text-center">
+                  <td colSpan={onDeleteTransaction ? 7 : 6} className="p-12 text-center">
                     <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-slate-500">
                       <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
                         <Wallet className="w-6 h-6 text-slate-400 stroke-[1.5]" />
@@ -313,6 +335,22 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         ${t.amount.toLocaleString()}
                       </span>
                     </td>
+                    {onDeleteTransaction && (
+                      <td className="py-3.5 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Delete cashflow entry ${t.referenceNumber} (${t.title})? This cannot be undone.`)) {
+                              onDeleteTransaction(t);
+                            }
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="Delete entry"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
