@@ -425,14 +425,24 @@ export default function App() {
       localStorage.removeItem('nbc_units_cleared');
     } catch {}
     const isExisting = units.some(u => u.id === unitToSave.id);
+    const tenantName = unitToSave.currentTenant?.name;
     if (isExisting) {
       setUnits(prev => prev.map(u => u.id === unitToSave.id ? unitToSave : u));
       showToast(`Unit ${unitToSave.unitNumber} updated and synced.`);
     } else {
       setUnits(prev => [unitToSave, ...prev]);
-      showToast(`Unit ${unitToSave.unitNumber} (${unitToSave.floor}) registered and synced.`);
+      if (tenantName) {
+        // A new unit created with a tenant is a new lease: show it in the Tenants directory.
+        setActiveTab('tenants');
+        showToast(`Unit ${unitToSave.unitNumber} created and leased to ${tenantName}.`);
+      } else {
+        showToast(`Unit ${unitToSave.unitNumber} (${unitToSave.floor}) registered as Available.`);
+      }
     }
-    await saveUnitToSupabase(unitToSave);
+    const saved = await saveUnitToSupabase(unitToSave);
+    if (!saved) {
+      showToast(`Unit ${unitToSave.unitNumber} saved on this device, but the database sync failed.`);
+    }
   };
 
   // Delete Unit Handler
@@ -544,7 +554,30 @@ export default function App() {
   const handleVacateUnit = async (unitId: string, payload?: VacateUnitPayload): Promise<boolean> => {
     const targetUnit = units.find(u => u.id === unitId);
     const tenantName = targetUnit?.currentTenant?.name || 'Tenant';
-    const res = await vacateUnitInSupabase(unitId, payload);
+    let res = await vacateUnitInSupabase(unitId, payload);
+
+    // The unit may exist only locally (never synced); save it as an Available unit instead.
+    if (!res.success && targetUnit) {
+      const vacatedUnit: PropertyUnit = {
+        ...targetUnit,
+        currentTenant: undefined,
+        occupancyStatus: 'Available',
+        billingStatus: 'No Balance',
+        billingMonthText: undefined,
+        leaseStart: undefined,
+        leaseEnd: undefined,
+        leaseTermMonths: undefined,
+        daysRemaining: undefined,
+        daysToExpiry: undefined,
+        arrearsUSD: 0,
+        arrearsSSP: 0,
+        notes: `[Vacated on ${payload?.vacatedDate || new Date().toISOString().slice(0, 10)}]${payload?.reason ? ` Reason: ${payload.reason}` : ''}`,
+      };
+      if (await saveUnitToSupabase(vacatedUnit)) {
+        res = { success: true, unit: vacatedUnit };
+      }
+    }
+
     if (res.success && res.unit) {
       const updated = res.unit;
       setUnits(prev => prev.map(u => u.id === unitId ? updated : u));

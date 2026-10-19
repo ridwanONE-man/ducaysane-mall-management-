@@ -151,14 +151,15 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
     const rateUSD = numRent;
     const numDeposit = rateUSD * Math.max(1, Number(depositMonths) || 1);
 
-    const hasTenant = Boolean(tenantName.trim().length > 0 && status !== 'Available');
+    // Entering a tenant name leases the unit; leaving it empty keeps the unit vacant.
+    const hasTenant = tenantName.trim().length > 0;
     const assignedTenant = hasTenant ? {
       id: editingUnit?.currentTenant?.id || `t-${Date.now()}`,
       name: tenantName.trim(),
       trade: trade.trim() || (selectedCategory === 'Shop' ? 'General Retail' : 'Commercial Space'),
-      code: `TNT-${finalUnitNumber}`,
+      code: editingUnit?.currentTenant?.code || `TNT-${finalUnitNumber}`,
       phone: tenantPhone.trim() || '+211 928 000 000',
-      email: `${finalUnitNumber.toLowerCase()}@nyakuron.com`,
+      email: editingUnit?.currentTenant?.email || `${finalUnitNumber.toLowerCase()}@nyakuron.com`,
       unitNumber: finalUnitNumber,
       balanceUSD: editingUnit?.arrearsUSD || 0,
       balanceSSP: 0,
@@ -382,6 +383,11 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
               <div className="flex items-center gap-2">
                 <UserCheck className="w-4 h-4 text-orange-600" />
                 <span className="text-xs font-bold text-slate-900">Tenant & Business Profile</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  tenantName.trim() ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {tenantName.trim() ? 'Will be Occupied' : 'Leave empty for Available'}
+                </span>
               </div>
               {tenantName.trim().length > 0 && (
                 <button
@@ -512,7 +518,13 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
               className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-bold rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 cursor-pointer"
             >
               <Check className="w-4 h-4" />
-              <span>{isEditing ? 'Save Changes' : `Create ${selectedCategory}`}</span>
+              <span>
+                {isEditing
+                  ? 'Save Changes'
+                  : tenantName.trim()
+                    ? `Create ${selectedCategory} & Lease to Tenant`
+                    : `Create Available ${selectedCategory}`}
+              </span>
             </button>
           </div>
         </form>

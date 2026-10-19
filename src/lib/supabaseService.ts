@@ -257,6 +257,28 @@ export async function saveUnitToSupabase(unit: PropertyUnit): Promise<boolean> {
       console.warn('Could not save unit to Supabase:', error.message);
       return false;
     }
+
+    // Keep public.tenants in step with the unit's occupant
+    try {
+      if (unit.currentTenant && unit.occupancyStatus !== 'Available') {
+        await supabase.from('tenants').upsert({
+          id: `t-${unit.id}`,
+          name: unit.currentTenant.name,
+          trade: unit.currentTenant.trade,
+          unit_number: unit.unitNumber,
+          phone: unit.currentTenant.phone,
+          email: unit.currentTenant.email,
+          status: 'Active',
+          balance_usd: unit.arrearsUSD || 0,
+          balance_ssp: unit.arrearsSSP || 0,
+        });
+      } else {
+        await supabase.from('tenants').update({ status: 'Vacated' }).eq('id', `t-${unit.id}`);
+      }
+    } catch (tErr) {
+      console.warn('Could not sync tenant for unit to Supabase:', tErr);
+    }
+
     return true;
   } catch (err) {
     console.warn('Network error saving unit to Supabase:', err);
