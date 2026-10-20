@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Users, Search, Phone, Copy, Check, CalendarCheck, PiggyBank, AlertTriangle, CheckCircle2, Store } from 'lucide-react';
+import { Users, Search, Phone, Copy, Check, CalendarCheck, PiggyBank, AlertTriangle, CheckCircle2, Store, ShieldCheck } from 'lucide-react';
 import { TenantAccount } from '../utils/tenantAccount';
 import { formatLongDate } from '../utils/printUtils';
 
@@ -132,9 +132,15 @@ export const TenantAccountsPanel: React.FC<TenantAccountsPanelProps> = ({ accoun
                   <span>Monthly rent</span>
                   <span className="font-bold text-emerald-700">{usd(a.monthlyRent)}</span>
                 </div>
+                {a.depositHeld > 0 && (
+                  <div className="flex justify-between text-indigo-700">
+                    <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5" /> Security deposit</span>
+                    <span className="font-bold">{usd(a.depositHeld)}</span>
+                  </div>
+                )}
                 {a.credit > 0 && (
                   <div className="flex justify-between text-blue-700">
-                    <span className="flex items-center gap-1"><PiggyBank className="w-3.5 h-3.5" /> Deposit credit</span>
+                    <span className="flex items-center gap-1"><PiggyBank className="w-3.5 h-3.5" /> Advance credit</span>
                     <span className="font-bold">{usd(a.credit)}</span>
                   </div>
                 )}

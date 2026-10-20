@@ -18,7 +18,8 @@ import { AddUnitModal } from './components/AddUnitModal';
 import { FloorMapView } from './components/FloorMapView';
 import { NotificationsView } from './components/NotificationsView';
 import { SmartPayModal, SmartPayRequest } from './components/SmartPayModal';
-import { buildTenantAccount, buildTenantAccounts, CREDIT_BANK_LABEL, CREDIT_SLIP_PREFIX } from './utils/tenantAccount';
+import { TenantDepositModal, TenantDepositRequest } from './components/TenantDepositModal';
+import { buildTenantAccount, buildTenantAccounts, CREDIT_BANK_LABEL, CREDIT_SLIP_PREFIX, DEPOSIT_MONTHS_PREFIX } from './utils/tenantAccount';
 import { nextReceiptNumber } from './utils/receiptNumbers';
 
 import { 
@@ -278,6 +279,19 @@ export default function App() {
   // Each leased unit's rent account: months paid / owed, balance and advance credit
   const tenantAccounts = useMemo(() => buildTenantAccounts(units, payments, deposits), [units, payments, deposits]);
   const smartPayAccount = tenantAccounts.find(a => a.key === smartPayKey) || null;
+  const [depositKey, setDepositKey] = useState<string | null>(null);
+  const depositAccount = tenantAccounts.find(a => a.key === depositKey) || null;
+
+  // Next deposit slip in this year's sequence: DEP-2026-0001, DEP-2026-0002, ...
+  const nextDepositSlip = (() => {
+    const year = new Date().getFullYear();
+    const pattern = new RegExp(`^DEP-${year}-(\\d+)$`);
+    const last = deposits.reduce((max, d) => {
+      const m = pattern.exec(d.depositSlip || '');
+      return m ? Math.max(max, Number(m[1])) : max;
+    }, 0);
+    return `DEP-${year}-${String(last + 1).padStart(4, '0')}`;
+  })();
 
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -939,6 +953,112 @@ export default function App() {
       : `Payment ${receiptNumber} is saved on this device and will be uploaded to the database automatically.`);
   };
 
+  // Security deposit for chosen months, only offered once rent is paid up to date
+  const handleAddTenantDeposit = async ({ account, months, amount, bankAccount, notes }: TenantDepositRequest) => {
+    const { tenant, unit } = account;
+    const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const stamp = Date.now();
+    const dep: DepositRecord = {
+      id: `dep-${stamp}`,
+      depositSlip: nextDepositSlip,
+      tenantName: tenant.name,
+      tenantId: tenant.id,
+      unitNumber: unit.unitNumber,
+      amountUSD: amount,
+      amountSSP: 0,
+      depositMonths: months.length,
+      monthlyRentUSD: account.monthlyRent,
+      currency: 'USD',
+      heldSince: date,
+      status: 'Held in Escrow',
+      bankAccount,
+      notes: `${DEPOSIT_MONTHS_PREFIX}${months.map(m => m.short).join(', ')}.${notes ? ` ${notes}` : ''}`,
+    };
+    const updatedUnit: PropertyUnit = {
+      ...unit,
+      escrowDepositUSD: account.depositHeld + amount,
+      depositMonths: (unit.depositMonths || 0) + months.length,
+    };
+    const tx: CashflowTransaction = {
+      id: `cf-${dep.id}`,
+      referenceNumber: `CF-${dep.depositSlip?.replace(/[^a-zA-Z0-9]/g, '')}`,
+      date,
+      title: `Deposit: ${tenant.name} (${unit.unitNumber})`,
+      category: 'Escrow Deposit',
+      type: 'Inflow',
+      amount,
+      currency: 'USD',
+      account: 'Escrow Trust Account',
+      recordedBy: adminUser.name,
+      status: 'Completed',
+      notes: `Security deposit ${dep.depositSlip} for ${months.map(m => m.short).join(', ')}.`,
+    };
+
+    setDeposits(prev => [dep, ...prev]);
+    setUnits(prev => prev.map(u => u.id === unit.id ? updatedUnit : u));
+    setCashflow(prev => [tx, ...prev]);
+    setDepositKey(null);
+
+    const results = await Promise.all([
+      persist('deposits', dep, saveDepositToSupabase),
+      persist('units', updatedUnit, saveUnitToSupabase),
+      persist('cashflow', tx, saveCashflowToSupabase),
+    ]);
+    setNotifications(prev => [{
+      id: `notif-${stamp}`,
+      title: `Deposit Held: ${dep.depositSlip}`,
+      description: `$${amount.toFixed(2)} from ${tenant.name} (${unit.unitNumber}) for ${months.map(m => m.short).join(', ')}.`,
+      timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      type: 'payment',
+      read: false,
+      priority: 'low',
+    }, ...prev]);
+    showToast(results.every(Boolean)
+      ? `Deposit ${dep.depositSlip} of $${amount.toFixed(2)} held for ${tenant.name}.`
+      : `Deposit ${dep.depositSlip} is saved on this device and will be uploaded automatically.`);
+  };
+
+  // Return a held deposit to the tenant
+  const handleReleaseDeposit = async (dep: DepositRecord) => {
+    const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const released: DepositRecord = {
+      ...dep,
+      status: 'Refunded',
+      notes: `${dep.notes || ''} Released to tenant on ${date}.`.trim(),
+    };
+    const unit = units.find(u => u.unitNumber === dep.unitNumber);
+    const updatedUnit = unit
+      ? { ...unit, escrowDepositUSD: Math.max(0, (unit.escrowDepositUSD || 0) - dep.amountUSD) }
+      : null;
+    const tx: CashflowTransaction = {
+      id: `cf-release-${dep.id}`,
+      referenceNumber: `CF-${(dep.depositSlip || dep.id).replace(/[^a-zA-Z0-9]/g, '')}-R`,
+      date,
+      title: `Deposit refund: ${dep.tenantName} (${dep.unitNumber})`,
+      category: 'Escrow Deposit',
+      type: 'Outflow',
+      amount: dep.amountUSD,
+      currency: 'USD',
+      account: 'Escrow Trust Account',
+      recordedBy: adminUser.name,
+      status: 'Completed',
+      notes: `Release of deposit ${dep.depositSlip || dep.id}.`,
+    };
+
+    setDeposits(prev => prev.map(d => d.id === dep.id ? released : d));
+    if (updatedUnit) setUnits(prev => prev.map(u => u.id === updatedUnit.id ? updatedUnit : u));
+    setCashflow(prev => [tx, ...prev]);
+
+    const results = await Promise.all([
+      persist('deposits', released, saveDepositToSupabase),
+      ...(updatedUnit ? [persist('units', updatedUnit, saveUnitToSupabase)] : []),
+      persist('cashflow', tx, saveCashflowToSupabase),
+    ]);
+    showToast(results.every(Boolean)
+      ? `Deposit ${dep.depositSlip || ''} released to ${dep.tenantName}.`
+      : 'Release saved on this device and will be uploaded automatically.');
+  };
+
   // Quick action: record payment for specific unit (navigates to payments page)
   const handleOpenRecordPaymentForUnit = (unitId: string) => {
     setPaymentSelectedUnitId(unitId);
@@ -1132,7 +1252,13 @@ export default function App() {
               units={units}
               currencyMode={currencyMode}
               deposits={deposits}
-              onSaveDeposit={handleSaveDeposit}
+              tenantAccounts={tenantAccounts}
+              onOpenDeposit={(a) => setDepositKey(a.key)}
+              onOpenTenantPayments={(a) => {
+                setActiveTab('payments');
+                setSmartPayKey(a.key);
+              }}
+              onReleaseDeposit={handleReleaseDeposit}
               onDeleteDeposit={handleDeleteDeposit}
               onClearAllDeposits={handleClearAllDeposits}
             />
@@ -1220,6 +1346,13 @@ export default function App() {
       />
 
       {/* Official Printable Receipt Voucher */}
+      <TenantDepositModal
+        account={depositAccount}
+        nextSlip={nextDepositSlip}
+        onClose={() => setDepositKey(null)}
+        onConfirm={handleAddTenantDeposit}
+      />
+
       <SmartPayModal
         account={smartPayAccount}
         onClose={() => setSmartPayKey(null)}

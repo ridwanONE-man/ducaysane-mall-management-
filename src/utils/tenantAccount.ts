@@ -29,6 +29,11 @@ export interface TenantAccount {
   creditDeposits: DepositRecord[];
   paidCount: number;
   lastPayment?: PaymentRecord;
+  dueNow: AccountMonth[]; // owed months up to the current month
+  canDeposit: boolean; // a deposit is only taken once rent is paid up to date
+  securityDeposits: DepositRecord[]; // held deposits (not overpayment credit)
+  depositHeld: number;
+  depositMonthKeys: Set<string>; // months already covered by a deposit
 }
 
 // Overpayments are kept as deposit records whose slip starts with "CR-".
@@ -36,6 +41,13 @@ export const CREDIT_SLIP_PREFIX = 'CR-';
 export const CREDIT_BANK_LABEL = 'Advance Credit (Overpayment)';
 export const isCreditDeposit = (d: DepositRecord) =>
   (d.depositSlip || '').startsWith(CREDIT_SLIP_PREFIX) && d.status !== 'Refunded';
+
+// Deposits taken for chosen months record them in their notes as "Deposit for: Nov 2026, Dec 2026".
+export const DEPOSIT_MONTHS_PREFIX = 'Deposit for: ';
+export const depositMonthLabels = (d: DepositRecord): string[] => {
+  const m = /Deposit for: ([^.]+)/.exec(d.notes || '');
+  return m ? m[1].split(',').map(x => x.trim()).filter(Boolean) : [];
+};
 
 const MONTHS_AHEAD = 11;
 
@@ -103,6 +115,13 @@ export function buildTenantAccount(
 
   const owing = months.filter(m => m.contracted && (m.status === 'due' || m.status === 'partial'));
   const creditDeposits = deposits.filter(d => isCreditDeposit(d) && accountKey(d.tenantName, d.unitNumber) === key);
+  const securityDeposits = deposits.filter(d =>
+    !(d.depositSlip || '').startsWith(CREDIT_SLIP_PREFIX) &&
+    d.status === 'Held in Escrow' &&
+    accountKey(d.tenantName, d.unitNumber) === key
+  );
+  const coveredShort = new Set(securityDeposits.flatMap(depositMonthLabels));
+  const dueNow = owingNow(months, todayIdx);
   const lastPayment = [...own].sort(
     (a, b) => (parsePaymentDate(b.date)?.getTime() || 0) - (parsePaymentDate(a.date)?.getTime() || 0)
   )[0];
@@ -119,7 +138,16 @@ export function buildTenantAccount(
     creditDeposits,
     paidCount: months.filter(m => m.status === 'paid').length,
     lastPayment,
+    dueNow,
+    canDeposit: dueNow.length === 0,
+    securityDeposits,
+    depositHeld: Math.round(securityDeposits.reduce((s, d) => s + d.amountUSD, 0) * 100) / 100,
+    depositMonthKeys: new Set(months.filter(m => coveredShort.has(m.short)).map(m => m.key)),
   };
+}
+
+function owingNow(months: AccountMonth[], todayIdx: number) {
+  return months.filter(m => m.contracted && m.idx <= todayIdx && (m.status === 'due' || m.status === 'partial'));
 }
 
 export function buildTenantAccounts(units: PropertyUnit[], payments: PaymentRecord[], deposits: DepositRecord[]) {

@@ -169,11 +169,18 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
               : `${account.paidCount} month${account.paidCount === 1 ? '' : 's'} paid`}
           </span>
         </span>
-        {account.credit > 0 && (
-          <span className="shrink-0 px-2 py-1 rounded-lg bg-blue-600 text-white text-[10px] font-black">
-            Credit {usd(account.credit)}
-          </span>
-        )}
+        <span className="flex flex-col items-end gap-1 shrink-0">
+          {account.depositHeld > 0 && (
+            <span className="px-2 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-black">
+              Deposit {usd(account.depositHeld)}
+            </span>
+          )}
+          {account.credit > 0 && (
+            <span className="px-2 py-1 rounded-lg bg-blue-600 text-white text-[10px] font-black">
+              Credit {usd(account.credit)}
+            </span>
+          )}
+        </span>
       </button>
     );
   };
