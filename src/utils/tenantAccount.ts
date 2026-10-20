@@ -13,6 +13,7 @@ export interface AccountMonth {
   paid: number;
   remaining: number;
   status: AccountMonthStatus;
+  contracted: boolean; // part of the signed lease, so it counts in the balance
   payments: PaymentRecord[];
 }
 
@@ -76,7 +77,7 @@ export function buildTenantAccount(
     const year = Math.floor(idx / 12);
     const month = idx % 12;
     const m = byIdx.get(idx);
-    // Rent for future months isn't owed yet but is what an advance payment covers.
+    // Months after the lease aren't owed but are what an advance payment covers.
     const due = m && m.due > 0 ? m.due : monthlyRent;
     const paid = m?.paid || 0;
     const remaining = Math.max(0, Math.round((due - paid) * 100) / 100);
@@ -95,11 +96,12 @@ export function buildTenantAccount(
       paid,
       remaining,
       status,
+      contracted: owedNow,
       payments: m?.payments || [],
     });
   }
 
-  const owing = months.filter(m => m.status === 'due' || (m.status === 'partial' && m.idx <= todayIdx));
+  const owing = months.filter(m => m.contracted && (m.status === 'due' || m.status === 'partial'));
   const creditDeposits = deposits.filter(d => isCreditDeposit(d) && accountKey(d.tenantName, d.unitNumber) === key);
   const lastPayment = [...own].sort(
     (a, b) => (parsePaymentDate(b.date)?.getTime() || 0) - (parsePaymentDate(a.date)?.getTime() || 0)

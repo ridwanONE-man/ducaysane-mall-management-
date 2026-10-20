@@ -1,6 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { X, Store, Check, Layers, Calendar, DollarSign, Phone, UserCheck, AlertCircle, Trash2 } from 'lucide-react';
 import { PropertyUnit, UnitType, OccupancyStatus } from '../types';
+import { leaseMonthCount } from '../utils/rentLedger';
+
+// What a new lease puts on the tenant's balance: every month of the duration.
+function tenantLeaseTotal(months: number, rent: number) {
+  if (months <= 0 || rent <= 0) return null;
+  return (
+    <div className="mt-2 p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between gap-3 text-xs">
+      <div>
+        <span className="block text-[10px] font-bold uppercase text-rose-700">Lease total added to balance</span>
+        <span className="text-slate-600">
+          {months} month{months === 1 ? '' : 's'} × ${rent.toLocaleString()} rent — collected on the Payments page
+        </span>
+      </div>
+      <span className="text-lg font-black text-rose-600 shrink-0">${(months * rent).toLocaleString()}</span>
+    </div>
+  );
+}
+
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -521,6 +539,7 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
                 Pick a lease start date to calculate the end date and days remaining.
               </div>
             )}
+            {tenantName.trim() && lease && tenantLeaseTotal(leaseMonthCount(leaseStart, lease.endStr), parseFloat(monthlyRent) || 0)}
           </div>
 
           {/* Additional Notes */}

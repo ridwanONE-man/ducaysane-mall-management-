@@ -61,6 +61,22 @@ export function paymentRentMonths(p: PaymentRecord): { year: number; month: numb
 
 const toIndex = (year: number, month: number) => year * 12 + month;
 
+// Last month billed by a lease. A lease ending on the same day of the month it started
+// (1 Sep → 1 Oct, 20 Oct → 20 Jan) covers whole months only: Sep; Oct, Nov, Dec.
+export function lastLeaseMonthIndex(start: Date | null, end: Date): number {
+  const endIdx = toIndex(end.getFullYear(), end.getMonth());
+  const startDay = start ? start.getDate() : 1;
+  return end.getDate() <= startDay ? endIdx - 1 : endIdx;
+}
+
+// Number of months a lease bills, e.g. 3 for a 3-month lease.
+export function leaseMonthCount(leaseStart?: string, leaseEnd?: string): number {
+  const start = parsePaymentDate(leaseStart);
+  const end = parsePaymentDate(leaseEnd);
+  if (!start || !end) return 0;
+  return Math.max(0, lastLeaseMonthIndex(start, end) - toIndex(start.getFullYear(), start.getMonth()) + 1);
+}
+
 interface BuildLedgerInput {
   payments: PaymentRecord[];
   monthlyRent: number;
@@ -107,9 +123,14 @@ export function buildRentLedger({
   if (allocated.length) startIdx = Math.min(startIdx ?? Infinity, ...allocated);
   if (startIdx === undefined) startIdx = todayIdx;
 
-  // Rent is owed up to this month; former tenants stop at their last paid month.
+  // A current tenant owes rent for every month of the lease they signed (the whole
+  // duration goes on the balance up front); without an end date, up to this month.
+  // Former tenants stop at their last paid month.
   let dueUntilIdx = isCurrent ? todayIdx : (allocated.length ? Math.max(...allocated) : startIdx);
-  if (end) dueUntilIdx = Math.min(dueUntilIdx, toIndex(end.getFullYear(), end.getMonth()));
+  if (end) {
+    const leaseLast = lastLeaseMonthIndex(start, end);
+    dueUntilIdx = isCurrent ? leaseLast : Math.min(dueUntilIdx, leaseLast);
+  }
   // Advance payments for future months are still listed.
   const lastIdx = Math.max(dueUntilIdx, ...allocated, startIdx);
 

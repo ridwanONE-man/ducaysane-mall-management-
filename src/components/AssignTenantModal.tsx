@@ -1,6 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { X, UserPlus, Store, Calendar, ShieldCheck, DollarSign, Phone, Mail, Briefcase } from 'lucide-react';
 import { PropertyUnit, DepositRecord } from '../types';
+import { leaseMonthCount } from '../utils/rentLedger';
+
+// What a new lease puts on the tenant's balance: every month of the duration.
+function tenantLeaseTotal(months: number, rent: number) {
+  if (months <= 0 || rent <= 0) return null;
+  return (
+    <div className="mt-2 p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between gap-3 text-xs">
+      <div>
+        <span className="block text-[10px] font-bold uppercase text-rose-700">Lease total added to balance</span>
+        <span className="text-slate-600">
+          {months} month{months === 1 ? '' : 's'} × ${rent.toLocaleString()} rent — collected on the Payments page
+        </span>
+      </div>
+      <span className="text-lg font-black text-rose-600 shrink-0">${(months * rent).toLocaleString()}</span>
+    </div>
+  );
+}
+
 
 interface AssignTenantModalProps {
   isOpen: boolean;
@@ -54,14 +72,15 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
     : monthlyRentUSD * depositMonths;
 
   // Calculate lease end date
+  // Start date + duration in whole months, in local time (Jan 31 + 1 month = Feb 28/29)
   const computeEndDate = () => {
-    try {
-      const d = new Date(leaseStart);
-      d.setMonth(d.getMonth() + leaseDurationMonths);
-      return d.toISOString().slice(0, 10);
-    } catch {
-      return '2027-10-01';
-    }
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(leaseStart);
+    if (!m) return '';
+    const startDay = Number(m[3]);
+    const end = new Date(Number(m[1]), Number(m[2]) - 1 + leaseDurationMonths, 1);
+    const lastDay = new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate();
+    end.setDate(Math.min(startDay, lastDay));
+    return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -332,6 +351,7 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
               </select>
             </div>
           </div>
+          {tenantLeaseTotal(leaseMonthCount(leaseStart, computeEndDate()), monthlyRentUSD)}
 
           <div>
             <label className="block text-slate-600 font-semibold mb-1">Depository Trust Bank Account</label>

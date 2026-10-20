@@ -125,7 +125,7 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {account.months.map(m => {
                 const isSel = selected.has(m.key);
-                const owedNow = m.idx <= todayIdx && m.status !== 'paid';
+                const owedNow = m.contracted && m.status !== 'paid';
                 const cls =
                   m.status === 'paid'
                     ? `bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100 ${viewingMonth?.key === m.key ? 'ring-2 ring-emerald-400' : ''}`
