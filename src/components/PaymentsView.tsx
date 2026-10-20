@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { PaymentRecord, CurrencyMode, PropertyUnit } from '../types';
 import { exportPaymentsToCSV } from '../utils/exportUtils';
+import { TenantAccount } from '../utils/tenantAccount';
+import { TenantAccountsPanel } from './TenantAccountsPanel';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
 
 interface PaymentsViewProps {
@@ -24,6 +26,8 @@ interface PaymentsViewProps {
   onSelectReceiptForPrint: (payment: PaymentRecord) => void;
   onDeletePayment?: (payment: PaymentRecord) => void;
   onClearAllPayments?: () => void;
+  tenantAccounts?: TenantAccount[];
+  onOpenTenantAccount?: (account: TenantAccount) => void;
 }
 
 export const PaymentsView: React.FC<PaymentsViewProps> = ({
@@ -33,8 +37,11 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   onOpenRecordPayment,
   onSelectReceiptForPrint,
   onDeletePayment,
-  onClearAllPayments
+  onClearAllPayments,
+  tenantAccounts,
+  onOpenTenantAccount
 }) => {
+  const [view, setView] = useState<'accounts' | 'ledger'>(tenantAccounts ? 'accounts' : 'ledger');
   const [search, setSearch] = useState('');
   const [filterPeriod, setFilterPeriod] = useState('All');
   const [statusTab, setStatusTab] = useState<'All' | 'Paid' | 'Partially Paid' | 'Arrears'>('All');
@@ -148,6 +155,31 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div>
       </div>
 
+      {/* View switch: tenant accounts (who has paid / owes) vs. the transaction ledger */}
+      {tenantAccounts && onOpenTenantAccount && (
+        <div className="inline-flex items-center bg-slate-100 p-1 rounded-2xl text-xs font-bold">
+          {([
+            ['accounts', 'Tenant Accounts'],
+            ['ledger', `Transactions (${payments.length})`],
+          ] as const).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                view === v ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {view === 'accounts' && tenantAccounts && onOpenTenantAccount ? (
+        <TenantAccountsPanel accounts={tenantAccounts} onOpenAccount={onOpenTenantAccount} />
+      ) : (
+      <>
       {/* Financial Metric Strip */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 gap-y-3 sm:gap-y-0">
         
@@ -444,6 +476,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
       </div>
 
+      </>
+      )}
     </div>
   );
 };

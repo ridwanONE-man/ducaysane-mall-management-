@@ -8,17 +8,44 @@ interface ReceiptPrintModalProps {
   isOpen: boolean;
   onClose: () => void;
   payment: PaymentRecord | null;
+  allPayments?: PaymentRecord[];
+}
+
+// Rows recorded together (same receipt, tenant and day) are one voucher.
+function receiptGroup(payment: PaymentRecord, all: PaymentRecord[]) {
+  const rows = all.filter(p =>
+    p.receiptNumber === payment.receiptNumber && p.tenantName === payment.tenantName && p.date === payment.date
+  );
+  if (rows.length <= 1) return { combined: payment, items: [] as PaymentRecord[] };
+  const sum = (f: (p: PaymentRecord) => number) => rows.reduce((s, p) => s + f(p), 0);
+  const methods = [...new Set(rows.map(p => p.paymentMethod))];
+  const combined: PaymentRecord = {
+    ...payment,
+    accountingPeriod: rows.map(p => p.accountingPeriod).join(', '),
+    amount: sum(p => p.amount),
+    monthlyBaseRent: payment.monthlyBaseRent,
+    previousArrears: 0,
+    totalDue: sum(p => p.totalDue),
+    remainingBalance: Math.max(0, sum(p => p.remainingBalance)),
+    advanceBalance: Math.max(...rows.map(p => p.advanceBalance || 0)),
+    paymentMethod: methods.length === 1 ? methods[0] : payment.paymentMethod,
+    status: rows.every(p => p.status === 'Paid') ? 'Paid' : 'Partially Paid',
+    notes: rows.find(p => p.notes)?.notes,
+  };
+  return { combined, items: rows };
 }
 
 export const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
   isOpen,
   onClose,
-  payment
+  payment,
+  allPayments = []
 }) => {
   if (!isOpen || !payment) return null;
+  const { combined, items } = receiptGroup(payment, allPayments);
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 my-8">
         {/* Modal Controls */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/70">
@@ -43,12 +70,12 @@ export const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
           </div>
         </div>
 
-        <ReceiptDocument payment={payment} />
+        <ReceiptDocument payment={combined} items={items} />
       </div>
 
       {/* Print copy, rendered outside the app so only the receipt is printed */}
       <PrintPortal>
-        <ReceiptDocument payment={payment} />
+        <ReceiptDocument payment={combined} items={items} />
       </PrintPortal>
     </div>
   );

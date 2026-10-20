@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { LoginPage } from './components/LoginPage';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -17,6 +17,9 @@ import { ReceiptPrintModal } from './components/ReceiptPrintModal';
 import { AddUnitModal } from './components/AddUnitModal';
 import { FloorMapView } from './components/FloorMapView';
 import { NotificationsView } from './components/NotificationsView';
+import { SmartPayModal, SmartPayRequest } from './components/SmartPayModal';
+import { buildTenantAccount, buildTenantAccounts, CREDIT_BANK_LABEL, CREDIT_SLIP_PREFIX } from './utils/tenantAccount';
+import { nextReceiptNumber } from './utils/receiptNumbers';
 
 import { 
   AdminUser, 
@@ -270,6 +273,11 @@ export default function App() {
   const [isAddUnitModalOpen, setIsAddUnitModalOpen] = useState(false);
   const [isFloorMapOpen, setIsFloorMapOpen] = useState(false);
   const [selectedReceiptForPrint, setSelectedReceiptForPrint] = useState<PaymentRecord | null>(null);
+  const [smartPayKey, setSmartPayKey] = useState<string | null>(null);
+
+  // Each leased unit's rent account: months paid / owed, balance and advance credit
+  const tenantAccounts = useMemo(() => buildTenantAccounts(units, payments, deposits), [units, payments, deposits]);
+  const smartPayAccount = tenantAccounts.find(a => a.key === smartPayKey) || null;
 
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -797,6 +805,140 @@ export default function App() {
     await reportDeleteResult(ok, 'All cashflow entries cleared.');
   };
 
+  // Smart Pay: one payment row per rent month on a single receipt. Advance credit is used
+  // first; anything paid beyond the selected months is kept as a credit deposit.
+  const handleSmartPay = async (req: SmartPayRequest) => {
+    const { account, allocations, cash, creditUsed, excess, method, remark, transferId } = req;
+    const { tenant, unit } = account;
+    const receiptNumber = nextReceiptNumber(payments.map(p => p.receiptNumber));
+    const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const stamp = Date.now();
+    const notes = [remark, transferId && `Transfer ID: ${transferId}`].filter(Boolean).join(' • ') || undefined;
+
+    const rows: PaymentRecord[] = [];
+    allocations.forEach((a, i) => {
+      const remainingAfter = Math.max(0, Math.round((a.month.remaining - a.fromCredit - a.fromCash) * 100) / 100);
+      const row = (amount: number, paymentMethod: PaymentRecord['paymentMethod'], suffix: string): PaymentRecord => ({
+        id: `pay-${stamp}-${i}${suffix}`,
+        receiptNumber,
+        tenantName: tenant.name,
+        tenantId: tenant.code,
+        unitNumber: unit.unitNumber,
+        unitSpace: `${unit.unitNumber} (${unit.floor} ${unit.type})`,
+        date,
+        accountingPeriod: a.month.label,
+        currency: 'USD',
+        amount,
+        paymentMethod,
+        monthlyBaseRent: a.month.due,
+        previousArrears: 0,
+        totalDue: a.month.remaining,
+        remainingBalance: remainingAfter,
+        advanceBalance: 0,
+        status: remainingAfter > 0 ? 'Partially Paid' : 'Paid',
+        notes,
+        receivedBy: adminUser.name,
+      });
+      if (a.fromCredit > 0) rows.push(row(a.fromCredit, 'Advance Credit', 'c'));
+      if (a.fromCash > 0) rows.push(row(a.fromCash, method, ''));
+    });
+    if (rows.length && excess > 0) rows[rows.length - 1].advanceBalance = excess;
+
+    // Credit used comes off the oldest credit deposits first
+    let toConsume = creditUsed;
+    const updatedCredits: DepositRecord[] = [];
+    for (const d of account.creditDeposits) {
+      if (toConsume <= 0) break;
+      const take = Math.min(d.amountUSD, toConsume);
+      toConsume -= take;
+      const left = Math.round((d.amountUSD - take) * 100) / 100;
+      updatedCredits.push({
+        ...d,
+        amountUSD: left,
+        status: left <= 0 ? 'Refunded' : d.status,
+        notes: `${d.notes || ''} Applied $${take.toFixed(2)} to rent on ${receiptNumber}.`.trim(),
+      });
+    }
+
+    const newCredit: DepositRecord | null = excess > 0 ? {
+      id: `dep-cr-${stamp}`,
+      depositSlip: `${CREDIT_SLIP_PREFIX}${receiptNumber.replace(/^#/, '')}`,
+      tenantName: tenant.name,
+      tenantId: tenant.id,
+      unitNumber: unit.unitNumber,
+      amountUSD: excess,
+      amountSSP: 0,
+      currency: 'USD',
+      heldSince: date,
+      status: 'Held in Escrow',
+      bankAccount: CREDIT_BANK_LABEL,
+      notes: `Overpayment on ${receiptNumber}, kept as advance credit for future rent.`,
+    } : null;
+
+    const nextPayments = [...rows, ...payments];
+    const nextDeposits = [
+      ...(newCredit ? [newCredit] : []),
+      ...deposits.map(d => updatedCredits.find(u => u.id === d.id) || d),
+    ];
+    setPayments(nextPayments);
+    setDeposits(nextDeposits);
+
+    // Unit balance follows the rent account after this payment
+    const after = buildTenantAccount(unit, nextPayments, nextDeposits);
+    const balance = after?.balance || 0;
+    const updatedUnit: PropertyUnit = {
+      ...unit,
+      arrearsUSD: balance,
+      billingStatus: balance > 0 ? (after?.owing.some(m => m.status === 'partial') ? 'Partially Paid' : 'Overdue') : 'Paid',
+      billingMonthText: balance > 0 ? `Balance $${balance.toFixed(2)}` : `Paid • ${allocations[allocations.length - 1]?.month.label || ''}`.trim(),
+    };
+    setUnits(prev => prev.map(u => u.id === unit.id ? updatedUnit : u));
+
+    let tx: CashflowTransaction | null = null;
+    if (cash > 0) {
+      const firstCashRow = rows.find(r => r.paymentMethod !== 'Advance Credit');
+      tx = {
+        id: `cf-${firstCashRow?.id || `dep-cr-${stamp}`}`,
+        referenceNumber: `CF-${receiptNumber.replace(/[^a-zA-Z0-9]/g, '')}`,
+        date,
+        title: `Rent: ${tenant.name} (${unit.unitNumber})`,
+        category: 'Rent Collection',
+        type: 'Inflow',
+        amount: cash,
+        currency: 'USD',
+        account: 'Central Vault Cash Float',
+        recordedBy: adminUser.name,
+        status: 'Completed',
+        notes: `Rent for ${allocations.map(a => a.month.short).join(', ') || 'advance credit'}. Receipt: ${receiptNumber}${excess > 0 ? ` (incl. $${excess.toFixed(2)} advance credit)` : ''}`,
+      };
+      setCashflow(prev => [tx!, ...prev]);
+    }
+
+    const results = await Promise.all([
+      ...rows.map(r => persist('payments', r, savePaymentToSupabase)),
+      ...updatedCredits.map(d => persist('deposits', d, saveDepositToSupabase)),
+      ...(newCredit ? [persist('deposits', newCredit, saveDepositToSupabase)] : []),
+      persist('units', updatedUnit, saveUnitToSupabase),
+      ...(tx ? [persist('cashflow', tx, saveCashflowToSupabase)] : []),
+    ]);
+
+    setNotifications(prev => [{
+      id: `notif-${stamp}`,
+      title: `Payment Recorded: ${receiptNumber}`,
+      description: `$${cash.toFixed(2)} from ${tenant.name} (${unit.unitNumber}) for ${allocations.map(a => a.month.short).join(', ') || 'advance credit'}.${excess > 0 ? ` $${excess.toFixed(2)} kept as credit.` : ''}`,
+      timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      type: 'payment',
+      read: false,
+      priority: 'medium',
+    }, ...prev]);
+
+    setSmartPayKey(null);
+    if (rows.length) setSelectedReceiptForPrint(rows[0]);
+    showToast(results.every(Boolean)
+      ? `Payment ${receiptNumber} recorded${excess > 0 ? ` • $${excess.toFixed(2)} saved as credit` : ''}.`
+      : `Payment ${receiptNumber} is saved on this device and will be uploaded to the database automatically.`);
+  };
+
   // Quick action: record payment for specific unit (navigates to payments page)
   const handleOpenRecordPaymentForUnit = (unitId: string) => {
     setPaymentSelectedUnitId(unitId);
@@ -958,6 +1100,11 @@ export default function App() {
               onSaveUnit={handleSaveUnit}
               onDeleteTenant={handleDeleteTenantFromUnit}
               onClearAllTenants={handleClearAllTenants}
+              tenantAccounts={tenantAccounts}
+              onOpenTenantPayments={(a) => {
+                setActiveTab('payments');
+                setSmartPayKey(a.key);
+              }}
             />
           )}
 
@@ -974,6 +1121,8 @@ export default function App() {
               onSelectReceiptForPrint={(p) => setSelectedReceiptForPrint(p)}
               onDeletePayment={handleDeletePayment}
               onClearAllPayments={handleClearAllPayments}
+              tenantAccounts={tenantAccounts}
+              onOpenTenantAccount={(a) => setSmartPayKey(a.key)}
             />
           )}
 
@@ -1071,10 +1220,19 @@ export default function App() {
       />
 
       {/* Official Printable Receipt Voucher */}
+      <SmartPayModal
+        account={smartPayAccount}
+        onClose={() => setSmartPayKey(null)}
+        onConfirm={handleSmartPay}
+        onViewReceipt={(p) => setSelectedReceiptForPrint(p)}
+        nextReceiptNumber={nextReceiptNumber(payments.map(p => p.receiptNumber))}
+      />
+
       <ReceiptPrintModal
         isOpen={selectedReceiptForPrint !== null}
         onClose={() => setSelectedReceiptForPrint(null)}
         payment={selectedReceiptForPrint}
+        allPayments={payments}
       />
 
       {/* Register / Edit Commercial Unit Modal */}

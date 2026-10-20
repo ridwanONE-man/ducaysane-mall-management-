@@ -84,7 +84,8 @@ export type PaymentMethodType =
   | 'Cash (Office Management Desk)'
   | 'EVC Plus / Mobile Money'
   | 'Bank Wire Transfer'
-  | 'Cheque / Slip';
+  | 'Cheque / Slip'
+  | 'Advance Credit';
 
 export interface PaymentRecord {
   id: string;

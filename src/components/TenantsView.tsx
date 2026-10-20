@@ -31,6 +31,7 @@ import {
 import { TenantInfo, PropertyUnit, PaymentRecord, DepositRecord, BillingStatus } from '../types';
 import { ModifyTenantPricingPayload, VacateUnitPayload } from '../lib/supabaseService';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
+import { TenantAccount, accountKey } from '../utils/tenantAccount';
 
 interface TenantsViewProps {
   units?: PropertyUnit[];
@@ -45,6 +46,8 @@ interface TenantsViewProps {
   onOpenAssignUnit?: (unit: PropertyUnit) => void;
   onDeleteTenant?: (unitId: string) => void;
   onClearAllTenants?: () => void;
+  tenantAccounts?: TenantAccount[];
+  onOpenTenantPayments?: (account: TenantAccount) => void;
 }
 
 export const TenantsView: React.FC<TenantsViewProps> = ({ 
@@ -59,7 +62,9 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
   onSaveDeposit,
   onOpenAssignUnit,
   onDeleteTenant,
-  onClearAllTenants
+  onClearAllTenants,
+  tenantAccounts = [],
+  onOpenTenantPayments
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategoryTab, setActiveCategoryTab] = useState<'All' | 'Shops' | 'Spaces' | 'Overdue' | 'Expiring Soon' | 'Available Units'>('All');
@@ -131,6 +136,47 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
 
   // Directly connect tenants to live units so any deletion or vacating from Units page reflects 1:1 immediately
   const listItems: { tenant: TenantInfo; unit?: PropertyUnit }[] = derivedTenants;
+
+  const accountFor = (tenant: TenantInfo, unit?: PropertyUnit) =>
+    unit ? tenantAccounts.find(a => a.key === accountKey(tenant.name, unit.unitNumber)) : undefined;
+
+  const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  // Paid / balance / credit badge, linking to the tenant's account on the Payments page
+  const renderAccountStatus = (tenant: TenantInfo, unit?: PropertyUnit) => {
+    const account = accountFor(tenant, unit);
+    if (!account) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => onOpenTenantPayments?.(account)}
+        title="Open this tenant's months and vouchers on the Payments page"
+        className={`w-full mt-3 flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-xs transition-colors cursor-pointer ${
+          account.balance > 0
+            ? 'bg-rose-50 border-rose-200 hover:bg-rose-100'
+            : 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100'
+        }`}
+      >
+        <span className="flex flex-col items-start min-w-0">
+          <span className={`font-extrabold ${account.balance > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+            {account.balance > 0
+              ? `Balance ${usd(account.balance)} • ${account.owing.length} month${account.owing.length === 1 ? '' : 's'}`
+              : '✓ Paid up to date'}
+          </span>
+          <span className="text-[10px] text-slate-500 truncate max-w-full">
+            {account.balance > 0
+              ? account.owing.map(m => m.short).join(', ')
+              : `${account.paidCount} month${account.paidCount === 1 ? '' : 's'} paid`}
+          </span>
+        </span>
+        {account.credit > 0 && (
+          <span className="shrink-0 px-2 py-1 rounded-lg bg-blue-600 text-white text-[10px] font-black">
+            Credit {usd(account.credit)}
+          </span>
+        )}
+      </button>
+    );
+  };
 
   // Summary counts
   const totalCount = listItems.length;
@@ -650,7 +696,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                       </span>
                     </div>
 
-                    {isOverdue && (
+                    {!accountFor(tenant, unit) && isOverdue && (
                       <div className="flex items-center justify-between text-rose-600 font-bold">
                         <span className="flex items-center gap-1">
                           <AlertTriangle className="w-3.5 h-3.5" />
@@ -660,6 +706,8 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                       </div>
                     )}
                   </div>
+
+                  {renderAccountStatus(tenant, unit)}
                 </div>
 
                 {/* Actions Bar */}
@@ -689,15 +737,6 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                   >
                     <DoorOpen className="w-3.5 h-3.5 text-rose-600" />
                     <span className="hidden sm:inline">Vacate</span>
-                  </button>
-
-                  <button
-                    onClick={() => onRecordPaymentForTenant(tenant.unitNumber || 'G001')}
-                    className="flex-1 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer shadow-xs shadow-orange-500/20"
-                    title="Record rent payment"
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>Pay</span>
                   </button>
 
                   {onDeleteTenant && unit && (
@@ -891,6 +930,9 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                 )}
               </div>
 
+              {/* Rent account: paid / balance / credit */}
+              {renderAccountStatus(selectedTenant.tenant, selectedTenant.unit)}
+
               {/* Action Buttons in Modal */}
               <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
                 {selectedTenant.unit && (
@@ -945,18 +987,6 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                     </button>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const unitNum = selectedTenant.tenant.unitNumber || 'G001';
-                      setSelectedTenant(null);
-                      onRecordPaymentForTenant(unitNum);
-                    }}
-                    className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-500/20 flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>Record Rent</span>
-                  </button>
                 </div>
               </div>
 

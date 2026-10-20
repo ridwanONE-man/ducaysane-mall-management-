@@ -34,10 +34,12 @@ export const Letterhead: React.FC = () => (
 
 interface ReceiptDocumentProps {
   payment: PaymentRecord;
+  // All rows booked on this receipt (one per rent month) when it covers several months
+  items?: PaymentRecord[];
 }
 
 // The printable receipt itself. Used both for the on-screen preview and the print copy.
-export const ReceiptDocument: React.FC<ReceiptDocumentProps> = ({ payment }) => {
+export const ReceiptDocument: React.FC<ReceiptDocumentProps> = ({ payment, items = [] }) => {
   const money = (n: number) => formatMoney(n, payment.currency);
   const isPaidInFull = payment.remainingBalance <= 0 && payment.status === 'Paid';
   const stampLabel = isPaidInFull ? 'PAID' : payment.status === 'Partially Paid' ? 'PARTIAL' : 'PENDING';
@@ -122,6 +124,36 @@ export const ReceiptDocument: React.FC<ReceiptDocumentProps> = ({ payment }) => 
             </div>
           </div>
         </div>
+
+        {/* Months covered by this receipt */}
+        {items.length > 1 && (
+          <div className="rounded-2xl border border-slate-200 overflow-hidden print-avoid-break">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-slate-900 text-white">
+                  <th className="text-left py-2.5 px-4 font-bold uppercase tracking-wider text-[10px]">Rent Month</th>
+                  <th className="text-left py-2.5 px-4 font-bold uppercase tracking-wider text-[10px]">Paid By</th>
+                  <th className="text-right py-2.5 px-4 font-bold uppercase tracking-wider text-[10px]">Rent</th>
+                  <th className="text-right py-2.5 px-4 font-bold uppercase tracking-wider text-[10px]">Paid</th>
+                  <th className="text-right py-2.5 px-4 font-bold uppercase tracking-wider text-[10px]">Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {items.map(item => (
+                  <tr key={item.id}>
+                    <td className="py-2 px-4 font-bold text-slate-900">{item.accountingPeriod}</td>
+                    <td className="py-2 px-4 text-slate-600">{item.paymentMethod}</td>
+                    <td className="py-2 px-4 text-right font-mono">{money(item.monthlyBaseRent)}</td>
+                    <td className="py-2 px-4 text-right font-mono font-bold text-emerald-700">{money(item.amount)}</td>
+                    <td className={`py-2 px-4 text-right font-mono ${item.remainingBalance > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>
+                      {item.remainingBalance > 0 ? money(item.remainingBalance) : 'Cleared'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Breakdown table */}
         <div className="rounded-2xl border border-slate-200 overflow-hidden print-avoid-break">

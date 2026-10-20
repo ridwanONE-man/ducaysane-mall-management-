@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { PropertyUnit, PaymentRecord, PaymentMethodType } from '../types';
 import { buildRentPeriodOptions, RentPeriodOption } from '../utils/rentPeriods';
+import { nextReceiptNumber as getNextReceiptNumber } from '../utils/receiptNumbers';
 
 interface RecordPaymentModalProps {
   isOpen: boolean;
@@ -88,13 +89,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   }, [isOpen, selectedUnitId]);
 
   // Generate dynamic receipt number matching official NBC voucher
-  // Next number in this year's sequence (#REC-2026-0001, #REC-2026-0002, ...)
-  const receiptYear = new Date().getFullYear();
-  const lastReceiptSeq = existingReceiptNumbers.reduce((max, r) => {
-    const m = new RegExp(`REC-${receiptYear}-(\\d+)`).exec(r || '');
-    return m ? Math.max(max, Number(m[1])) : max;
-  }, 0);
-  const nextReceiptNumber = `#REC-${receiptYear}-${String(lastReceiptSeq + 1).padStart(4, '0')}`;
+  const nextReceiptNumber = getNextReceiptNumber(existingReceiptNumbers);
 
   if (!isOpen) return null;
 
