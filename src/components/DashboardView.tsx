@@ -24,6 +24,7 @@ import {
 import { PropertyUnit, PaymentRecord, CurrencyMode, NavigationTab, DepositRecord } from '../types';
 import { exportPaymentsToCSV } from '../utils/exportUtils';
 import { AssignTenantModal } from './AssignTenantModal';
+import { DashboardLeaseBoxes } from './DashboardLeaseBoxes';
 
 interface DashboardViewProps {
   units: PropertyUnit[];
@@ -363,6 +364,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
       </div>
+
+      {/* Available units & leases ending within 10 days */}
+      <DashboardLeaseBoxes units={units} onLeaseUnit={setLeasingUnit} onNavigate={onNavigate} />
 
       {/* Main Visuals: Redesigned Bar Chart & Spatial Donut */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
