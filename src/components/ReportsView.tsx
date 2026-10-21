@@ -1,7 +1,7 @@
 import React from 'react';
 import { FileText } from 'lucide-react';
 import { PropertyUnit, PaymentRecord, DepositRecord } from '../types';
-import { TenantStatementReport } from './TenantStatementReport';
+import { TenantReport } from './TenantReport';
 import { ClearAllButton } from './DeleteControls';
 
 interface ReportsViewProps {
@@ -28,15 +28,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-700">
+            <span className="p-2 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-sm shadow-orange-500/25">
               <FileText className="w-5 h-5" />
             </span>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              Tenant Payment Reports
+              Tenant Reports
             </h1>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Select any tenant, filter by month, year or custom dates, and print statements or receipts.
+            Open a tenant to see paid, partly paid and unpaid months, deposits and receipts — then print the report.
           </p>
         </div>
 
@@ -45,7 +45,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         )}
       </div>
 
-      <TenantStatementReport
+      <TenantReport
         units={units}
         payments={payments}
         deposits={deposits}
