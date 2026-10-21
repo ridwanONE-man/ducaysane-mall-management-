@@ -478,13 +478,13 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
       <div className="space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            { label: 'Tenants', value: String(tenants.length), icon: Users, tone: 'bg-orange-50 text-orange-600' },
-            { label: 'Rent collected', value: formatMoney(totalPaid, 'USD'), icon: Wallet, tone: 'bg-emerald-50 text-emerald-600' },
-            { label: 'Balance owed', value: formatMoney(totalOwed, 'USD'), icon: AlertTriangle, tone: 'bg-rose-50 text-rose-600' },
-            { label: 'Deposits held', value: formatMoney(totalHeld, 'USD'), icon: ShieldCheck, tone: 'bg-sky-50 text-sky-600' },
+            { label: 'Tenants', value: String(tenants.length), icon: Users, tone: 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/30' },
+            { label: 'Rent collected', value: formatMoney(totalPaid, 'USD'), icon: Wallet, tone: 'bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-500/30' },
+            { label: 'Balance owed', value: formatMoney(totalOwed, 'USD'), icon: AlertTriangle, tone: 'bg-gradient-to-br from-rose-500 to-orange-500 text-white shadow-md shadow-rose-500/30' },
+            { label: 'Deposits held', value: formatMoney(totalHeld, 'USD'), icon: ShieldCheck, tone: 'bg-gradient-to-br from-sky-500 to-blue-500 text-white shadow-md shadow-sky-500/30' },
           ].map(s => (
-            <div key={s.label} className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-4 flex items-center gap-3">
-              <span className={`w-10 h-10 rounded-xl flex items-center justify-center ${s.tone}`}><s.icon className="w-5 h-5" /></span>
+            <div key={s.label} className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-4 flex items-center gap-3">
+              <span className={`w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center ${s.tone}`}><s.icon className="w-5 h-5" /></span>
               <div className="min-w-0">
                 <span className="block text-[11px] font-semibold text-slate-500">{s.label}</span>
                 <span className="block text-lg font-black text-slate-900 truncate">{s.value}</span>
@@ -501,7 +501,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
                 type="button"
                 onClick={() => setListFilter(f)}
                 className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  listFilter === f ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  listFilter === f ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
                 {label}
@@ -529,55 +529,90 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
             {tenants.length === 0 ? 'No tenants yet.' : 'No tenant matches your search.'}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {shownOverview.map(({ tenant, ledger: l, summary: s, recent, held }) => (
-              <button
-                key={tenant.key}
-                type="button"
-                onClick={() => setSelectedKey(tenant.key)}
-                className="group text-left bg-white rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-lg hover:border-orange-300 hover:-translate-y-0.5 transition-all p-5 cursor-pointer"
-              >
-                <div className="flex items-start gap-3">
-                  <Avatar name={tenant.name} />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-extrabold text-slate-900 text-sm truncate">{tenant.name}</p>
-                    <div className="flex items-center gap-1.5 mt-1 text-[11px]">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 font-bold text-slate-700">
-                        <Store className="w-3 h-3" /> {tenant.unitNumber}
-                      </span>
-                      {!tenant.isCurrent && <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 font-bold">Former</span>}
-                    </div>
-                  </div>
-                  {s.outstanding > 0 ? (
-                    <span className="shrink-0 px-2.5 py-1 rounded-xl bg-rose-50 text-rose-700 text-xs font-black">{formatMoney(s.outstanding, l.currency)}</span>
-                  ) : (
-                    <span className="shrink-0 px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-black">✓ Paid up</span>
-                  )}
-                </div>
-
-                {/* Last months at a glance */}
-                <div className="mt-4 flex items-end gap-1.5">
-                  {recent.map(m => (
-                    <div key={m.key} className="flex-1 text-center">
-                      <div className={`h-2 rounded-full ${MONTH_STYLE[m.status].dot}`} />
-                      <span className="block mt-1 text-[9px] font-bold text-slate-400">{MONTH_NAMES[m.month].slice(0, 3)}</span>
-                    </div>
+          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider">
+                    <th className="py-3 px-4 w-10">#</th>
+                    <th className="py-3 px-4">Tenant</th>
+                    <th className="py-3 px-4">Unit</th>
+                    <th className="py-3 px-4">Last 6 months</th>
+                    <th className="py-3 px-4 text-center">Paid</th>
+                    <th className="py-3 px-4 text-center">Owing</th>
+                    <th className="py-3 px-4">Deposit</th>
+                    <th className="py-3 px-4 text-right">Balance</th>
+                    <th className="py-3 px-4 text-right" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {shownOverview.map(({ tenant, ledger: l, summary: s, recent, held }, i) => (
+                    <tr
+                      key={tenant.key}
+                      onClick={() => setSelectedKey(tenant.key)}
+                      className={`group cursor-pointer transition-colors hover:bg-orange-50/50 ${i % 2 ? 'bg-slate-50/40' : ''}`}
+                    >
+                      <td className="py-3 px-4 font-bold text-slate-400">{i + 1}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          <Avatar name={tenant.name} size="w-9 h-9 text-sm" />
+                          <div className="min-w-0">
+                            <p className="font-extrabold text-slate-900 truncate max-w-[200px]">{tenant.name}</p>
+                            <p className="text-[10px] text-slate-500">
+                              {tenant.isCurrent ? (tenant.unit?.currentTenant?.phone || 'Current tenant') : 'Former tenant'}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 font-bold text-slate-700">
+                          <Store className="w-3 h-3 text-orange-500" /> {tenant.unitNumber}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-end gap-1">
+                          {recent.map(m => (
+                            <div key={m.key} className="w-7 text-center" title={`${m.label}: ${MONTH_STYLE[m.status].label}`}>
+                              <div className={`h-2 rounded-full ${MONTH_STYLE[m.status].dot}`} />
+                              <span className="block mt-0.5 text-[8px] font-bold text-slate-400">{MONTH_NAMES[m.month].slice(0, 3)}</span>
+                            </div>
+                          ))}
+                          {recent.length === 0 && <span className="text-[10px] text-slate-400">—</span>}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="inline-block min-w-7 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 font-black">{s.paidCount}</span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={`inline-block min-w-7 px-2 py-0.5 rounded-lg font-black ${s.unpaidCount + s.partialCount > 0 ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-400'}`}>
+                          {s.unpaidCount + s.partialCount}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        {held.length > 0
+                          ? <span className="inline-flex items-center gap-1 text-sky-700 font-bold"><ShieldCheck className="w-3.5 h-3.5" /> {heldText(held)}</span>
+                          : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        {s.outstanding > 0 ? (
+                          <span className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 font-black">{formatMoney(s.outstanding, l.currency)}</span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-black">✓ Paid up</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[11px] font-extrabold shadow-xs group-hover:shadow-md">
+                          Report <ChevronRight className="w-3.5 h-3.5" />
+                        </span>
+                      </td>
+                    </tr>
                   ))}
-                  {recent.length === 0 && <span className="text-[10px] text-slate-400">No rent months yet</span>}
-                </div>
-
-                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                  <span className="flex items-center gap-3 text-slate-500">
-                    <span><strong className="text-emerald-600">{s.paidCount}</strong> paid</span>
-                    <span><strong className="text-rose-600">{s.unpaidCount + s.partialCount}</strong> owing</span>
-                    {held.length > 0 && <span className="flex items-center gap-0.5 text-sky-700 font-bold"><ShieldCheck className="w-3 h-3" /> {heldText(held)}</span>}
-                  </span>
-                  <span className="flex items-center gap-0.5 font-bold text-orange-600 group-hover:gap-1.5 transition-all">
-                    Report <ChevronRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
-              </button>
-            ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 text-[11px] text-slate-500">
+              Showing <strong className="text-slate-900">{shownOverview.length}</strong> of {overview.length} tenants • click a row to open the report
+            </div>
           </div>
         )}
       </div>
