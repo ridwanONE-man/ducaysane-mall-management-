@@ -316,64 +316,70 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
   // ================================================================
   const printReport = selected && ledger && (
     <div className="bg-white text-slate-900 font-sans">
-      <div className="grid grid-cols-[190px_1fr] min-h-[270mm]">
-        {/* Side panel */}
-        <aside className="bg-slate-900 text-white px-5 py-7 flex flex-col">
-          <div className="w-20 h-20 rounded-2xl bg-white p-1.5 mx-auto flex items-center justify-center">
+      <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
+        {/* Top header: business + report title */}
+        <header className="bg-slate-900 text-white px-6 py-4 flex items-center gap-4">
+          <div className="w-14 h-14 shrink-0 rounded-xl bg-white p-1 flex items-center justify-center">
             <img src={logoImg} alt={BUSINESS_PROFILE.name} className="w-full h-full object-contain" />
           </div>
-          <p className="mt-3 text-center font-['Playfair_Display',serif] text-sm font-extrabold uppercase leading-tight">{BUSINESS_PROFILE.name}</p>
-          <p className="text-center text-[8px] font-bold uppercase tracking-[0.2em] text-orange-300 mt-1">{BUSINESS_PROFILE.tagline}</p>
-          <div className="h-0.5 bg-gradient-to-r from-orange-500 to-amber-400 my-4" />
-
-          <p className="text-[8px] font-black uppercase tracking-[0.2em] text-orange-300">Tenant</p>
-          <p className="text-sm font-extrabold leading-tight mt-0.5">{selected.name}</p>
-          <div className="mt-2 space-y-1 text-[10px] text-slate-300">
-            <p>Unit: <strong className="text-white">{selected.unitNumber}</strong></p>
-            {selected.unit && <p>{selected.unit.floor} • {selected.unit.type}</p>}
-            {selected.unit?.currentTenant?.phone && <p>Tel: {selected.unit.currentTenant.phone}</p>}
-            {selected.unit?.leaseStart && <p>Lease: {formatLongDate(selected.unit.leaseStart)}{selected.unit.leaseEnd ? ` – ${formatLongDate(selected.unit.leaseEnd)}` : ''}</p>}
-            <p>Rent: <strong className="text-white">{money(ledger.monthlyRent)}</strong> / month</p>
-            <p>Status: {selected.isCurrent ? 'Current tenant' : 'Former tenant'}</p>
+          <div className="min-w-0 flex-1">
+            <p className="font-['Playfair_Display',serif] text-lg font-extrabold uppercase leading-tight">{BUSINESS_PROFILE.name}</p>
+            <p className="text-[8px] font-bold uppercase tracking-[0.25em] text-orange-300">{BUSINESS_PROFILE.tagline}</p>
           </div>
+          <div className="text-right shrink-0">
+            <p className="text-[8px] font-black uppercase tracking-[0.3em] text-orange-300">Tenant account</p>
+            <h2 className="text-base font-black tracking-tight leading-tight">RENT &amp; DEPOSIT REPORT</h2>
+            <p className="font-mono text-[11px] font-black text-amber-300">{reportNumber}</p>
+          </div>
+        </header>
+        <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
+        <div className="bg-slate-50 px-6 py-1.5 flex flex-wrap items-center justify-between gap-x-4 text-[8.5px] text-slate-500 border-b border-slate-200">
+          <span>{BUSINESS_PROFILE.address}</span>
+          <span>Tel: {BUSINESS_PROFILE.phones.join(' / ')}</span>
+          <span>{BUSINESS_PROFILE.email}</span>
+        </div>
 
-          <div className="h-px bg-slate-700 my-4" />
-          <p className="text-[8px] font-black uppercase tracking-[0.2em] text-orange-300 mb-2">Summary</p>
-          {[
-            ['Months paid', String(summary.paidCount), 'text-emerald-300'],
-            ['Partly paid', String(summary.partialCount), 'text-amber-300'],
-            ['Not paid', String(summary.unpaidCount), 'text-rose-300'],
-            ['Total paid', money(summary.totalPaid), 'text-white'],
-            ['Deposit held', heldText(securityHeld), 'text-sky-300'],
-          ].map(([k, v, tone]) => (
-            <div key={k} className="flex justify-between gap-2 text-[10px] py-1 border-b border-slate-800">
-              <span className="text-slate-400">{k}</span>
-              <span className={`font-black ${tone}`}>{v}</span>
+        <main className="px-6 py-5 space-y-5">
+          {/* Tenant + period */}
+          <div className="grid grid-cols-[1.4fr_1fr] gap-3 print-avoid-break">
+            <div className="rounded-xl border border-slate-200 px-4 py-3">
+              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-orange-600">Tenant</p>
+              <p className="text-base font-extrabold leading-tight">{selected.name}</p>
+              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-slate-600">
+                <span>Unit: <strong className="text-slate-900">{selected.unitNumber}</strong></span>
+                <span>Rent: <strong className="text-slate-900">{money(ledger.monthlyRent)}</strong> / month</span>
+                {selected.unit && <span>{selected.unit.floor} • {selected.unit.type}</span>}
+                {selected.unit?.currentTenant?.phone && <span>Tel: {selected.unit.currentTenant.phone}</span>}
+                {selected.unit?.leaseStart && (
+                  <span className="col-span-2">Lease: {formatLongDate(selected.unit.leaseStart)}{selected.unit.leaseEnd ? ` – ${formatLongDate(selected.unit.leaseEnd)}` : ''} • {selected.isCurrent ? 'Current tenant' : 'Former tenant'}</span>
+                )}
+              </div>
             </div>
-          ))}
-          <div className="mt-3 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 px-3 py-2.5">
-            <span className="block text-[8px] font-black uppercase tracking-wider text-orange-50">Balance due</span>
-            <span className="block text-lg font-black">{money(summary.outstanding)}</span>
-          </div>
-
-          <div className="mt-auto pt-6 text-[8px] text-slate-400 space-y-0.5">
-            <p>{BUSINESS_PROFILE.address}</p>
-            {BUSINESS_PROFILE.phones.map(p => <p key={p}>{p}</p>)}
-            <p>{BUSINESS_PROFILE.email}</p>
-          </div>
-        </aside>
-
-        {/* Main */}
-        <main className="px-7 py-7 space-y-5">
-          <div className="flex items-start justify-between gap-4 border-b-2 border-slate-900 pb-3">
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.3em] text-orange-600">Tenant account</p>
-              <h2 className="text-2xl font-black tracking-tight">RENT & DEPOSIT REPORT</h2>
-              <p className="text-[11px] text-slate-500">Period: <strong className="text-slate-900">{periodLabel}</strong></p>
+            <div className="rounded-xl border border-slate-200 px-4 py-3 text-[10px] text-slate-600 space-y-0.5">
+              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-orange-600">Report</p>
+              <p>Period: <strong className="text-slate-900">{periodLabel}</strong></p>
+              <p>Issued: <strong className="text-slate-900">{formatLongDate(now)}</strong></p>
+              <p>Prepared by: <strong className="text-slate-900">{DEPOSIT_RECEIVED_BY}</strong></p>
             </div>
-            <div className="text-right text-[10px] text-slate-500">
-              <p className="font-mono text-sm font-black text-orange-600">{reportNumber}</p>
-              <p>Issued {formatLongDate(now)}</p>
+          </div>
+
+          {/* Summary strip */}
+          <div className="grid grid-cols-6 gap-2 print-avoid-break">
+            {[
+              ['Months paid', String(summary.paidCount), 'bg-emerald-50 text-emerald-700 border-emerald-200'],
+              ['Partly paid', String(summary.partialCount), 'bg-amber-50 text-amber-700 border-amber-200'],
+              ['Not paid', String(summary.unpaidCount), 'bg-rose-50 text-rose-700 border-rose-200'],
+              ['Total paid', money(summary.totalPaid), 'bg-white text-slate-900 border-slate-200'],
+              ['Deposit held', heldText(securityHeld), 'bg-sky-50 text-sky-700 border-sky-200'],
+            ].map(([k, v, tone]) => (
+              <div key={k} className={`rounded-xl border px-2.5 py-2 ${tone}`}>
+                <span className="block text-[8px] font-bold uppercase tracking-wider opacity-80">{k}</span>
+                <span className="block text-sm font-black leading-tight">{v}</span>
+              </div>
+            ))}
+            <div className="rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white px-2.5 py-2">
+              <span className="block text-[8px] font-black uppercase tracking-wider text-orange-50">Balance due</span>
+              <span className="block text-sm font-black leading-tight">{money(summary.outstanding)}</span>
             </div>
           </div>
 
