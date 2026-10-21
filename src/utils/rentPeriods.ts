@@ -1,13 +1,14 @@
 import { PaymentRecord, PropertyUnit } from '../types';
 import { buildRentLedger, MONTH_NAMES } from './rentLedger';
 import { normalizeName, normalizeUnitNumber } from './printUtils';
+import { unitCurrency, unitRent } from './currency';
 
 export type PeriodStatus = 'Not paid' | 'Partial' | 'Paid' | 'Advance' | 'Outside lease' | 'Open';
 
 export interface RentPeriodOption {
   value: string; // "October 2026", stored as the payment's accounting period
   status: PeriodStatus;
-  remaining: number; // USD still owed for that month (rent for advance months)
+  remaining: number; // still owed, in the unit's rent currency for that month (rent for advance months)
 }
 
 const ADVANCE_MONTHS = 3;
@@ -16,7 +17,7 @@ const ADVANCE_MONTHS = 3;
 // each marked from their payment history (same rules as the Reports rent ledger).
 export function buildRentPeriodOptions(unit: PropertyUnit | null, payments: PaymentRecord[], today = new Date()) {
   const todayIdx = today.getFullYear() * 12 + today.getMonth();
-  const rent = unit?.monthlyRateUSD || 0;
+  const rent = unitRent(unit);
   const ledgerByIdx = new Map<number, { due: number; paid: number; status: string }>();
   let startIdx = todayIdx - 11;
   let lastIdx = todayIdx;
@@ -27,7 +28,7 @@ export function buildRentPeriodOptions(unit: PropertyUnit | null, payments: Paym
     const ledger = buildRentLedger({
       payments: payments.filter(p => normalizeName(p.tenantName) === tenant && normalizeUnitNumber(p.unitNumber) === unitNo),
       monthlyRent: rent,
-      currency: 'USD',
+      currency: unitCurrency(unit),
       leaseStart: unit.leaseStart,
       leaseEnd: unit.leaseEnd,
       isCurrent: true,

@@ -8,7 +8,6 @@ import {
   Search, 
   ArrowDownLeft, 
   ArrowUpRight, 
-  Fuel, 
   Shield, 
   Sparkles, 
   Wrench, 
@@ -18,6 +17,7 @@ import {
   Wallet
 } from 'lucide-react';
 import { CashflowTransaction, CurrencyMode, CashflowCategory } from '../types';
+import { formatMoney } from '../utils/printUtils';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
 
 interface CashflowViewProps {
@@ -48,17 +48,18 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const [newAmount, setNewAmount] = useState('');
   const [newAccount, setNewAccount] = useState<'Central Vault Cash Float' | 'Stanbic Bank Operating' | 'Ecobank Operating'>('Central Vault Cash Float');
   const [newNotes, setNewNotes] = useState('');
+  const [newCurrency, setNewCurrency] = useState<'USD' | 'SSP'>('USD');
+  const [currencyFilter, setCurrencyFilter] = useState<'ALL' | 'USD' | 'SSP'>('ALL');
 
   // Calculations
-  const totalInflowUSD = transactions
-    .filter(t => t.type === 'Inflow')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const totalOutflowUSD = transactions
-    .filter(t => t.type === 'Outflow')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const netUSD = totalInflowUSD - totalOutflowUSD;
+  // Dollars and SSP are never added together
+  const sumOf = (currency: 'USD' | 'SSP', type: 'Inflow' | 'Outflow') =>
+    transactions.filter(t => (t.currency || 'USD') === currency && t.type === type).reduce((sum, t) => sum + t.amount, 0);
+  const totals = (['USD', 'SSP'] as const).map(currency => {
+    const inflow = sumOf(currency, 'Inflow');
+    const outflow = sumOf(currency, 'Outflow');
+    return { currency, inflow, outflow, net: inflow - outflow, count: transactions.filter(t => (t.currency || 'USD') === currency).length };
+  });
 
   // Filtered transactions
   const filteredTransactions = transactions.filter(t => {
@@ -68,7 +69,8 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       t.referenceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.account.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = typeFilter === 'ALL' || t.type === typeFilter;
-    return matchesSearch && matchesType;
+    const matchesCurrency = currencyFilter === 'ALL' || (t.currency || 'USD') === currencyFilter;
+    return matchesSearch && matchesType && matchesCurrency;
   });
 
   const handleAddTransaction = (e: React.FormEvent) => {
@@ -81,7 +83,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       category: newCategory,
       type: newType,
       amount: parseFloat(newAmount) || 0,
-      currency: 'USD',
+      currency: newCurrency,
       account: newAccount,
       recordedBy: 'Mohamed Mohamoud',
       status: 'Completed',
@@ -124,8 +126,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   const getCategoryIcon = (category: CashflowCategory) => {
     switch (category) {
-      case 'Diesel & Generator':
-        return <Fuel className="w-3.5 h-3.5 text-amber-600" />;
       case 'Security & Guards':
         return <Shield className="w-3.5 h-3.5 text-blue-600" />;
       case 'Cleaning & Waste':
@@ -147,7 +147,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             Cash Flow & Reserves
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Operational expenses, generator fuel, and treasury float reconciliation
+            Money in and out, kept separately in dollars and SSP
           </p>
         </div>
 
@@ -168,7 +168,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           <button
             type="button"
             onClick={() => setIsRecordModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-all shadow-xs shadow-blue-500/20 cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs shadow-orange-500/25 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Record Entry</span>
@@ -176,45 +176,53 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         </div>
       </div>
 
-      {/* Unified Minimalist Cashflow Metric Strip */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 gap-y-3 sm:gap-y-0">
-        
-        <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Reserve Float</span>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-bold text-slate-900">$58,420</span>
-            <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded-full">Vault</span>
+      {/* Dollar and SSP shown separately */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {totals.map(t => (
+          <div key={t.currency} className="relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 shadow-xs">
+            <div className={`h-1.5 ${t.currency === 'USD' ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} />
+            <div className="p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className={`w-11 h-11 rounded-2xl text-white flex items-center justify-center font-black shadow-md ${
+                    t.currency === 'USD' ? 'bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-500/30' : 'bg-gradient-to-br from-orange-500 to-amber-500 shadow-orange-500/30 text-[11px]'
+                  }`}>
+                    {t.currency === 'USD' ? <DollarSign className="w-5 h-5" /> : 'SSP'}
+                  </span>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{t.currency === 'USD' ? 'Dollar ($)' : 'South Sudanese Pound (SSP)'}</p>
+                    <p className="text-[11px] text-slate-400">{t.count} entr{t.count === 1 ? 'y' : 'ies'}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrencyFilter(currencyFilter === t.currency ? 'ALL' : t.currency)}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer transition-colors ${
+                    currencyFilter === t.currency ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {currencyFilter === t.currency ? 'Showing only' : 'Show only'} {t.currency === 'USD' ? '$' : 'SSP'}
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mt-4">
+                <div className="rounded-2xl bg-emerald-50 px-3 py-2.5">
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700"><TrendingUp className="w-3 h-3" /> Collected</span>
+                  <span className="block text-base font-black text-emerald-700 truncate">{formatMoney(t.inflow, t.currency)}</span>
+                </div>
+                <div className="rounded-2xl bg-rose-50 px-3 py-2.5">
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-rose-700"><TrendingDown className="w-3 h-3" /> Spent</span>
+                  <span className="block text-base font-black text-rose-700 truncate">{formatMoney(t.outflow, t.currency)}</span>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-3 py-2.5">
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-slate-600"><Wallet className="w-3 h-3" /> Net</span>
+                  <span className={`block text-base font-black truncate ${t.net >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+                    {t.net < 0 ? '-' : ''}{formatMoney(Math.abs(t.net), t.currency)}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-
-        <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Net USD</span>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className={`text-2xl font-bold ${netUSD >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-              {netUSD >= 0 ? `+$${netUSD.toLocaleString()}` : `-$${Math.abs(netUSD).toLocaleString()}`}
-            </span>
-            <span className="text-[11px] text-slate-400 font-normal">USD</span>
-          </div>
-        </div>
-
-        <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Total Inflow (USD)</span>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-bold text-emerald-600">
-              ${totalInflowUSD.toLocaleString()}
-            </span>
-            <span className="text-[11px] text-slate-400 font-normal">USD</span>
-          </div>
-        </div>
-
-        <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Diesel Fuel</span>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-bold text-amber-600">$3,250</span>
-            <span className="text-[11px] text-amber-700 font-medium">2,500 L</span>
-          </div>
-        </div>
-
+        ))}
       </div>
 
       {/* Cashflow Ledger Table Container */}
@@ -234,6 +242,21 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Currency Filter */}
+            <div className="inline-flex bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
+              {(['ALL', 'USD', 'SSP'] as const).map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCurrencyFilter(c)}
+                  className={`px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                    currencyFilter === c ? 'bg-white text-orange-600 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {c === 'ALL' ? 'All money' : c === 'USD' ? '$ Dollar' : 'SSP'}
+                </button>
+              ))}
+            </div>
             {/* Type Filter */}
             <div className="inline-flex bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
               {(['ALL', 'Inflow', 'Outflow'] as const).map((type) => (
@@ -319,7 +342,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                     <td className="py-3.5 px-4 text-right font-black">
                       <span className={t.type === 'Inflow' ? 'text-emerald-600' : 'text-slate-900'}>
                         {t.type === 'Inflow' ? '+' : '-'}
-                        ${t.amount.toLocaleString()}
+                        {formatMoney(t.amount, t.currency || 'USD')}
                       </span>
                     </td>
                     {onDeleteTransaction && (
@@ -396,7 +419,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                   required
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="e.g. Generator Fuel delivery 2,000L or Tenant Rent"
+                  placeholder="e.g. Tenant rent or cleaning supplies"
                   className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
                 />
               </div>
@@ -413,7 +436,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                     <option value="Escrow Deposit">Escrow Deposit</option>
                     <option value="Utilities Surcharge">Utilities Surcharge</option>
                     <option value="Kiosk Permit">Kiosk Permit</option>
-                    <option value="Diesel & Generator">Diesel & Generator</option>
                     <option value="Security & Guards">Security & Guards</option>
                     <option value="Cleaning & Waste">Cleaning & Waste</option>
                     <option value="Repairs & Maintenance">Repairs & Maintenance</option>
@@ -439,20 +461,31 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Currency</label>
-                  <div className="px-3.5 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50 font-bold text-slate-800">
-                    USD ($) - Official Mall Currency
+                  <div className="grid grid-cols-2 gap-1 bg-slate-100 p-0.5 rounded-xl">
+                    {(['USD', 'SSP'] as const).map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setNewCurrency(c)}
+                        className={`py-1.5 rounded-lg text-xs font-extrabold cursor-pointer transition-all ${
+                          newCurrency === c ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs' : 'text-slate-600'
+                        }`}
+                      >
+                        {c === 'USD' ? '$ Dollar' : 'SSP'}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Amount</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Amount ({newCurrency === 'USD' ? '$' : 'SSP'})</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={newAmount}
                     onChange={(e) => setNewAmount(e.target.value)}
-                    placeholder="e.g. 1500"
+                    placeholder={newCurrency === 'USD' ? 'e.g. 1500' : 'e.g. 650000'}
                     className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs"
                   />
                 </div>

@@ -2,19 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { X, Store, Check, Layers, Calendar, DollarSign, Phone, UserCheck, AlertCircle, Trash2 } from 'lucide-react';
 import { PropertyUnit, UnitType, OccupancyStatus } from '../types';
 import { leaseMonthCount } from '../utils/rentLedger';
+import { RentCurrency, rentFields, unitCurrency, unitRent } from '../utils/currency';
+import { formatMoney } from '../utils/printUtils';
 
 // What a new lease puts on the tenant's balance: every month of the duration.
-function tenantLeaseTotal(months: number, rent: number) {
+function tenantLeaseTotal(months: number, rent: number, currency: RentCurrency) {
   if (months <= 0 || rent <= 0) return null;
   return (
     <div className="mt-2 p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between gap-3 text-xs">
       <div>
         <span className="block text-[10px] font-bold uppercase text-rose-700">Lease total added to balance</span>
         <span className="text-slate-600">
-          {months} month{months === 1 ? '' : 's'} × ${rent.toLocaleString()} rent — collected on the Payments page
+          {months} month{months === 1 ? '' : 's'} × {formatMoney(rent, currency)} rent — collected on the Payments page
         </span>
       </div>
-      <span className="text-lg font-black text-rose-600 shrink-0">${(months * rent).toLocaleString()}</span>
+      <span className="text-lg font-black text-rose-600 shrink-0">{formatMoney(months * rent, currency)}</span>
     </div>
   );
 }
@@ -90,6 +92,7 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
   const [sizeSqM, setSizeSqM] = useState<string>('30');
   const [meterNumber, setMeterNumber] = useState('');
   const [monthlyRent, setMonthlyRent] = useState<string>('500');
+  const [rentCurrency, setRentCurrency] = useState<RentCurrency>('USD');
   const [status, setStatus] = useState<OccupancyStatus>('Available');
 
   // Tenant Fields
@@ -124,7 +127,8 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       setTrade(editingUnit.currentTenant?.trade || editingUnit.subType || '');
       setSizeSqM(editingUnit.sizeSqM ? String(editingUnit.sizeSqM) : '30');
       setMeterNumber(editingUnit.meterNumber || '');
-      setMonthlyRent(String(editingUnit.monthlyRateUSD || 500));
+      setRentCurrency(unitCurrency(editingUnit));
+      setMonthlyRent(String(unitRent(editingUnit) || 500));
 
       setStatus(editingUnit.occupancyStatus || 'Available');
       setTenantName(editingUnit.currentTenant?.name || '');
@@ -143,6 +147,7 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       setSizeSqM('30');
       setMeterNumber('');
       setMonthlyRent('500');
+      setRentCurrency('USD');
       setStatus('Available');
       setTenantName('');
       setTenantPhone('');
@@ -190,7 +195,6 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
 
     const numSize = parseFloat(sizeSqM) || 30;
     const numRent = parseFloat(monthlyRent) || 0;
-    const rateUSD = numRent;
     // Security deposits are recorded on the Deposits page; keep any existing deposit when editing.
     const numDeposit = editingUnit?.escrowDepositUSD || 0;
     const existingDepositMonths = editingUnit?.depositMonths;
@@ -205,8 +209,8 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       phone: tenantPhone.trim() || '+211 928 000 000',
       email: editingUnit?.currentTenant?.email || `${finalUnitNumber.toLowerCase()}@nyakuron.com`,
       unitNumber: finalUnitNumber,
-      balanceUSD: editingUnit?.arrearsUSD || 0,
-      balanceSSP: 0,
+      balanceUSD: rentCurrency === 'USD' ? editingUnit?.arrearsUSD || 0 : 0,
+      balanceSSP: rentCurrency === 'SSP' ? editingUnit?.arrearsSSP || 0 : 0,
       depositUSD: numDeposit,
       depositMonths: existingDepositMonths,
       balanceStatus: (editingUnit?.arrearsUSD || 0) > 0 ? ('Overdue' as const) : ('Current' as const),
@@ -227,16 +231,15 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       sizeSqM: numSize,
       sizeSqFt: Math.round(numSize * 10.764 * 10) / 10,
       meterNumber: meterNumber.trim() || (selectedCategory === 'Shop' ? `MTR-${finalUnitNumber}` : '2 meter'),
-      monthlyRateUSD: rateUSD,
-      monthlyRateSSP: 0,
+      ...rentFields(numRent, rentCurrency),
       escrowDepositUSD: numDeposit,
       escrowDepositSSP: editingUnit?.escrowDepositSSP || 0,
       depositMonths: existingDepositMonths,
       occupancyStatus: hasTenant ? 'Occupied' : (status === 'Occupied' ? 'Available' : status),
       billingStatus: hasTenant ? (editingUnit?.billingStatus || 'Paid') : 'No Balance',
       billingMonthText: hasTenant ? (editingUnit?.billingMonthText || 'Paid • Sept 2026') : undefined,
-      arrearsUSD: hasTenant ? (editingUnit?.arrearsUSD || 0) : 0,
-      arrearsSSP: 0,
+      arrearsUSD: hasTenant && rentCurrency === 'USD' ? (editingUnit?.arrearsUSD || 0) : 0,
+      arrearsSSP: hasTenant && rentCurrency === 'SSP' ? (editingUnit?.arrearsSSP || 0) : 0,
       currentTenant: assignedTenant,
       leaseStart: hasTenant ? leaseStart : undefined,
       leaseEnd: hasTenant ? calculatedEnd : undefined,
@@ -390,19 +393,36 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
           {/* Monthly Rent */}
           <div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Monthly Rent (USD $)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700">
+                  Monthly Rent ({rentCurrency === 'USD' ? 'USD $' : 'SSP'})
+                </label>
+                {/* Rent currency: everything for this tenant (payments, balance, deposits) uses it */}
+                <div className="inline-flex bg-slate-100 p-0.5 rounded-lg">
+                  {(['USD', 'SSP'] as RentCurrency[]).map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setRentCurrency(c)}
+                      className={`px-3 py-1 rounded-md text-[11px] font-extrabold transition-all cursor-pointer ${
+                        rentCurrency === c ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {c === 'USD' ? '$ Dollar' : 'SSP'}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">$</span>
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">{rentCurrency === 'USD' ? '$' : 'SSP'}</span>
                 <input
                   type="number"
                   step="any"
                   required
                   value={monthlyRent}
                   onChange={(e) => setMonthlyRent(e.target.value)}
-                  placeholder="500"
-                  className="w-full pl-8 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white"
+                  placeholder={rentCurrency === 'USD' ? '500' : '650000'}
+                  className="w-full pl-11 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white"
                 />
               </div>
             </div>
@@ -539,7 +559,7 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
                 Pick a lease start date to calculate the end date and days remaining.
               </div>
             )}
-            {tenantName.trim() && lease && tenantLeaseTotal(leaseMonthCount(leaseStart, lease.endStr), parseFloat(monthlyRent) || 0)}
+            {tenantName.trim() && lease && tenantLeaseTotal(leaseMonthCount(leaseStart, lease.endStr), parseFloat(monthlyRent) || 0, rentCurrency)}
           </div>
 
           {/* Additional Notes */}

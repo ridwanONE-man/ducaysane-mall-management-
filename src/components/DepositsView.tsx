@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { DepositRecord, PropertyUnit, CurrencyMode } from '../types';
 import { ClearAllButton } from './DeleteControls';
+import { formatMoney } from '../utils/printUtils';
+import { RentCurrency, depositIn, formatBoth } from '../utils/currency';
 import { DepositRecordsPanel } from './DepositRecordsPanel';
 import { formatDepositAmount } from './DepositVoucher';
 import { TenantAccount, depositMonthLabels, isAmountDeposit } from '../utils/tenantAccount';
@@ -34,7 +36,7 @@ interface DepositsViewProps {
 type View = 'tenants' | 'records';
 type TenantFilter = 'all' | 'ready' | 'owing' | 'held';
 
-const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const usd = (n: number, currency: RentCurrency = 'USD') => formatMoney(n, currency);
 
 export const DepositsView: React.FC<DepositsViewProps> = ({
   units,
@@ -56,7 +58,8 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
   const matches = (...values: (string | undefined)[]) => !q || values.some(v => (v || '').toLowerCase().includes(q));
 
   const heldDeposits = deposits.filter(d => d.status === 'Held in Escrow');
-  const totalHeld = heldDeposits.reduce((s, d) => s + d.amountUSD, 0);
+  const totalHeldUSD = heldDeposits.reduce((s, d) => s + depositIn(d, 'USD'), 0);
+  const totalHeldSSP = heldDeposits.reduce((s, d) => s + depositIn(d, 'SSP'), 0);
   const counts = {
     ready: tenantAccounts.filter(a => a.canDeposit).length,
     owing: tenantAccounts.filter(a => !a.canDeposit).length,
@@ -125,7 +128,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
       {/* Totals */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Deposits held', value: usd(totalHeld), tone: 'text-blue-700', icon: ShieldCheck },
+          { label: 'Deposits held', value: formatBoth(totalHeldUSD, totalHeldSSP), tone: 'text-blue-700', icon: ShieldCheck },
           { label: 'Tenants with a deposit', value: String(counts.held), tone: 'text-blue-700', icon: Users },
           { label: 'Ready for a deposit', value: String(counts.ready), tone: 'text-emerald-600', icon: CheckCircle2 },
           { label: 'Must pay rent first', value: String(counts.owing), tone: 'text-rose-600', icon: AlertTriangle },
@@ -206,7 +209,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {shownAccounts.map(a => {
               const depositMonths = a.securityDeposits.flatMap(depositMonthLabels);
-              const amountDeposits = a.securityDeposits.filter(isAmountDeposit).reduce((s, d) => s + d.amountUSD, 0);
+              const amountDeposits = a.securityDeposits.filter(isAmountDeposit).reduce((s, d) => s + depositIn(d, a.currency), 0);
               return (
                 <div key={a.key} className="bg-white rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all p-5 flex flex-col">
                   <div className="flex items-start justify-between gap-3">
@@ -216,7 +219,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 font-bold text-slate-700">
                           <Store className="w-3 h-3" /> {a.unit.unitNumber}
                         </span>
-                        <span>Rent {usd(a.monthlyRent)}</span>
+                        <span>Rent {usd(a.monthlyRent, a.currency)}</span>
                       </div>
                     </div>
                     {a.canDeposit ? (
@@ -234,16 +237,16 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
                   <div className={`mt-3 rounded-xl px-3 py-2 text-[11px] ${a.canDeposit ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-700'}`}>
                     {a.canDeposit
                       ? `All months up to ${new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })} are paid.`
-                      : <>Owes <strong>{usd(a.dueNow.reduce((s, m) => s + m.remaining, 0))}</strong> for {a.dueNow.map(m => m.short).join(', ')}. Pay this before taking a deposit.</>}
+                      : <>Owes <strong>{usd(a.dueNow.reduce((s, m) => s + m.remaining, 0), a.currency)}</strong> for {a.dueNow.map(m => m.short).join(', ')}. Pay this before taking a deposit.</>}
                   </div>
 
                   {/* Deposit held */}
                   <div className="mt-2 rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-2 text-[11px] flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1.5 text-blue-900 min-w-0">
                       <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      <span className="truncate">{a.depositHeld > 0 ? [depositMonths.join(', '), amountDeposits > 0 ? `${usd(amountDeposits)} any amount` : ''].filter(Boolean).join(' • ') || 'Deposit held' : 'No deposit yet'}</span>
+                      <span className="truncate">{a.depositHeld > 0 ? [depositMonths.join(', '), amountDeposits > 0 ? `${usd(amountDeposits, a.currency)} any amount` : ''].filter(Boolean).join(' • ') || 'Deposit held' : 'No deposit yet'}</span>
                     </span>
-                    <span className="font-black text-blue-700 shrink-0">{a.depositHeld > 0 ? usd(a.depositHeld) : '—'}</span>
+                    <span className="font-black text-blue-700 shrink-0">{a.depositHeld > 0 ? usd(a.depositHeld, a.currency) : '—'}</span>
                   </div>
 
                   {a.tenant.phone && (

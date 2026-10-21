@@ -94,7 +94,7 @@ export const DepositVoucher: React.FC<{ deposit: DepositRecord; unit?: PropertyU
   const slip = deposit.depositSlip || deposit.id;
   const tenant = unit?.currentTenant;
   const sameTenant = tenant && tenant.name.trim().toLowerCase() === deposit.tenantName.trim().toLowerCase();
-  const rent = deposit.monthlyRentUSD || unit?.monthlyRateUSD || 0;
+  const rent = currency === 'USD' ? deposit.monthlyRentUSD || unit?.monthlyRateUSD || 0 : unit?.monthlyRateSSP || 0;
   const title = 'Security Deposit Voucher';
   const covers = isAmountDeposit(deposit) && !months.length
       ? 'Any amount — not for a specific month'
@@ -138,7 +138,7 @@ export const DepositVoucher: React.FC<{ deposit: DepositRecord; unit?: PropertyU
                 <Row label="Unit" value={deposit.unitNumber} />
                 {unit && <Row label="Location" value={`${unit.floor} • ${unit.type}`} />}
                 {sameTenant && tenant?.phone && <Row label="Phone" value={tenant.phone} />}
-                {rent > 0 && <Row label="Monthly rent" value={formatMoney(rent, 'USD')} />}
+                {rent > 0 && <Row label="Monthly rent" value={formatMoney(rent, currency)} />}
               </div>
             </div>
 

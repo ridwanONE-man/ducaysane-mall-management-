@@ -1,6 +1,7 @@
 import { DepositRecord, PaymentRecord, PropertyUnit, TenantInfo } from '../types';
 import { buildRentLedger, MONTH_NAMES, monthKey } from './rentLedger';
-import { normalizeName, normalizeUnitNumber, parsePaymentDate } from './printUtils';
+import { formatMoney, normalizeName, normalizeUnitNumber, parsePaymentDate } from './printUtils';
+import { RentCurrency, depositIn, unitCurrency, unitRent } from './currency';
 
 export type AccountMonthStatus = 'paid' | 'partial' | 'due' | 'upcoming';
 
@@ -9,7 +10,7 @@ export interface AccountMonth {
   idx: number; // year * 12 + month, for ordering
   label: string; // "September 2026" (stored as the payment's accounting period)
   short: string; // "Sep 2026"
-  due: number; // rent owed for the month (USD)
+  due: number; // rent owed for the month (in the account's currency)
   paid: number;
   remaining: number;
   status: AccountMonthStatus;
@@ -21,6 +22,7 @@ export interface TenantAccount {
   key: string;
   unit: PropertyUnit;
   tenant: TenantInfo;
+  currency: RentCurrency; // the unit's rent currency; every amount below is in it
   monthlyRent: number;
   months: AccountMonth[]; // lease start → a year ahead
   owing: AccountMonth[]; // due or partly paid, oldest first
@@ -71,12 +73,13 @@ export function buildTenantAccount(
   if (!tenant) return null;
   const key = accountKey(tenant.name, unit.unitNumber);
   const own = payments.filter(p => accountKey(p.tenantName, p.unitNumber) === key);
-  const monthlyRent = unit.monthlyRateUSD || 0;
+  const currency = unitCurrency(unit);
+  const monthlyRent = unitRent(unit);
 
   const ledger = buildRentLedger({
     payments: own,
     monthlyRent,
-    currency: 'USD',
+    currency,
     leaseStart: unit.leaseStart,
     leaseEnd: unit.leaseEnd,
     isCurrent: true,
@@ -136,6 +139,7 @@ export function buildTenantAccount(
     key,
     unit,
     tenant,
+    currency,
     monthlyRent,
     months,
     owing,
@@ -145,7 +149,7 @@ export function buildTenantAccount(
     dueNow,
     canDeposit: dueNow.length === 0,
     securityDeposits,
-    depositHeld: Math.round(securityDeposits.reduce((s, d) => s + d.amountUSD, 0) * 100) / 100,
+    depositHeld: Math.round(securityDeposits.reduce((s, d) => s + depositIn(d, currency), 0) * 100) / 100,
     depositMonthKeys: new Set(months.filter(m => coveredShort.has(m.short)).map(m => m.key)),
   };
 }
@@ -202,9 +206,9 @@ export interface DepositApplication {
 export function planDepositApplications(account: TenantAccount, today = new Date()) {
   const todayIdx = today.getFullYear() * 12 + today.getMonth();
   const usable = account.securityDeposits
-    .filter(d => d.amountUSD > 0 && (depositMonthLabels(d).length > 0 || isAmountDeposit(d)))
+    .filter(d => depositIn(d, account.currency) > 0 && (depositMonthLabels(d).length > 0 || isAmountDeposit(d)))
     .sort((a, b) => (parsePaymentDate(a.heldSince)?.getTime() || 0) - (parsePaymentDate(b.heldSince)?.getTime() || 0));
-  const left = new Map(usable.map(d => [d.id, d.amountUSD]));
+  const left = new Map(usable.map(d => [d.id, depositIn(d, account.currency)]));
   const labels = new Map(usable.map(d => [d.id, depositMonthLabels(d)]));
   const applications: DepositApplication[] = [];
 
@@ -231,8 +235,9 @@ export function planDepositApplications(account: TenantAccount, today = new Date
     let notes = withDepositMonths(d.notes, labels.get(d.id)!);
     // A month deposit with money left but no months left becomes an any-amount deposit
     if (remaining > 0 && labels.get(d.id)!.length === 0 && !isAmountDeposit(d)) notes = `${AMOUNT_DEPOSIT_TAG}. ${notes}`;
-    notes = `${notes} ${applied.map(a => `Paid $${a.amount.toFixed(2)} of ${a.month.short} rent.`).join(' ')}`.trim();
-    return { ...d, amountUSD: remaining, status: remaining > 0 ? d.status : 'Applied to Rent', notes };
+    notes = `${notes} ${applied.map(a => `Paid ${formatMoney(a.amount, account.currency)} of ${a.month.short} rent.`).join(' ')}`.trim();
+    const amount = account.currency === 'SSP' ? { amountSSP: remaining } : { amountUSD: remaining };
+    return { ...d, ...amount, status: remaining > 0 ? d.status : 'Applied to Rent', notes };
   });
   return { applications, updated };
 }

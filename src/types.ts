@@ -132,7 +132,6 @@ export type CashflowCategory =
   | 'Escrow Deposit' 
   | 'Utilities Surcharge' 
   | 'Kiosk Permit' 
-  | 'Diesel & Generator' 
   | 'Security & Guards' 
   | 'Cleaning & Waste' 
   | 'Repairs & Maintenance' 

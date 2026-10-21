@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, ShieldCheck, Check, Landmark, Info, CalendarCheck, Coins } from 'lucide-react';
 import { AccountMonth, TenantAccount } from '../utils/tenantAccount';
+import { formatMoney } from '../utils/printUtils';
 
 export type DepositMode = 'months' | 'amount';
 
@@ -26,9 +27,10 @@ const BANKS = [
   'Central Vault Cash Float',
 ];
 
-const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const TenantDepositModal: React.FC<TenantDepositModalProps> = ({ account, nextSlip, onClose, onConfirm }) => {
+  // Amounts are shown in the tenant's rent currency ($ or SSP)
+  const usd = (n: number) => formatMoney(n, account?.currency || 'USD');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [amountText, setAmountText] = useState('');
   const [bankAccount, setBankAccount] = useState(BANKS[0]);
@@ -156,7 +158,7 @@ export const TenantDepositModal: React.FC<TenantDepositModalProps> = ({ account,
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Deposit amount ($)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Deposit amount ({account.currency === 'USD' ? '$' : 'SSP'})</label>
               <input
                 type="number"
                 min="0"

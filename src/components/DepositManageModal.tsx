@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { X, ShieldCheck, Check, Coins, Trash2, Save, Info } from 'lucide-react';
 import { DepositRecord } from '../types';
 import { TenantAccount, depositMonthLabels, isAmountDeposit } from '../utils/tenantAccount';
+import { depositIn } from '../utils/currency';
+import { formatMoney } from '../utils/printUtils';
 import { depositDateLabel, formatDepositAmount } from './DepositVoucher';
 import { useConfirm } from './ConfirmDialog';
 
@@ -14,9 +16,10 @@ interface DepositManageModalProps {
   onClearDeposit: (deposit: DepositRecord) => void;
 }
 
-const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const DepositManageModal: React.FC<DepositManageModalProps> = ({ account, onClose, onSaveMonths, onClearDeposit }) => {
+  // Amounts are shown in the tenant's rent currency ($ or SSP)
+  const usd = (n: number) => formatMoney(n, account?.currency || 'USD');
   const confirm = useConfirm();
   // Months still ticked, per deposit id
   const [kept, setKept] = useState<Record<string, string[]>>({});
@@ -74,7 +77,8 @@ export const DepositManageModal: React.FC<DepositManageModalProps> = ({ account,
             const labels = depositMonthLabels(d);
             const keep = kept[d.id] || labels;
             const removed = labels.filter(l => !keep.includes(l));
-            const perMonth = labels.length ? d.amountUSD / labels.length : 0;
+            const held = depositIn(d, account.currency);
+            const perMonth = labels.length ? held / labels.length : 0;
             const newAmount = Math.round(perMonth * keep.length * 100) / 100;
             const isAmount = isAmountDeposit(d) || labels.length === 0;
 
@@ -112,7 +116,7 @@ export const DepositManageModal: React.FC<DepositManageModalProps> = ({ account,
                       <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-900 flex items-start gap-1.5">
                         <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                         <span>
-                          Removes {removed.join(', ')} and <strong>{usd(d.amountUSD - newAmount)}</strong>. The deposit becomes <strong>{usd(newAmount)}</strong>
+                          Removes {removed.join(', ')} and <strong>{usd(held - newAmount)}</strong>. The deposit becomes <strong>{usd(newAmount)}</strong>
                           {keep.length === 0 ? ' — it will be cleared.' : '.'}
                         </span>
                       </div>

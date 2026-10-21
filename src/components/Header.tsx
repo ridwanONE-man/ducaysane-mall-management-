@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, X, Wifi, WifiOff, Store, Users, Printer, ArrowRight, CornerDownLeft } from 'lucide-react';
 import { CurrencyMode, NavigationTab, AdminUser, CommercialNotification, PropertyUnit, PaymentRecord } from '../types';
 import { RealtimeStatus } from '../lib/supabaseService';
+import { formatUnitRent } from '../utils/currency';
 
 export interface HeaderProps {
   currentTab?: NavigationTab;
@@ -238,7 +239,7 @@ export const Header: React.FC<HeaderProps> = ({
                         }`}>
                           {u.occupancyStatus}
                         </span>
-                        <span className="block text-[10px] font-semibold text-slate-700 mt-0.5">${u.monthlyRateUSD}/mo</span>
+                        <span className="block text-[10px] font-semibold text-slate-700 mt-0.5">{formatUnitRent(u)}/mo</span>
                       </div>
                     </button>
                   );

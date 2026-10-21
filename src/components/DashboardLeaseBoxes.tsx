@@ -2,6 +2,7 @@ import React from 'react';
 import { DoorOpen, Hourglass, UserPlus, ArrowRight, CalendarClock, AlertTriangle, CheckCircle2, Store } from 'lucide-react';
 import { PropertyUnit, NavigationTab } from '../types';
 import { parsePaymentDate, formatLongDate } from '../utils/printUtils';
+import { formatBoth, formatUnitRent, unitCurrency, unitRent } from '../utils/currency';
 
 interface DashboardLeaseBoxesProps {
   units: PropertyUnit[];
@@ -12,7 +13,6 @@ interface DashboardLeaseBoxesProps {
 export const EXPIRING_WITHIN_DAYS = 10;
 
 const isShopUnit = (u: PropertyUnit) => u.type === 'Shop' || u.categoryType === 'Shop' || u.unitNumber.startsWith('G');
-const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
 // Whole days from today until the lease end date (negative once it has passed)
 function daysUntil(dateStr?: string): number | null {
@@ -30,7 +30,8 @@ export const DashboardLeaseBoxes: React.FC<DashboardLeaseBoxesProps> = ({ units,
   const available = units.filter(u => u.occupancyStatus === 'Available' || !u.currentTenant);
   const availableShops = available.filter(isShopUnit).length;
   const vacantArea = available.reduce((s, u) => s + (u.sizeSqM || 0), 0);
-  const potentialRent = available.reduce((s, u) => s + (u.monthlyRateUSD || 0), 0);
+  const potentialUSD = available.filter(u => unitCurrency(u) === 'USD').reduce((s, u) => s + unitRent(u), 0);
+  const potentialSSP = available.filter(u => unitCurrency(u) === 'SSP').reduce((s, u) => s + unitRent(u), 0);
 
   const leased = units
     .filter(u => u.currentTenant && u.occupancyStatus !== 'Available')
@@ -84,7 +85,7 @@ export const DashboardLeaseBoxes: React.FC<DashboardLeaseBoxesProps> = ({ units,
           ) : (
             <>
               <p className="mt-4 text-[11px] text-slate-500">
-                Leasing these would add <strong className="text-emerald-700">{usd(potentialRent)}/month</strong> in rent.
+                Leasing these would add <strong className="text-emerald-700">{formatBoth(potentialUSD, potentialSSP)}/month</strong> in rent.
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {available.slice(0, 8).map(u => (
@@ -92,12 +93,12 @@ export const DashboardLeaseBoxes: React.FC<DashboardLeaseBoxesProps> = ({ units,
                     key={u.id}
                     type="button"
                     onClick={() => onLeaseUnit(u)}
-                    title={`Lease ${u.unitNumber} • ${u.floor} • ${usd(u.monthlyRateUSD)}/mo`}
+                    title={`Lease ${u.unitNumber} • ${u.floor} • ${formatUnitRent(u)}/mo`}
                     className="group inline-flex items-center gap-1 pl-2 pr-1.5 py-1 rounded-lg border border-emerald-200 bg-white hover:bg-emerald-600 hover:border-emerald-600 text-[11px] font-bold text-slate-700 hover:text-white transition-colors cursor-pointer"
                   >
                     <Store className="w-3 h-3 text-emerald-600 group-hover:text-white" />
                     {u.unitNumber}
-                    <span className="text-[10px] font-semibold text-slate-400 group-hover:text-emerald-100">{usd(u.monthlyRateUSD)}</span>
+                    <span className="text-[10px] font-semibold text-slate-400 group-hover:text-emerald-100">{formatUnitRent(u)}</span>
                     <UserPlus className="w-3 h-3 opacity-0 group-hover:opacity-100" />
                   </button>
                 ))}

@@ -1,3 +1,4 @@
+import { formatMoney } from '../utils/printUtils';
 import React, { useState } from 'react';
 import { 
   Users, 
@@ -32,6 +33,7 @@ import { TenantInfo, PropertyUnit, PaymentRecord, DepositRecord, BillingStatus }
 import { ModifyTenantPricingPayload, VacateUnitPayload } from '../lib/supabaseService';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
 import { TenantAccount, accountKey } from '../utils/tenantAccount';
+import { formatUnitRent, rentFields, unitCurrency, unitRent } from '../utils/currency';
 
 interface TenantsViewProps {
   units?: PropertyUnit[];
@@ -140,7 +142,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
   const accountFor = (tenant: TenantInfo, unit?: PropertyUnit) =>
     unit ? tenantAccounts.find(a => a.key === accountKey(tenant.name, unit.unitNumber)) : undefined;
 
-  const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const usd = (n: number, currency: 'USD' | 'SSP' = 'USD') => formatMoney(n, currency);
 
   // Paid / balance badge, linking to the tenant's account on the Payments page
   const renderAccountStatus = (tenant: TenantInfo, unit?: PropertyUnit) => {
@@ -160,7 +162,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
         <span className="flex flex-col items-start min-w-0">
           <span className={`font-extrabold ${account.balance > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
             {account.balance > 0
-              ? `Balance ${usd(account.balance)} • ${account.owing.length} month${account.owing.length === 1 ? '' : 's'}`
+              ? `Balance ${usd(account.balance, account.currency)} • ${account.owing.length} month${account.owing.length === 1 ? '' : 's'}`
               : '✓ Paid up to date'}
           </span>
           <span className="text-[10px] text-slate-500 truncate max-w-full">
@@ -172,7 +174,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
         <span className="flex flex-col items-end gap-1 shrink-0">
           {account.depositHeld > 0 && (
             <span className="px-2 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-black">
-              Deposit {usd(account.depositHeld)}
+              Deposit {usd(account.depositHeld, account.currency)}
             </span>
           )}
         </span>
@@ -300,7 +302,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
     setModPhone(tenant.phone || '');
     setModEmail(tenant.email || '');
     setModCode(tenant.code || '');
-    setModMonthlyUSD(String(unit.monthlyRateUSD || 0));
+    setModMonthlyUSD(String(unitRent(unit)));
     setModLeaseStart(unit.leaseStart || tenant.leaseStart || '2026-09-01');
     setModLeaseEnd(unit.leaseEnd || tenant.leaseEnd || '2026-10-01');
     setModBillingStatus(unit.billingStatus || 'Paid');
@@ -328,10 +330,11 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
       return;
     }
 
-    const monthlyUSD = parseFloat(modMonthlyUSD) || 0;
-    // SSP rent and security deposits aren't edited here; keep the unit's current values.
+    // Rent is edited in the unit's own currency ($ or SSP); deposits aren't edited here.
     const { unit: currentUnit } = modifyingTarget;
-    const monthlySSP = currentUnit.monthlyRateSSP || 0;
+    const rent = rentFields(parseFloat(modMonthlyUSD) || 0, unitCurrency(currentUnit));
+    const monthlyUSD = rent.monthlyRateUSD;
+    const monthlySSP = rent.monthlyRateSSP;
     const depositUSD = currentUnit.escrowDepositUSD || 0;
     const depositSSP = currentUnit.escrowDepositSSP || 0;
 
@@ -573,7 +576,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                     </div>
                     <div className="flex justify-between text-slate-600">
                       <span>Standard Rent:</span>
-                      <strong className="text-slate-900 font-bold">${unit.monthlyRateUSD.toLocaleString()} USD/mo</strong>
+                      <strong className="text-slate-900 font-bold">{formatUnitRent(unit)}/mo</strong>
                     </div>
                   </div>
                 </div>
@@ -694,7 +697,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                         Monthly Base Rent:
                       </span>
                       <span className="font-extrabold text-slate-900">
-                        ${(unit?.monthlyRateUSD || 0).toLocaleString()} USD
+                        {formatUnitRent(unit)}
                       </span>
                     </div>
 
@@ -856,7 +859,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                   <div className="p-3 bg-slate-50 rounded-xl">
                     <span className="text-[10px] uppercase font-bold text-slate-500 block">Monthly Base Rent</span>
                     <span className="font-black text-slate-900 text-sm">
-                      ${(selectedTenant.unit?.monthlyRateUSD || 0).toLocaleString()} USD
+                      {formatUnitRent(selectedTenant.unit)}
                     </span>
                   </div>
 
@@ -1103,16 +1106,16 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Monthly Rent (USD $)</label>
+                      <label className="block font-semibold text-slate-700 mb-1">Monthly Rent ({unitCurrency(modifyingTarget.unit) === 'USD' ? 'USD $' : 'SSP'})</label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px]">{unitCurrency(modifyingTarget.unit) === 'USD' ? '$' : 'SSP'}</span>
                         <input
                           type="number"
                           step="any"
                           value={modMonthlyUSD}
                           onChange={(e) => setModMonthlyUSD(e.target.value)}
                           placeholder="600"
-                          className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white font-semibold"
+                          className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500 bg-white font-semibold"
                         />
                       </div>
                     </div>

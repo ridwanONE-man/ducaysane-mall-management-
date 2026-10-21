@@ -16,6 +16,7 @@ import { PaymentRecord, CurrencyMode, PropertyUnit } from '../types';
 import { exportPaymentsToCSV } from '../utils/exportUtils';
 import { TenantAccount } from '../utils/tenantAccount';
 import { TenantAccountsPanel } from './TenantAccountsPanel';
+import { formatUnitRent } from '../utils/currency';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
 
 interface PaymentsViewProps {
@@ -328,7 +329,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                           <p className="text-[10px] text-slate-400 font-normal">{unit.currentTenant?.phone || 'No phone recorded'}</p>
                         </td>
                         <td className="p-4 font-semibold text-slate-700">
-                          ${unit.monthlyRateUSD.toLocaleString()} USD
+                          {formatUnitRent(unit)}
                         </td>
                         <td className="p-4 font-bold text-rose-600 text-sm">
                           ${(unit.arrearsUSD || 0).toLocaleString()} USD

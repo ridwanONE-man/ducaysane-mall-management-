@@ -25,6 +25,7 @@ import { PropertyUnit, PaymentRecord, CurrencyMode, NavigationTab, DepositRecord
 import { exportPaymentsToCSV } from '../utils/exportUtils';
 import { AssignTenantModal } from './AssignTenantModal';
 import { DashboardLeaseBoxes } from './DashboardLeaseBoxes';
+import { formatUnitRent } from '../utils/currency';
 
 interface DashboardViewProps {
   units: PropertyUnit[];
@@ -721,7 +722,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <div>
                       <span className="text-[10px] text-slate-400 block font-medium">Rent Rate</span>
                       <span className="font-extrabold text-slate-900 text-xs">
-                        ${unit.monthlyRateUSD.toLocaleString()} USD/mo
+                        {formatUnitRent(unit)}/mo
                       </span>
                     </div>
 
@@ -806,7 +807,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <div className="py-2 space-y-1.5 border-y border-slate-100 text-xs">
                       <div className="flex items-center justify-between">
                         <span className="text-slate-500">Monthly Rent:</span>
-                        <strong className="text-slate-900 font-bold">${unit.monthlyRateUSD.toLocaleString()} USD</strong>
+                        <strong className="text-slate-900 font-bold">{formatUnitRent(unit)}</strong>
                       </div>
 
                       <div className="flex items-center justify-between">

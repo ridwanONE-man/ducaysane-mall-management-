@@ -27,6 +27,7 @@ import { PropertyUnit, CurrencyMode } from '../types';
 import { exportUnitsToCSV } from '../utils/exportUtils';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
 import { useConfirm } from './ConfirmDialog';
+import { formatUnitRent } from '../utils/currency';
 import { parsePaymentDate, formatLongDate } from '../utils/printUtils';
 
 // Colour per occupancy status: top bar, pill and dot
@@ -629,7 +630,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                     <div className="mt-auto pt-4 flex items-end justify-between gap-2">
                       <div>
                         <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Monthly rent</span>
-                        <span className="text-xl font-black text-slate-900">${unit.monthlyRateUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        <span className="text-xl font-black text-slate-900">{formatUnitRent(unit)}</span>
                         {unit.escrowDepositUSD > 0 && (
                           <span className="block text-[10px] font-bold text-sky-700">Deposit ${unit.escrowDepositUSD.toLocaleString()} held</span>
                         )}
@@ -719,7 +720,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                           </button>
                         )}
                       </td>
-                      <td className="p-4 font-black text-slate-900">${unit.monthlyRateUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                      <td className="p-4 font-black text-slate-900">{formatUnitRent(unit)}</td>
                       <td className="p-4">
                         {lease ? (
                           <>

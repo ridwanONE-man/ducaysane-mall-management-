@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Store, CheckCircle, Clock, AlertTriangle, Wrench, CreditCard, Search } from 'lucide-react';
+import { formatUnitRent } from '../utils/currency';
 import { PropertyUnit } from '../types';
 
 interface FloorMapViewProps {
@@ -172,7 +173,7 @@ export const FloorMapView: React.FC<FloorMapViewProps> = ({
                       </p>
                       <p className="text-[10px] text-slate-500 truncate">{unit.subType}</p>
                       <div className="mt-2 text-[10px] font-bold">
-                        ${unit.monthlyRateUSD.toLocaleString()} / mo
+                        {formatUnitRent(unit)} / mo
                       </div>
                     </button>
                   );

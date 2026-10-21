@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { X, CalendarCheck, Check, Receipt, CreditCard, Info, AlertTriangle } from 'lucide-react';
 import { PaymentMethodType, PaymentRecord } from '../types';
 import { AccountMonth, MonthAllocation, TenantAccount, allocatePayment } from '../utils/tenantAccount';
-import { formatLongDate } from '../utils/printUtils';
+import { formatLongDate, formatMoney } from '../utils/printUtils';
 
 export interface SmartPayRequest {
   account: TenantAccount;
@@ -28,9 +28,10 @@ const METHODS: PaymentMethodType[] = [
   'Cheque / Slip',
 ];
 
-const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, onConfirm, onViewReceipt, nextReceiptNumber }) => {
+  // Amounts are shown in the tenant's rent currency ($ or SSP)
+  const usd = (n: number) => formatMoney(n, account?.currency || 'USD');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [amountText, setAmountText] = useState('');
   const [method, setMethod] = useState<PaymentMethodType>('Cash (Office Management Desk)');
@@ -185,7 +186,7 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
           {/* Amount, method, remark */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Amount to pay ($)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Amount to pay ({account.currency === 'USD' ? '$' : 'SSP'})</label>
               <input
                 type="number"
                 min="0"

@@ -20,6 +20,8 @@ import { NotificationsView } from './components/NotificationsView';
 import { SmartPayModal, SmartPayRequest } from './components/SmartPayModal';
 import { TenantDepositModal, TenantDepositRequest } from './components/TenantDepositModal';
 import { DepositManageModal } from './components/DepositManageModal';
+import { depositFields, depositIn, RentCurrency } from './utils/currency';
+import { formatMoney } from './utils/printUtils';
 import { buildTenantAccount, buildTenantAccounts, isLegacyCreditDeposit, DEPOSIT_MONTHS_PREFIX, AMOUNT_DEPOSIT_TAG, depositMonthLabels, withDepositMonths, planDepositApplications, accountKey } from './utils/tenantAccount';
 import { nextReceiptNumber } from './utils/receiptNumbers';
 
@@ -831,7 +833,8 @@ export default function App() {
   // Smart Pay: one payment row per rent month on a single receipt.
   const handleSmartPay = async (req: SmartPayRequest) => {
     const { account, allocations, cash, method, remark, transferId } = req;
-    const { tenant, unit } = account;
+    const { tenant, unit, currency } = account;
+    const money = (n: number) => formatMoney(n, currency);
     const receiptNumber = nextReceiptNumber(payments.map(p => p.receiptNumber));
     const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const stamp = Date.now();
@@ -850,7 +853,7 @@ export default function App() {
           unitSpace: `${unit.unitNumber} (${unit.floor} ${unit.type})`,
           date,
           accountingPeriod: a.month.label,
-          currency: 'USD',
+          currency,
           amount: a.fromCash,
           paymentMethod: method,
           monthlyBaseRent: a.month.due,
@@ -873,9 +876,10 @@ export default function App() {
     const balance = after?.balance || 0;
     const updatedUnit: PropertyUnit = {
       ...unit,
-      arrearsUSD: balance,
+      arrearsUSD: currency === 'USD' ? balance : 0,
+      arrearsSSP: currency === 'SSP' ? balance : 0,
       billingStatus: balance > 0 ? (after?.owing.some(m => m.status === 'partial') ? 'Partially Paid' : 'Overdue') : 'Paid',
-      billingMonthText: balance > 0 ? `Balance $${balance.toFixed(2)}` : `Paid • ${allocations[allocations.length - 1]?.month.label || ''}`.trim(),
+      billingMonthText: balance > 0 ? `Balance ${money(balance)}` : `Paid • ${allocations[allocations.length - 1]?.month.label || ''}`.trim(),
     };
     setUnits(prev => prev.map(u => u.id === unit.id ? updatedUnit : u));
 
@@ -887,7 +891,7 @@ export default function App() {
       category: 'Rent Collection',
       type: 'Inflow',
       amount: cash,
-      currency: 'USD',
+      currency,
       account: 'Central Vault Cash Float',
       recordedBy: adminUser.name,
       status: 'Completed',
@@ -904,7 +908,7 @@ export default function App() {
     setNotifications(prev => [{
       id: `notif-${stamp}`,
       title: `Payment Recorded: ${receiptNumber}`,
-      description: `$${cash.toFixed(2)} from ${tenant.name} (${unit.unitNumber}) for ${allocations.map(a => a.month.short).join(', ')}.`,
+      description: `${money(cash)} from ${tenant.name} (${unit.unitNumber}) for ${allocations.map(a => a.month.short).join(', ')}.`,
       timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
       type: 'payment',
       read: false,
@@ -920,7 +924,8 @@ export default function App() {
 
   // Security deposit for chosen months, only offered once rent is paid up to date
   const handleAddTenantDeposit = async ({ account, mode, months, amount, bankAccount, notes }: TenantDepositRequest) => {
-    const { tenant, unit } = account;
+    const { tenant, unit, currency } = account;
+    const money = (n: number) => formatMoney(n, currency);
     const coverText = mode === 'amount' ? 'any amount (not for a month)' : months.map(m => m.short).join(', ');
     const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const stamp = Date.now();
@@ -930,11 +935,9 @@ export default function App() {
       tenantName: tenant.name,
       tenantId: tenant.id,
       unitNumber: unit.unitNumber,
-      amountUSD: amount,
-      amountSSP: 0,
+      ...depositFields(amount, currency),
       depositMonths: months.length,
-      monthlyRentUSD: account.monthlyRent,
-      currency: 'USD',
+      monthlyRentUSD: currency === 'USD' ? account.monthlyRent : undefined,
       heldSince: date,
       status: 'Held in Escrow',
       bankAccount,
@@ -942,7 +945,7 @@ export default function App() {
     };
     const updatedUnit: PropertyUnit = {
       ...unit,
-      escrowDepositUSD: account.depositHeld + amount,
+      ...(currency === 'SSP' ? { escrowDepositSSP: account.depositHeld + amount } : { escrowDepositUSD: account.depositHeld + amount }),
       depositMonths: (unit.depositMonths || 0) + months.length,
     };
     const tx: CashflowTransaction = {
@@ -953,7 +956,7 @@ export default function App() {
       category: 'Escrow Deposit',
       type: 'Inflow',
       amount,
-      currency: 'USD',
+      currency,
       account: 'Escrow Trust Account',
       recordedBy: adminUser.name,
       status: 'Completed',
@@ -973,14 +976,14 @@ export default function App() {
     setNotifications(prev => [{
       id: `notif-${stamp}`,
       title: `Deposit Held: ${dep.depositSlip}`,
-      description: `$${amount.toFixed(2)} from ${tenant.name} (${unit.unitNumber}) for ${coverText}.`,
+      description: `${money(amount)} from ${tenant.name} (${unit.unitNumber}) for ${coverText}.`,
       timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
       type: 'payment',
       read: false,
       priority: 'low',
     }, ...prev]);
     showToast(results.every(Boolean)
-      ? `Deposit ${dep.depositSlip} of $${amount.toFixed(2)} held for ${tenant.name}.`
+      ? `Deposit ${dep.depositSlip} of ${money(amount)} held for ${tenant.name}.`
       : `Deposit ${dep.depositSlip} is saved on this device and will be uploaded automatically.`);
   };
 
@@ -992,7 +995,8 @@ export default function App() {
     );
     return {
       ...unit,
-      escrowDepositUSD: Math.round(held.reduce((s, d) => s + d.amountUSD, 0) * 100) / 100,
+      escrowDepositUSD: Math.round(held.reduce((s, d) => s + depositIn(d, 'USD'), 0) * 100) / 100,
+      escrowDepositSSP: Math.round(held.reduce((s, d) => s + depositIn(d, 'SSP'), 0) * 100) / 100,
       depositMonths: held.reduce((s, d) => s + depositMonthLabels(d).length, 0),
     };
   };
@@ -1002,20 +1006,22 @@ export default function App() {
     const labels = depositMonthLabels(dep);
     const removed = labels.filter(l => !keep.includes(l));
     if (!removed.length) return;
-    const perMonth = labels.length ? dep.amountUSD / labels.length : 0;
+    const cur: RentCurrency = (dep.amountSSP || 0) > 0 && !(dep.amountUSD > 0) ? 'SSP' : 'USD';
+    const held = depositIn(dep, cur);
+    const perMonth = labels.length ? held / labels.length : 0;
     const newAmount = Math.round(perMonth * keep.length * 100) / 100;
-    const cut = Math.round((dep.amountUSD - newAmount) * 100) / 100;
+    const cut = Math.round((held - newAmount) * 100) / 100;
     const updated: DepositRecord = {
       ...dep,
-      amountUSD: newAmount,
+      ...(cur === 'SSP' ? { amountSSP: newAmount } : { amountUSD: newAmount }),
       depositMonths: keep.length,
-      notes: `${withDepositMonths(dep.notes, keep)} Removed ${removed.join(', ')} ($${cut.toFixed(2)}) on ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.`,
+      notes: `${withDepositMonths(dep.notes, keep)} Removed ${removed.join(', ')} (${formatMoney(cut, cur)}) on ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.`,
     };
     const nextDeposits = deposits.map(d => d.id === dep.id ? updated : d);
     const unit = units.find(u => u.unitNumber === dep.unitNumber);
     const updatedUnit = unit ? unitWithDeposits(unit, nextDeposits) : null;
     const tx = cashflow.find(c => c.id === `cf-${dep.id}`);
-    const updatedTx = tx ? { ...tx, amount: Math.max(0, Math.round((tx.amount - cut) * 100) / 100), notes: `${tx.notes || ''} Reduced by $${cut.toFixed(2)} (removed ${removed.join(', ')}).`.trim() } : null;
+    const updatedTx = tx ? { ...tx, amount: Math.max(0, Math.round((tx.amount - cut) * 100) / 100), notes: `${tx.notes || ''} Reduced by ${formatMoney(cut, cur)} (removed ${removed.join(', ')}).`.trim() } : null;
 
     setDeposits(nextDeposits);
     if (updatedUnit) setUnits(prev => prev.map(u => u.id === updatedUnit.id ? updatedUnit : u));
@@ -1027,7 +1033,7 @@ export default function App() {
       ...(updatedTx ? [persist('cashflow', updatedTx, saveCashflowToSupabase)] : []),
     ]);
     showToast(results.every(Boolean)
-      ? `Removed ${removed.join(', ')} from ${dep.depositSlip}. Deposit is now $${newAmount.toFixed(2)}.`
+      ? `Removed ${removed.join(', ')} from ${dep.depositSlip}. Deposit is now ${formatMoney(newAmount, cur)}.`
       : 'Change saved on this device and will be uploaded automatically.');
   };
 
@@ -1086,7 +1092,7 @@ export default function App() {
           unitSpace: `${account.unit.unitNumber} (${account.unit.floor} ${account.unit.type})`,
           date,
           accountingPeriod: a.month.label,
-          currency: 'USD',
+          currency: account.currency,
           amount: a.amount,
           paymentMethod: 'Security Deposit',
           monthlyBaseRent: a.month.due,
@@ -1117,7 +1123,7 @@ export default function App() {
       ...changedDeposits.map(d => persist('deposits', d, saveDepositToSupabase)),
       ...changedUnits.map(u => persist('units', u, saveUnitToSupabase)),
     ]);
-    const summary = rows.map(r => `${r.tenantName}: ${r.accountingPeriod} $${r.amount.toFixed(2)}`).join(' • ');
+    const summary = rows.map(r => `${r.tenantName}: ${r.accountingPeriod} ${formatMoney(r.amount, r.currency)}`).join(' • ');
     setNotifications(prev => [{
       id: `notif-dep-${Date.now()}`,
       title: 'Rent paid from deposit',
@@ -1139,9 +1145,12 @@ export default function App() {
       status: 'Refunded',
       notes: `${dep.notes || ''} Released to tenant on ${date}.`.trim(),
     };
+    const cur: RentCurrency = (dep.amountSSP || 0) > 0 && !(dep.amountUSD > 0) ? 'SSP' : 'USD';
     const unit = units.find(u => u.unitNumber === dep.unitNumber);
     const updatedUnit = unit
-      ? { ...unit, escrowDepositUSD: Math.max(0, (unit.escrowDepositUSD || 0) - dep.amountUSD) }
+      ? cur === 'SSP'
+        ? { ...unit, escrowDepositSSP: Math.max(0, (unit.escrowDepositSSP || 0) - (dep.amountSSP || 0)) }
+        : { ...unit, escrowDepositUSD: Math.max(0, (unit.escrowDepositUSD || 0) - dep.amountUSD) }
       : null;
     const tx: CashflowTransaction = {
       id: `cf-release-${dep.id}`,
@@ -1150,8 +1159,8 @@ export default function App() {
       title: `Deposit refund: ${dep.tenantName} (${dep.unitNumber})`,
       category: 'Escrow Deposit',
       type: 'Outflow',
-      amount: dep.amountUSD,
-      currency: 'USD',
+      amount: depositIn(dep, cur),
+      currency: cur,
       account: 'Escrow Trust Account',
       recordedBy: adminUser.name,
       status: 'Completed',

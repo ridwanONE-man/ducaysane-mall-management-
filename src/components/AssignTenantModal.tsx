@@ -2,19 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { X, UserPlus, Store, Calendar, ShieldCheck, DollarSign, Phone, Mail, Briefcase } from 'lucide-react';
 import { PropertyUnit, DepositRecord } from '../types';
 import { leaseMonthCount } from '../utils/rentLedger';
+import { RentCurrency, depositFields, rentFields, unitCurrency, unitRent } from '../utils/currency';
+import { formatMoney } from '../utils/printUtils';
 
 // What a new lease puts on the tenant's balance: every month of the duration.
-function tenantLeaseTotal(months: number, rent: number) {
+function tenantLeaseTotal(months: number, rent: number, currency: RentCurrency) {
   if (months <= 0 || rent <= 0) return null;
   return (
     <div className="mt-2 p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between gap-3 text-xs">
       <div>
         <span className="block text-[10px] font-bold uppercase text-rose-700">Lease total added to balance</span>
         <span className="text-slate-600">
-          {months} month{months === 1 ? '' : 's'} × ${rent.toLocaleString()} rent — collected on the Payments page
+          {months} month{months === 1 ? '' : 's'} × {formatMoney(rent, currency)} rent — collected on the Payments page
         </span>
       </div>
-      <span className="text-lg font-black text-rose-600 shrink-0">${(months * rent).toLocaleString()}</span>
+      <span className="text-lg font-black text-rose-600 shrink-0">{formatMoney(months * rent, currency)}</span>
     </div>
   );
 }
@@ -37,7 +39,9 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
   const [trade, setTrade] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  // Rent amount, in the chosen rent currency
   const [monthlyRentUSD, setMonthlyRentUSD] = useState<number>(500);
+  const [rentCurrency, setRentCurrency] = useState<RentCurrency>('USD');
   const [depositMonths, setDepositMonths] = useState<number>(2);
   const [customDepositUSD, setCustomDepositUSD] = useState<string>('');
   const [isCustomDeposit, setIsCustomDeposit] = useState(false);
@@ -52,7 +56,8 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
       setTrade(unit.type === 'Shop' || unit.categoryType === 'Shop' ? 'Retail Store' : 'Commercial Space');
       setPhone('');
       setEmail('');
-      const baseRent = unit.monthlyRateUSD || 500;
+      const baseRent = unitRent(unit) || 500;
+      setRentCurrency(unitCurrency(unit));
       setMonthlyRentUSD(baseRent);
       setDepositMonths(2);
       setIsCustomDeposit(false);
@@ -102,7 +107,7 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
       unitNumber: unit.unitNumber,
       balanceUSD: 0,
       balanceSSP: 0,
-      depositUSD: calculatedDeposit,
+      depositUSD: rentCurrency === 'USD' ? calculatedDeposit : 0,
       depositMonths: effectiveDepositMonths,
       balanceStatus: 'Current' as const,
       leaseStart,
@@ -116,8 +121,9 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
       ...unit,
       occupancyStatus: 'Occupied',
       currentTenant: newTenant,
-      monthlyRateUSD: monthlyRentUSD,
-      escrowDepositUSD: calculatedDeposit,
+      ...rentFields(monthlyRentUSD, rentCurrency),
+      escrowDepositUSD: rentCurrency === 'USD' ? calculatedDeposit : 0,
+      escrowDepositSSP: rentCurrency === 'SSP' ? calculatedDeposit : 0,
       depositMonths: effectiveDepositMonths,
       leaseStart,
       leaseEnd,
@@ -128,7 +134,7 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
       billingMonthText: `Active • ${new Date(leaseStart).toLocaleString('en-US', { month: 'short', year: 'numeric' })}`,
       arrearsUSD: 0,
       arrearsSSP: 0,
-      notes: notes.trim() || `Leased to ${tenantName.trim()} on ${leaseStart}. Deposit: $${calculatedDeposit} (${effectiveDepositMonths} mos).`
+      notes: notes.trim() || `Leased to ${tenantName.trim()} on ${leaseStart}. Deposit: ${formatMoney(calculatedDeposit, rentCurrency)} (${effectiveDepositMonths} mos).`
     };
 
     let newDepositRecord: DepositRecord | undefined;
@@ -139,11 +145,9 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
         tenantName: tenantName.trim(),
         tenantId: newTenant.id,
         unitNumber: unit.unitNumber,
-        amountUSD: calculatedDeposit,
-        amountSSP: 0,
+        ...depositFields(calculatedDeposit, rentCurrency),
         depositMonths: effectiveDepositMonths,
-        monthlyRentUSD: monthlyRentUSD,
-        currency: 'USD',
+        monthlyRentUSD: rentCurrency === 'USD' ? monthlyRentUSD : undefined,
         heldSince: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
         status: 'Held in Escrow',
         bankAccount,
@@ -260,18 +264,34 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">
-                  Agreed Monthly Rent (USD $) <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-700 font-semibold">
+                    Agreed Monthly Rent <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="inline-flex bg-slate-100 p-0.5 rounded-lg">
+                    {(['USD', 'SSP'] as RentCurrency[]).map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setRentCurrency(c)}
+                        className={`px-2.5 py-0.5 rounded-md text-[10px] font-extrabold cursor-pointer ${
+                          rentCurrency === c ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white' : 'text-slate-500'
+                        }`}
+                      >
+                        {c === 'USD' ? '$ Dollar' : 'SSP'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-500">$</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-500">{rentCurrency === 'USD' ? '$' : 'SSP'}</span>
                   <input
                     type="number"
                     step="any"
                     required
                     value={monthlyRentUSD}
                     onChange={(e) => setMonthlyRentUSD(Number(e.target.value))}
-                    className="w-full pl-7 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600 shadow-2xs"
+                    className="w-full pl-10 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600 shadow-2xs"
                   />
                 </div>
               </div>
@@ -290,9 +310,9 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
                   }}
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600 shadow-2xs"
                 >
-                  <option value={1}>1 Month Deposit (${monthlyRentUSD * 1})</option>
-                  <option value={2}>2 Months Deposit (${monthlyRentUSD * 2}) • Standard</option>
-                  <option value={3}>3 Months Deposit (${monthlyRentUSD * 3})</option>
+                  <option value={1}>1 Month Deposit ({formatMoney(monthlyRentUSD * 1, rentCurrency)})</option>
+                  <option value={2}>2 Months Deposit ({formatMoney(monthlyRentUSD * 2, rentCurrency)}) • Standard</option>
+                  <option value={3}>3 Months Deposit ({formatMoney(monthlyRentUSD * 3, rentCurrency)})</option>
                   <option value="custom">Custom Deposit Amount</option>
                 </select>
               </div>
@@ -300,7 +320,7 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
 
             {isCustomDeposit && (
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Custom Security Deposit Amount (USD $)</label>
+                <label className="block text-slate-700 font-semibold mb-1">Custom Security Deposit Amount ({rentCurrency === 'USD' ? 'USD $' : 'SSP'})</label>
                 <input
                   type="number"
                   step="any"
@@ -316,7 +336,7 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
             <div className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-blue-200 text-xs">
               <span className="font-semibold text-slate-600">Total Escrow Deposit to be Held:</span>
               <span className="font-extrabold text-blue-700 text-sm">
-                ${calculatedDeposit.toLocaleString()} USD
+                {formatMoney(calculatedDeposit, rentCurrency)}
               </span>
             </div>
           </div>
@@ -351,7 +371,7 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
               </select>
             </div>
           </div>
-          {tenantLeaseTotal(leaseMonthCount(leaseStart, computeEndDate()), monthlyRentUSD)}
+          {tenantLeaseTotal(leaseMonthCount(leaseStart, computeEndDate()), monthlyRentUSD, rentCurrency)}
 
           <div>
             <label className="block text-slate-600 font-semibold mb-1">Depository Trust Bank Account</label>
