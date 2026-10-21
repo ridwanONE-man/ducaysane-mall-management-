@@ -85,7 +85,6 @@ export type PaymentMethodType =
   | 'EVC Plus / Mobile Money'
   | 'Bank Wire Transfer'
   | 'Cheque / Slip'
-  | 'Advance Credit'
   | 'Security Deposit';
 
 export interface PaymentRecord {

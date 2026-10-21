@@ -4,7 +4,7 @@ import { DepositRecord, PropertyUnit } from '../types';
 import { DeleteButton } from './DeleteControls';
 import { PrintPortal } from './PrintPortal';
 import { DepositVoucher, DepositStatement, parseDepositDate, depositDateLabel, depositMoney, formatDepositAmount, depositMonthCount, findDepositUnit } from './DepositVoucher';
-import { accountKey, depositMonthLabels, isCreditDeposit, isAmountDeposit } from '../utils/tenantAccount';
+import { accountKey, depositMonthLabels, isAmountDeposit } from '../utils/tenantAccount';
 import { MONTH_NAMES } from '../utils/rentLedger';
 import { formatLongDate, formatMoney } from '../utils/printUtils';
 
@@ -249,7 +249,6 @@ export const DepositRecordsPanel: React.FC<DepositRecordsPanelProps> = ({ deposi
           ) : (
             <div className="space-y-2">
               {records.map(d => {
-                const credit = isCreditDeposit(d);
                 const months = depositMonthLabels(d);
                 return (
                   <div
@@ -260,7 +259,7 @@ export const DepositRecordsPanel: React.FC<DepositRecordsPanelProps> = ({ deposi
                     onKeyDown={e => { if (e.key === 'Enter') setViewing(d); }}
                     className={`group bg-white rounded-2xl border border-slate-200/80 hover:border-orange-300 hover:shadow-md transition-all p-4 flex flex-col sm:flex-row sm:items-center gap-3 cursor-pointer ${d.status === 'Refunded' ? 'opacity-70' : ''}`}
                   >
-                    <div className={`w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center ${credit ? 'bg-sky-100 text-sky-700' : 'bg-orange-100 text-orange-700'}`}>
+                    <div className={`w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center bg-orange-100 text-orange-700`}>
                       <ShieldCheck className="w-5 h-5" />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -271,11 +270,10 @@ export const DepositRecordsPanel: React.FC<DepositRecordsPanelProps> = ({ deposi
                         }`}>
                           {d.status === 'Held in Escrow' ? 'Held' : d.status}
                         </span>
-                        {credit && <span className="px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[10px] font-bold">Advance credit</span>}
                       </div>
                       {!selected && <p className="text-xs font-extrabold text-slate-900 mt-0.5 truncate">{d.tenantName} <span className="font-semibold text-slate-500">• {d.unitNumber}</span></p>}
                       <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                        {depositDateLabel(d.heldSince)} • {credit ? 'Overpayment kept as credit' : months.length ? months.join(', ') : isAmountDeposit(d) ? 'Any amount — not for a month' : depositMonthCount(d) ? `${depositMonthCount(d)} month(s)` : 'Security deposit'}
+                        {depositDateLabel(d.heldSince)} • {months.length ? months.join(', ') : isAmountDeposit(d) ? 'Any amount — not for a month' : depositMonthCount(d) ? `${depositMonthCount(d)} month(s)` : 'Security deposit'}
                       </p>
                     </div>
                     <span className="text-base font-black text-slate-900 sm:w-32 sm:text-right">{formatDepositAmount(d)}</span>

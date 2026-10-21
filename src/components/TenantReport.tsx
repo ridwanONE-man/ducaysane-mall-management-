@@ -25,7 +25,7 @@ import { PropertyUnit, PaymentRecord, DepositRecord } from '../types';
 import { getTenantPaymentsFromSupabase } from '../lib/supabaseService';
 import { parsePaymentDate, formatLongDate, formatMoney, normalizeName, normalizeUnitNumber } from '../utils/printUtils';
 import { MONTH_NAMES, LedgerMonth, LedgerStatus, RentLedger, buildRentLedger, paymentRentMonths, summarizeLedger } from '../utils/rentLedger';
-import { depositMonthLabels, isCreditDeposit, isAmountDeposit } from '../utils/tenantAccount';
+import { depositMonthLabels, isAmountDeposit } from '../utils/tenantAccount';
 import { BUSINESS_PROFILE } from '../data/businessProfile';
 import { PrintPortal } from './PrintPortal';
 import { DeleteButton } from './DeleteControls';
@@ -213,7 +213,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
     const summary = summarizeLedger(ledger.months);
     const recent = ledger.months.filter(m => m.key <= todayKey).slice(-6);
     const held = deposits
-      .filter(d => tenantKey(d.tenantName, d.unitNumber) === t.key && d.status !== 'Refunded' && !isCreditDeposit(d));
+      .filter(d => tenantKey(d.tenantName, d.unitNumber) === t.key && d.status === 'Held in Escrow');
     return { tenant: t, ledger, summary, recent, held };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [tenants, payments, deposits]);
@@ -248,8 +248,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
   const periodDeposits = tenantDeposits
     .filter(isDepositInPeriod)
     .sort((a, b) => (parseDepositDate(b.heldSince)?.getTime() || 0) - (parseDepositDate(a.heldSince)?.getTime() || 0));
-  const securityHeld = tenantDeposits.filter(d => d.status !== 'Refunded' && !isCreditDeposit(d));
-  const creditHeld = tenantDeposits.filter(d => d.status !== 'Refunded' && isCreditDeposit(d)).reduce((s, d) => s + d.amountUSD, 0);
+  const securityHeld = tenantDeposits.filter(d => d.status === 'Held in Escrow');
   const depositMonthsInPeriod = periodMonths.filter(m => depositCovered.has(shortLabel(m))).length;
   const heldText = (list: DepositRecord[]) => {
     const usd = list.reduce((s, d) => { const m = depositMoney(d); return m.currency === 'USD' ? s + m.value : s; }, 0);
@@ -441,7 +440,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
                   <tr key={d.id} className="border-b border-slate-200 print-avoid-break">
                     <td className="py-1.5">{depositDateLabel(d.heldSince)}</td>
                     <td className="py-1.5 font-mono font-bold">{d.depositSlip || d.id}</td>
-                    <td className="py-1.5">{isCreditDeposit(d) ? 'Advance credit' : depositMonthLabels(d).join(', ') || (isAmountDeposit(d) ? 'Any amount' : `${depositMonthCount(d) || '—'} month(s)`)}</td>
+                    <td className="py-1.5">{depositMonthLabels(d).join(', ') || (isAmountDeposit(d) ? 'Any amount' : `${depositMonthCount(d) || '—'} month(s)`)}</td>
                     <td className="py-1.5">{d.status === 'Held in Escrow' ? 'Held' : d.status}</td>
                     <td className="py-1.5 text-right font-mono font-bold">{formatDepositAmount(d)}</td>
                   </tr>
@@ -473,7 +472,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
   if (!selected) {
     const totalOwed = overview.reduce((s, o) => s + (o.ledger.currency === 'USD' ? o.summary.outstanding : 0), 0);
     const totalPaid = payments.filter(p => p.currency === 'USD').reduce((s, p) => s + p.amount, 0);
-    const totalHeld = deposits.filter(d => d.status !== 'Refunded' && !isCreditDeposit(d) && depositMoney(d).currency === 'USD').reduce((s, d) => s + d.amountUSD, 0);
+    const totalHeld = deposits.filter(d => d.status === 'Held in Escrow' && depositMoney(d).currency === 'USD').reduce((s, d) => s + d.amountUSD, 0);
 
     return (
       <div className="space-y-5">
@@ -754,7 +753,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-sky-600" /> Deposits</h3>
             <span className="text-[11px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full">
-              {heldText(securityHeld)} held{creditHeld > 0 ? ` • ${formatMoney(creditHeld, 'USD')} credit` : ''}
+              {heldText(securityHeld)} held
             </span>
           </div>
           {periodDeposits.length === 0 ? (
@@ -762,14 +761,13 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
           ) : (
             <ul className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto">
               {periodDeposits.map(d => {
-                const credit = isCreditDeposit(d);
                 const months = depositMonthLabels(d);
                 return (
                   <li key={d.id} className={`px-5 py-3 flex items-center gap-3 hover:bg-slate-50/70 ${d.status === 'Refunded' ? 'opacity-60' : ''}`}>
                     <span className="w-9 h-9 shrink-0 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center"><ShieldCheck className="w-4 h-4" /></span>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-slate-900 truncate">
-                        {credit ? 'Advance credit' : months.length ? months.join(', ') : isAmountDeposit(d) ? 'Any-amount deposit' : `${depositMonthCount(d) || '—'} month(s) deposit`}
+                        {months.length ? months.join(', ') : isAmountDeposit(d) ? 'Any-amount deposit' : `${depositMonthCount(d) || '—'} month(s) deposit`}
                       </p>
                       <p className="text-[10px] text-slate-500 truncate">
                         {depositDateLabel(d.heldSince)} • <span className="font-mono">{d.depositSlip || d.id}</span> • {d.status === 'Held in Escrow' ? 'Held' : d.status}

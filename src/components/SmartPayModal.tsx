@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, CalendarCheck, Check, Receipt, Wallet, CreditCard, Info, PiggyBank } from 'lucide-react';
+import { X, CalendarCheck, Check, Receipt, CreditCard, Info, AlertTriangle } from 'lucide-react';
 import { PaymentMethodType, PaymentRecord } from '../types';
 import { AccountMonth, MonthAllocation, TenantAccount, allocatePayment } from '../utils/tenantAccount';
 import { formatLongDate } from '../utils/printUtils';
@@ -8,8 +8,6 @@ export interface SmartPayRequest {
   account: TenantAccount;
   allocations: MonthAllocation[];
   cash: number;
-  creditUsed: number;
-  excess: number;
   method: PaymentMethodType;
   remark: string;
   transferId: string;
@@ -38,7 +36,6 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
   const [method, setMethod] = useState<PaymentMethodType>('Cash (Office Management Desk)');
   const [remark, setRemark] = useState('');
   const [transferId, setTransferId] = useState('');
-  const [useCredit, setUseCredit] = useState(true);
   const [viewingMonth, setViewingMonth] = useState<AccountMonth | null>(null);
 
   // Fresh form for each tenant: months with a balance are pre-selected
@@ -49,7 +46,6 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
     setMethod('Cash (Office Management Desk)');
     setRemark('');
     setTransferId('');
-    setUseCredit(true);
     setViewingMonth(null);
     // Reset only when a different tenant is opened
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -61,11 +57,9 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
     [account, selected]
   );
   const gross = selectedMonths.reduce((s, m) => s + m.remaining, 0);
-  const creditAvailable = account?.credit || 0;
-  const creditToUse = useCredit ? Math.min(creditAvailable, gross) : 0;
-  const cashNeeded = Math.max(0, gross - creditToUse);
+  const cashNeeded = gross;
   const cash = amountText.trim() === '' ? cashNeeded : Math.max(0, Number(amountText) || 0);
-  const { allocations, creditUsed, excess } = allocatePayment(selectedMonths, cash, creditToUse);
+  const { allocations, excess } = allocatePayment(selectedMonths, cash);
   const shortfall = Math.max(0, cashNeeded - cash);
 
   if (!account) return null;
@@ -82,7 +76,8 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
     });
   };
 
-  const canConfirm = selectedMonths.length > 0 ? cash > 0 || creditUsed > 0 : cash > 0;
+  // Paying more than the selected months is not allowed
+  const canConfirm = selectedMonths.length > 0 && cash > 0 && excess <= 0;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
@@ -102,11 +97,6 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
                 <span className="px-2.5 py-1 rounded-lg bg-rose-600 text-white text-[11px] font-black">Balance {usd(account.balance)}</span>
               ) : (
                 <span className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-black">✓ Paid up</span>
-              )}
-              {account.credit > 0 && (
-                <span className="px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-[11px] font-black">
-                  Credit {usd(account.credit)}
-                </span>
               )}
             </div>
           </div>
@@ -242,23 +232,10 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
             </div>
           )}
 
-          {creditAvailable > 0 && (
-            <label className="flex items-center gap-2.5 rounded-2xl border border-blue-200 bg-blue-50/40 px-3.5 py-2.5 cursor-pointer">
-              <input type="checkbox" checked={useCredit} onChange={e => setUseCredit(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-              <PiggyBank className="w-4 h-4 text-blue-600" />
-              <span className="text-xs text-blue-900">
-                Use advance credit — <strong>{usd(creditAvailable)}</strong> available
-              </span>
-            </label>
-          )}
-
           {/* Summary */}
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4 space-y-1.5 text-xs">
             <div className="flex justify-between text-slate-600"><span>Months selected</span><span className="font-bold text-slate-900">{selectedMonths.length}</span></div>
             <div className="flex justify-between text-slate-600"><span>Gross total</span><span className="font-bold text-slate-900">{usd(gross)}</span></div>
-            {creditUsed > 0 && (
-              <div className="flex justify-between text-blue-700"><span>Advance credit applied</span><span className="font-bold">- {usd(creditUsed)}</span></div>
-            )}
             <div className="flex justify-between items-end pt-2 mt-1 border-t border-emerald-200">
               <span className="text-sm font-extrabold text-slate-900">Total to pay</span>
               <span className="text-2xl font-black text-emerald-700">{usd(cash)}</span>
@@ -269,8 +246,8 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
               </p>
             )}
             {excess > 0 && (
-              <p className="flex items-center gap-1.5 text-blue-700 font-semibold pt-1">
-                <Wallet className="w-3.5 h-3.5" /> Extra {usd(excess)} is saved as a deposit (advance credit) for future rent.
+              <p className="flex items-center gap-1.5 text-rose-700 font-semibold pt-1">
+                <AlertTriangle className="w-3.5 h-3.5" /> {usd(excess)} more than the selected months. Select more months, or take the extra as a deposit on the Deposits page.
               </p>
             )}
             <p className="text-[10px] text-slate-500 font-semibold pt-1">
@@ -281,7 +258,7 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
           <button
             type="button"
             disabled={!canConfirm}
-            onClick={() => onConfirm({ account, allocations, cash, creditUsed, excess, method, remark: remark.trim(), transferId: transferId.trim() })}
+            onClick={() => onConfirm({ account, allocations, cash, method, remark: remark.trim(), transferId: transferId.trim() })}
             className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-md shadow-emerald-500/25 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <CreditCard className="w-4 h-4" />

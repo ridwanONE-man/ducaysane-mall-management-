@@ -56,9 +56,6 @@ export const ReceiptDocument: React.FC<ReceiptDocumentProps> = ({ payment, items
     { label: 'Amount Received (This Receipt)', value: payment.amount, strong: true, tone: 'text-emerald-700' },
     { label: 'Balance Remaining', value: Math.max(0, payment.remainingBalance), tone: payment.remainingBalance > 0 ? 'text-rose-600' : 'text-slate-900' },
   ];
-  if (payment.advanceBalance > 0) {
-    breakdown.push({ label: 'Advance Credit Held', value: payment.advanceBalance, tone: 'text-blue-700' });
-  }
 
   return (
     <div className="relative bg-white text-slate-900 font-sans overflow-hidden">

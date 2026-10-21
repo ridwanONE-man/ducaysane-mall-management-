@@ -20,7 +20,7 @@ import { NotificationsView } from './components/NotificationsView';
 import { SmartPayModal, SmartPayRequest } from './components/SmartPayModal';
 import { TenantDepositModal, TenantDepositRequest } from './components/TenantDepositModal';
 import { DepositManageModal } from './components/DepositManageModal';
-import { buildTenantAccount, buildTenantAccounts, CREDIT_BANK_LABEL, CREDIT_SLIP_PREFIX, DEPOSIT_MONTHS_PREFIX, AMOUNT_DEPOSIT_TAG, depositMonthLabels, withDepositMonths, planDepositApplications, accountKey } from './utils/tenantAccount';
+import { buildTenantAccount, buildTenantAccounts, isLegacyCreditDeposit, DEPOSIT_MONTHS_PREFIX, AMOUNT_DEPOSIT_TAG, depositMonthLabels, withDepositMonths, planDepositApplications, accountKey } from './utils/tenantAccount';
 import { nextReceiptNumber } from './utils/receiptNumbers';
 
 import { 
@@ -277,8 +277,10 @@ export default function App() {
   const [selectedReceiptForPrint, setSelectedReceiptForPrint] = useState<PaymentRecord | null>(null);
   const [smartPayKey, setSmartPayKey] = useState<string | null>(null);
 
-  // Each leased unit's rent account: months paid / owed, balance and advance credit
-  const tenantAccounts = useMemo(() => buildTenantAccounts(units, payments, deposits), [units, payments, deposits]);
+  // Each leased unit's rent account: months paid / owed, and balance
+  // Old advance-credit records (overpayments) are hidden and never counted
+  const visibleDeposits = useMemo(() => deposits.filter(d => !isLegacyCreditDeposit(d)), [deposits]);
+  const tenantAccounts = useMemo(() => buildTenantAccounts(units, payments, visibleDeposits), [units, payments, visibleDeposits]);
   const smartPayAccount = tenantAccounts.find(a => a.key === smartPayKey) || null;
   const [depositKey, setDepositKey] = useState<string | null>(null);
   const depositAccount = tenantAccounts.find(a => a.key === depositKey) || null;
@@ -826,86 +828,48 @@ export default function App() {
     await reportDeleteResult(ok, 'All cashflow entries cleared.');
   };
 
-  // Smart Pay: one payment row per rent month on a single receipt. Advance credit is used
-  // first; anything paid beyond the selected months is kept as a credit deposit.
+  // Smart Pay: one payment row per rent month on a single receipt.
   const handleSmartPay = async (req: SmartPayRequest) => {
-    const { account, allocations, cash, creditUsed, excess, method, remark, transferId } = req;
+    const { account, allocations, cash, method, remark, transferId } = req;
     const { tenant, unit } = account;
     const receiptNumber = nextReceiptNumber(payments.map(p => p.receiptNumber));
     const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const stamp = Date.now();
     const notes = [remark, transferId && `Transfer ID: ${transferId}`].filter(Boolean).join(' • ') || undefined;
 
-    const rows: PaymentRecord[] = [];
-    allocations.forEach((a, i) => {
-      const remainingAfter = Math.max(0, Math.round((a.month.remaining - a.fromCredit - a.fromCash) * 100) / 100);
-      const row = (amount: number, paymentMethod: PaymentRecord['paymentMethod'], suffix: string): PaymentRecord => ({
-        id: `pay-${stamp}-${i}${suffix}`,
-        receiptNumber,
-        tenantName: tenant.name,
-        tenantId: tenant.code,
-        unitNumber: unit.unitNumber,
-        unitSpace: `${unit.unitNumber} (${unit.floor} ${unit.type})`,
-        date,
-        accountingPeriod: a.month.label,
-        currency: 'USD',
-        amount,
-        paymentMethod,
-        monthlyBaseRent: a.month.due,
-        previousArrears: 0,
-        totalDue: a.month.remaining,
-        remainingBalance: remainingAfter,
-        advanceBalance: 0,
-        status: remainingAfter > 0 ? 'Partially Paid' : 'Paid',
-        notes,
-        receivedBy: adminUser.name,
+    const rows: PaymentRecord[] = allocations
+      .filter(a => a.fromCash > 0)
+      .map((a, i) => {
+        const remainingAfter = Math.max(0, Math.round((a.month.remaining - a.fromCash) * 100) / 100);
+        return {
+          id: `pay-${stamp}-${i}`,
+          receiptNumber,
+          tenantName: tenant.name,
+          tenantId: tenant.code,
+          unitNumber: unit.unitNumber,
+          unitSpace: `${unit.unitNumber} (${unit.floor} ${unit.type})`,
+          date,
+          accountingPeriod: a.month.label,
+          currency: 'USD',
+          amount: a.fromCash,
+          paymentMethod: method,
+          monthlyBaseRent: a.month.due,
+          previousArrears: 0,
+          totalDue: a.month.remaining,
+          remainingBalance: remainingAfter,
+          advanceBalance: 0,
+          status: remainingAfter > 0 ? 'Partially Paid' : 'Paid',
+          notes,
+          receivedBy: adminUser.name,
+        };
       });
-      if (a.fromCredit > 0) rows.push(row(a.fromCredit, 'Advance Credit', 'c'));
-      if (a.fromCash > 0) rows.push(row(a.fromCash, method, ''));
-    });
-    if (rows.length && excess > 0) rows[rows.length - 1].advanceBalance = excess;
-
-    // Credit used comes off the oldest credit deposits first
-    let toConsume = creditUsed;
-    const updatedCredits: DepositRecord[] = [];
-    for (const d of account.creditDeposits) {
-      if (toConsume <= 0) break;
-      const take = Math.min(d.amountUSD, toConsume);
-      toConsume -= take;
-      const left = Math.round((d.amountUSD - take) * 100) / 100;
-      updatedCredits.push({
-        ...d,
-        amountUSD: left,
-        status: left <= 0 ? 'Refunded' : d.status,
-        notes: `${d.notes || ''} Applied $${take.toFixed(2)} to rent on ${receiptNumber}.`.trim(),
-      });
-    }
-
-    const newCredit: DepositRecord | null = excess > 0 ? {
-      id: `dep-cr-${stamp}`,
-      depositSlip: `${CREDIT_SLIP_PREFIX}${receiptNumber.replace(/^#/, '')}`,
-      tenantName: tenant.name,
-      tenantId: tenant.id,
-      unitNumber: unit.unitNumber,
-      amountUSD: excess,
-      amountSSP: 0,
-      currency: 'USD',
-      heldSince: date,
-      status: 'Held in Escrow',
-      bankAccount: CREDIT_BANK_LABEL,
-      notes: `Overpayment on ${receiptNumber}, kept as advance credit for future rent.`,
-    } : null;
+    if (!rows.length) return;
 
     const nextPayments = [...rows, ...payments];
-    const nextDeposits = [
-      ...(newCredit ? [newCredit] : []),
-      ...deposits.map(d => updatedCredits.find(u => u.id === d.id) || d),
-    ];
     setPayments(nextPayments);
-    setDeposits(nextDeposits);
 
     // Unit balance follows the rent account after this payment
-    const after = buildTenantAccount(unit, nextPayments, nextDeposits);
+    const after = buildTenantAccount(unit, nextPayments, visibleDeposits);
     const balance = after?.balance || 0;
     const updatedUnit: PropertyUnit = {
       ...unit,
@@ -915,38 +879,32 @@ export default function App() {
     };
     setUnits(prev => prev.map(u => u.id === unit.id ? updatedUnit : u));
 
-    let tx: CashflowTransaction | null = null;
-    if (cash > 0) {
-      const firstCashRow = rows.find(r => r.paymentMethod !== 'Advance Credit');
-      tx = {
-        id: `cf-${firstCashRow?.id || `dep-cr-${stamp}`}`,
-        referenceNumber: `CF-${receiptNumber.replace(/[^a-zA-Z0-9]/g, '')}`,
-        date,
-        title: `Rent: ${tenant.name} (${unit.unitNumber})`,
-        category: 'Rent Collection',
-        type: 'Inflow',
-        amount: cash,
-        currency: 'USD',
-        account: 'Central Vault Cash Float',
-        recordedBy: adminUser.name,
-        status: 'Completed',
-        notes: `Rent for ${allocations.map(a => a.month.short).join(', ') || 'advance credit'}. Receipt: ${receiptNumber}${excess > 0 ? ` (incl. $${excess.toFixed(2)} advance credit)` : ''}`,
-      };
-      setCashflow(prev => [tx!, ...prev]);
-    }
+    const tx: CashflowTransaction = {
+      id: `cf-${rows[0].id}`,
+      referenceNumber: `CF-${receiptNumber.replace(/[^a-zA-Z0-9]/g, '')}`,
+      date,
+      title: `Rent: ${tenant.name} (${unit.unitNumber})`,
+      category: 'Rent Collection',
+      type: 'Inflow',
+      amount: cash,
+      currency: 'USD',
+      account: 'Central Vault Cash Float',
+      recordedBy: adminUser.name,
+      status: 'Completed',
+      notes: `Rent for ${rows.map(r => r.accountingPeriod).join(', ')}. Receipt: ${receiptNumber}`,
+    };
+    setCashflow(prev => [tx, ...prev]);
 
     const results = await Promise.all([
       ...rows.map(r => persist('payments', r, savePaymentToSupabase)),
-      ...updatedCredits.map(d => persist('deposits', d, saveDepositToSupabase)),
-      ...(newCredit ? [persist('deposits', newCredit, saveDepositToSupabase)] : []),
       persist('units', updatedUnit, saveUnitToSupabase),
-      ...(tx ? [persist('cashflow', tx, saveCashflowToSupabase)] : []),
+      persist('cashflow', tx, saveCashflowToSupabase),
     ]);
 
     setNotifications(prev => [{
       id: `notif-${stamp}`,
       title: `Payment Recorded: ${receiptNumber}`,
-      description: `$${cash.toFixed(2)} from ${tenant.name} (${unit.unitNumber}) for ${allocations.map(a => a.month.short).join(', ') || 'advance credit'}.${excess > 0 ? ` $${excess.toFixed(2)} kept as credit.` : ''}`,
+      description: `$${cash.toFixed(2)} from ${tenant.name} (${unit.unitNumber}) for ${allocations.map(a => a.month.short).join(', ')}.`,
       timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
       type: 'payment',
       read: false,
@@ -954,9 +912,9 @@ export default function App() {
     }, ...prev]);
 
     setSmartPayKey(null);
-    if (rows.length) setSelectedReceiptForPrint(rows[0]);
+    setSelectedReceiptForPrint(rows[0]);
     showToast(results.every(Boolean)
-      ? `Payment ${receiptNumber} recorded${excess > 0 ? ` • $${excess.toFixed(2)} saved as credit` : ''}.`
+      ? `Payment ${receiptNumber} recorded.`
       : `Payment ${receiptNumber} is saved on this device and will be uploaded to the database automatically.`);
   };
 
@@ -1030,7 +988,7 @@ export default function App() {
   const unitWithDeposits = (unit: PropertyUnit, allDeposits: DepositRecord[]): PropertyUnit => {
     const key = unit.currentTenant ? accountKey(unit.currentTenant.name, unit.unitNumber) : '';
     const held = allDeposits.filter(d =>
-      d.status === 'Held in Escrow' && !(d.depositSlip || '').startsWith(CREDIT_SLIP_PREFIX) && accountKey(d.tenantName, d.unitNumber) === key
+      d.status === 'Held in Escrow' && !isLegacyCreditDeposit(d) && accountKey(d.tenantName, d.unitNumber) === key
     );
     return {
       ...unit,
@@ -1366,7 +1324,7 @@ export default function App() {
             <TenantsView
               units={units}
               payments={payments}
-              deposits={deposits}
+              deposits={visibleDeposits}
               onRecordPaymentForTenant={handleRecordPaymentForTenantUnit}
               onSelectReceiptForPrint={(p) => setSelectedReceiptForPrint(p)}
               onModifyTenantPricing={handleModifyTenantPricing}
@@ -1406,7 +1364,7 @@ export default function App() {
             <DepositsView
               units={units}
               currencyMode={currencyMode}
-              deposits={deposits}
+              deposits={visibleDeposits}
               tenantAccounts={tenantAccounts}
               onOpenDeposit={(a) => setDepositKey(a.key)}
               onManageDeposit={(a) => setManageDepositKey(a.key)}
@@ -1451,7 +1409,7 @@ export default function App() {
             <ReportsView
               units={units}
               payments={payments}
-              deposits={deposits}
+              deposits={visibleDeposits}
               onSelectReceiptForPrint={(p) => setSelectedReceiptForPrint(p)}
               onDeletePayment={handleDeletePayment}
               onClearAllPayments={handleClearAllPayments}
@@ -1463,7 +1421,7 @@ export default function App() {
             <AnalyticsView
               units={units}
               payments={payments}
-              deposits={deposits}
+              deposits={visibleDeposits}
               onDeletePayment={handleDeletePayment}
               onClearAllPayments={handleClearAllPayments}
               onDeleteDeposit={handleDeleteDeposit}

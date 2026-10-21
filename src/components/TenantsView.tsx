@@ -142,7 +142,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
 
   const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  // Paid / balance / credit badge, linking to the tenant's account on the Payments page
+  // Paid / balance badge, linking to the tenant's account on the Payments page
   const renderAccountStatus = (tenant: TenantInfo, unit?: PropertyUnit) => {
     const account = accountFor(tenant, unit);
     if (!account) return null;
@@ -173,11 +173,6 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
           {account.depositHeld > 0 && (
             <span className="px-2 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-black">
               Deposit {usd(account.depositHeld)}
-            </span>
-          )}
-          {account.credit > 0 && (
-            <span className="px-2 py-1 rounded-lg bg-blue-600 text-white text-[10px] font-black">
-              Credit {usd(account.credit)}
             </span>
           )}
         </span>
@@ -937,7 +932,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                 )}
               </div>
 
-              {/* Rent account: paid / balance / credit */}
+              {/* Rent account: paid / balance */}
               {renderAccountStatus(selectedTenant.tenant, selectedTenant.unit)}
 
               {/* Action Buttons in Modal */}

@@ -25,8 +25,6 @@ export interface TenantAccount {
   months: AccountMonth[]; // lease start → a year ahead
   owing: AccountMonth[]; // due or partly paid, oldest first
   balance: number; // total owed now
-  credit: number; // advance credit held (overpayments)
-  creditDeposits: DepositRecord[];
   paidCount: number;
   lastPayment?: PaymentRecord;
   dueNow: AccountMonth[]; // owed months up to the current month
@@ -36,11 +34,10 @@ export interface TenantAccount {
   depositMonthKeys: Set<string>; // months already covered by a deposit
 }
 
-// Overpayments are kept as deposit records whose slip starts with "CR-".
+// Advance credit is no longer used. Old overpayment records (slip "CR-...") are hidden
+// everywhere and never count in balances or deposits.
 export const CREDIT_SLIP_PREFIX = 'CR-';
-export const CREDIT_BANK_LABEL = 'Advance Credit (Overpayment)';
-export const isCreditDeposit = (d: DepositRecord) =>
-  (d.depositSlip || '').startsWith(CREDIT_SLIP_PREFIX) && d.status !== 'Refunded';
+export const isLegacyCreditDeposit = (d: DepositRecord) => (d.depositSlip || '').startsWith(CREDIT_SLIP_PREFIX);
 
 // Deposits taken for chosen months record them in their notes as "Deposit for: Nov 2026, Dec 2026".
 export const DEPOSIT_MONTHS_PREFIX = 'Deposit for: ';
@@ -124,9 +121,8 @@ export function buildTenantAccount(
   }
 
   const owing = months.filter(m => m.contracted && (m.status === 'due' || m.status === 'partial'));
-  const creditDeposits = deposits.filter(d => isCreditDeposit(d) && accountKey(d.tenantName, d.unitNumber) === key);
   const securityDeposits = deposits.filter(d =>
-    !(d.depositSlip || '').startsWith(CREDIT_SLIP_PREFIX) &&
+    !isLegacyCreditDeposit(d) &&
     d.status === 'Held in Escrow' &&
     accountKey(d.tenantName, d.unitNumber) === key
   );
@@ -144,8 +140,6 @@ export function buildTenantAccount(
     months,
     owing,
     balance: Math.round(owing.reduce((s, m) => s + m.remaining, 0) * 100) / 100,
-    credit: Math.round(creditDeposits.reduce((s, d) => s + d.amountUSD, 0) * 100) / 100,
-    creditDeposits,
     paidCount: months.filter(m => m.status === 'paid').length,
     lastPayment,
     dueNow,
@@ -174,30 +168,20 @@ export function buildTenantAccounts(units: PropertyUnit[], payments: PaymentReco
 
 export interface MonthAllocation {
   month: AccountMonth;
-  fromCredit: number;
   fromCash: number;
 }
 
-// Applies credit first, then cash, to the selected months oldest-first.
-// Whatever cash is left over becomes new advance credit.
-export function allocatePayment(selected: AccountMonth[], cash: number, creditToUse: number) {
+// Applies the cash to the selected months oldest-first. Any amount above the
+// selected months is returned as excess (the payment form does not allow it).
+export function allocatePayment(selected: AccountMonth[], cash: number) {
   const ordered = [...selected].sort((a, b) => a.idx - b.idx);
-  let credit = Math.max(0, creditToUse);
   let money = Math.max(0, cash);
   const allocations: MonthAllocation[] = ordered.map(month => {
-    let need = month.remaining;
-    const fromCredit = Math.min(credit, need);
-    credit -= fromCredit;
-    need -= fromCredit;
-    const fromCash = Math.min(money, need);
+    const fromCash = Math.min(money, month.remaining);
     money -= fromCash;
-    return { month, fromCredit: round(fromCredit), fromCash: round(fromCash) };
+    return { month, fromCash: round(fromCash) };
   });
-  return {
-    allocations,
-    creditUsed: round(Math.max(0, creditToUse) - credit),
-    excess: round(money),
-  };
+  return { allocations, excess: round(money) };
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;

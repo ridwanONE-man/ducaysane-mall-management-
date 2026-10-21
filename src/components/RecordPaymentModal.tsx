@@ -101,7 +101,6 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   
   const appliedToRent = Math.min(numAmount, totalDue);
   const remainingRentBalance = Math.max(0, totalDue - numAmount);
-  const advanceBalanceHeld = Math.max(0, numAmount - totalDue);
 
   const getPaymentStatus = (): 'Paid' | 'Partially Paid' | 'Pending Review' => {
     if (remainingRentBalance <= 0) return 'Paid';
@@ -143,7 +142,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
       previousArrears,
       totalDue,
       remainingBalance: remainingRentBalance,
-      advanceBalance: advanceBalanceHeld,
+      advanceBalance: 0,
       status: getPaymentStatus(),
       notes: notes.trim() || `Rental payment cleared via ${paymentMethod}.`,
       receivedBy: 'Mohamed Mohamoud'
@@ -414,12 +413,6 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                 </span>
               </div>
 
-              <div className="flex items-center justify-between">
-                <span className="text-slate-600">Advance Balance Held:</span>
-                <span className="font-bold text-slate-700">
-                  ${advanceBalanceHeld.toFixed(2)}
-                </span>
-              </div>
             </div>
 
           </div>

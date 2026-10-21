@@ -3,7 +3,7 @@ import { Scissors } from 'lucide-react';
 import { DepositRecord, PropertyUnit } from '../types';
 import { numberToWords } from '../utils/numberToWords';
 import { formatMoney, normalizeUnitNumber } from '../utils/printUtils';
-import { depositMonthLabels, isCreditDeposit, isAmountDeposit, AMOUNT_DEPOSIT_TAG } from '../utils/tenantAccount';
+import { depositMonthLabels, isAmountDeposit, AMOUNT_DEPOSIT_TAG } from '../utils/tenantAccount';
 import { BUSINESS_PROFILE } from '../data/businessProfile';
 import logoImg from '../assets/logo.png';
 
@@ -86,7 +86,6 @@ const Row: React.FC<{ label: string; value: React.ReactNode; strong?: boolean }>
 );
 
 export const DepositVoucher: React.FC<{ deposit: DepositRecord; unit?: PropertyUnit }> = ({ deposit, unit }) => {
-  const credit = isCreditDeposit(deposit);
   const months = depositMonthLabels(deposit);
   const monthCount = depositMonthCount(deposit);
   const { value, currency } = depositMoney(deposit);
@@ -96,14 +95,12 @@ export const DepositVoucher: React.FC<{ deposit: DepositRecord; unit?: PropertyU
   const tenant = unit?.currentTenant;
   const sameTenant = tenant && tenant.name.trim().toLowerCase() === deposit.tenantName.trim().toLowerCase();
   const rent = deposit.monthlyRentUSD || unit?.monthlyRateUSD || 0;
-  const title = credit ? 'Advance Credit Voucher' : 'Security Deposit Voucher';
-  const covers = credit
-    ? 'Advance rent credit (overpayment)'
-    : isAmountDeposit(deposit) && !months.length
+  const title = 'Security Deposit Voucher';
+  const covers = isAmountDeposit(deposit) && !months.length
       ? 'Any amount — not for a specific month'
       : months.length ? months.join(', ') : monthCount ? `${monthCount} month${monthCount === 1 ? '' : 's'} of rent` : 'Security deposit';
   const userNote = (deposit.notes || '').replace(/Deposit for: [^.]+\.\s*/, '').replace(`${AMOUNT_DEPOSIT_TAG}.`, '').trim();
-  const status = refunded ? 'Refunded to tenant' : deposit.status === 'Applied to Rent' ? 'Used for rent' : credit ? 'Credit on account' : 'Held in escrow';
+  const status = refunded ? 'Refunded to tenant' : deposit.status === 'Applied to Rent' ? 'Used for rent' : 'Held in escrow';
 
   return (
     <div className="bg-white text-slate-900 font-sans p-3">
@@ -114,7 +111,7 @@ export const DepositVoucher: React.FC<{ deposit: DepositRecord; unit?: PropertyU
         {/* Title ribbon */}
         <div className="flex items-stretch bg-slate-900 text-white">
           <div className="flex-1 px-6 py-3">
-            <p className="text-[9px] font-bold uppercase tracking-[0.35em] text-orange-300">{credit ? 'Advance payment' : 'Refundable deposit'}</p>
+            <p className="text-[9px] font-bold uppercase tracking-[0.35em] text-orange-300">Refundable deposit</p>
             <h2 className="text-xl font-black uppercase tracking-[0.1em]">{title}</h2>
           </div>
           <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-3 flex flex-col justify-center text-right [clip-path:polygon(14%_0,100%_0,100%_100%,14%_100%,0_50%)] pl-10">
@@ -149,7 +146,7 @@ export const DepositVoucher: React.FC<{ deposit: DepositRecord; unit?: PropertyU
             <div className="rounded-xl border border-slate-200 p-4">
               <p className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-600 mb-1">Deposit details</p>
               <Row label="Covers" value={covers} />
-              {!credit && monthCount > 0 && <Row label="No. of months" value={monthCount} />}
+              {monthCount > 0 && <Row label="No. of months" value={monthCount} />}
               <Row label="Held in" value={deposit.bankAccount || '—'} />
               <Row label="Received by" value={DEPOSIT_RECEIVED_BY} strong />
             </div>
@@ -190,9 +187,7 @@ export const DepositVoucher: React.FC<{ deposit: DepositRecord; unit?: PropertyU
           )}
 
           <div className="rounded-lg bg-amber-50 border-l-4 border-orange-500 px-4 py-2.5 text-[10px] leading-relaxed text-slate-700 print-avoid-break">
-            <strong className="text-slate-900">Terms:</strong> {credit
-              ? 'This credit is applied automatically to the tenant’s next unpaid rent months.'
-              : 'This deposit is held in escrow and is refundable at the end of the lease, less any unpaid rent or damage to the unit. Present this voucher when requesting a refund.'}
+            <strong className="text-slate-900">Terms:</strong> This deposit is held in escrow and is refundable at the end of the lease, less any unpaid rent or damage to the unit. When a covered rent month falls due unpaid, its rent is paid from this deposit.
           </div>
 
           {/* Signatures */}
@@ -293,7 +288,7 @@ export const DepositStatement: React.FC<DepositStatementProps> = ({ deposits, ti
                     <td className="py-2 px-3 font-mono font-bold">{d.depositSlip || d.id}</td>
                     <td className="py-2 px-3">{depositDateLabel(d.heldSince)}</td>
                     {!subtitle && <td className="py-2 px-3">{d.tenantName} • {d.unitNumber}</td>}
-                    <td className="py-2 px-3">{isCreditDeposit(d) ? 'Advance credit' : months.join(', ') || (isAmountDeposit(d) ? 'Any amount' : count ? `${count} month(s)` : '—')}</td>
+                    <td className="py-2 px-3">{months.join(', ') || (isAmountDeposit(d) ? 'Any amount' : count ? `${count} month(s)` : '—')}</td>
                     <td className="py-2 px-3">{d.status === 'Held in Escrow' ? 'Held' : d.status}</td>
                     <td className="py-2 px-3 text-right font-mono font-bold">{formatDepositAmount(d)}</td>
                   </tr>

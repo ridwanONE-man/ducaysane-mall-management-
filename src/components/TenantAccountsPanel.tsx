@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Users, Search, Phone, Copy, Check, CalendarCheck, PiggyBank, AlertTriangle, CheckCircle2, Store, ShieldCheck } from 'lucide-react';
+import { Users, Search, Phone, Copy, Check, CalendarCheck, AlertTriangle, CheckCircle2, Store, ShieldCheck } from 'lucide-react';
 import { TenantAccount } from '../utils/tenantAccount';
 import { formatLongDate } from '../utils/printUtils';
 
@@ -8,7 +8,7 @@ interface TenantAccountsPanelProps {
   onOpenAccount: (account: TenantAccount) => void;
 }
 
-type Filter = 'all' | 'owing' | 'paid' | 'credit';
+type Filter = 'all' | 'owing' | 'paid';
 
 const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -21,14 +21,13 @@ export const TenantAccountsPanel: React.FC<TenantAccountsPanelProps> = ({ accoun
     owed: accounts.reduce((s, a) => s + a.balance, 0),
     owing: accounts.filter(a => a.balance > 0).length,
     paid: accounts.filter(a => a.balance <= 0).length,
-    credit: accounts.reduce((s, a) => s + a.credit, 0),
+    deposits: accounts.reduce((s, a) => s + a.depositHeld, 0),
   }), [accounts]);
 
   const q = search.trim().toLowerCase();
   const shown = accounts.filter(a => {
     if (filter === 'owing' && a.balance <= 0) return false;
     if (filter === 'paid' && a.balance > 0) return false;
-    if (filter === 'credit' && a.credit <= 0) return false;
     return !q || [a.tenant.name, a.unit.unitNumber, a.tenant.phone, a.tenant.trade, a.tenant.code]
       .some(v => (v || '').toLowerCase().includes(q));
   });
@@ -49,7 +48,7 @@ export const TenantAccountsPanel: React.FC<TenantAccountsPanelProps> = ({ accoun
           { label: 'Total balance owed', value: usd(totals.owed), tone: 'text-rose-600', icon: AlertTriangle },
           { label: 'Tenants with balance', value: String(totals.owing), tone: 'text-rose-600', icon: Users },
           { label: 'Tenants paid up', value: String(totals.paid), tone: 'text-emerald-600', icon: CheckCircle2 },
-          { label: 'Advance credit held', value: usd(totals.credit), tone: 'text-blue-600', icon: PiggyBank },
+          { label: 'Deposits held', value: usd(totals.deposits), tone: 'text-blue-600', icon: ShieldCheck },
         ].map(t => (
           <div key={t.label} className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-4">
             <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1.5">
@@ -67,7 +66,6 @@ export const TenantAccountsPanel: React.FC<TenantAccountsPanelProps> = ({ accoun
             ['all', `All (${accounts.length})`],
             ['owing', `Balance (${totals.owing})`],
             ['paid', `Paid (${totals.paid})`],
-            ['credit', `Credit (${accounts.filter(a => a.credit > 0).length})`],
           ] as [Filter, string][]).map(([f, label]) => (
             <button
               key={f}
@@ -136,12 +134,6 @@ export const TenantAccountsPanel: React.FC<TenantAccountsPanelProps> = ({ accoun
                   <div className="flex justify-between text-indigo-700">
                     <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5" /> Security deposit</span>
                     <span className="font-bold">{usd(a.depositHeld)}</span>
-                  </div>
-                )}
-                {a.credit > 0 && (
-                  <div className="flex justify-between text-blue-700">
-                    <span className="flex items-center gap-1"><PiggyBank className="w-3.5 h-3.5" /> Advance credit</span>
-                    <span className="font-bold">{usd(a.credit)}</span>
                   </div>
                 )}
                 {a.tenant.phone && (

@@ -101,7 +101,6 @@ Total Gross Due:       ${p.currency === 'USD' ? `$${p.totalDue.toFixed(2)}` : `$
 
 AMOUNT CLEARED & PAID: ${p.currency === 'USD' ? `$${p.amount.toFixed(2)} USD` : `${p.amount.toLocaleString()} SSP`}
 Remaining Balance:     ${p.currency === 'USD' ? `$${p.remainingBalance.toFixed(2)}` : `${p.remainingBalance.toLocaleString()} SSP`}
-Advance Credit:        ${p.currency === 'USD' ? `$${p.advanceBalance.toFixed(2)}` : `${p.advanceBalance.toLocaleString()} SSP`}
 
 Payment Method: ${p.paymentMethod}
 Authorized By:  ${p.receivedBy || 'Mohamed Mohamoud'}

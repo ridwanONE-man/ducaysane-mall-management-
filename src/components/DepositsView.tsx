@@ -16,7 +16,7 @@ import { DepositRecord, PropertyUnit, CurrencyMode } from '../types';
 import { ClearAllButton } from './DeleteControls';
 import { DepositRecordsPanel } from './DepositRecordsPanel';
 import { formatDepositAmount } from './DepositVoucher';
-import { TenantAccount, depositMonthLabels, isCreditDeposit, isAmountDeposit } from '../utils/tenantAccount';
+import { TenantAccount, depositMonthLabels, isAmountDeposit } from '../utils/tenantAccount';
 
 interface DepositsViewProps {
   units: PropertyUnit[];
@@ -55,7 +55,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
   const q = search.trim().toLowerCase();
   const matches = (...values: (string | undefined)[]) => !q || values.some(v => (v || '').toLowerCase().includes(q));
 
-  const heldDeposits = deposits.filter(d => d.status === 'Held in Escrow' && !isCreditDeposit(d));
+  const heldDeposits = deposits.filter(d => d.status === 'Held in Escrow');
   const totalHeld = heldDeposits.reduce((s, d) => s + d.amountUSD, 0);
   const counts = {
     ready: tenantAccounts.filter(a => a.canDeposit).length,
