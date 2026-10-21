@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Landmark, 
   TrendingUp, 
@@ -14,11 +14,19 @@ import {
   FileSpreadsheet, 
   CheckCircle2,
   DollarSign,
-  Wallet
+  Wallet,
+  Printer,
+  Pencil,
+  Eye,
+  X,
 } from 'lucide-react';
 import { CashflowTransaction, CurrencyMode, CashflowCategory } from '../types';
 import { formatMoney } from '../utils/printUtils';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
+import { PrintPortal } from './PrintPortal';
+import { CashflowVoucher, CashflowStatement } from './CashflowVoucher';
+
+const ACCOUNTS: CashflowTransaction['account'][] = ['Central Vault Cash Float', 'Stanbic Bank Operating', 'Ecobank Operating', 'Escrow Trust Account'];
 
 interface CashflowViewProps {
   currencyMode: CurrencyMode;
@@ -46,10 +54,45 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const [newType, setNewType] = useState<'Inflow' | 'Outflow'>('Inflow');
   const [newCategory, setNewCategory] = useState<CashflowCategory>('Rent Collection');
   const [newAmount, setNewAmount] = useState('');
-  const [newAccount, setNewAccount] = useState<'Central Vault Cash Float' | 'Stanbic Bank Operating' | 'Ecobank Operating'>('Central Vault Cash Float');
+  const [newAccount, setNewAccount] = useState<CashflowTransaction['account']>('Central Vault Cash Float');
   const [newNotes, setNewNotes] = useState('');
   const [newCurrency, setNewCurrency] = useState<'USD' | 'SSP'>('USD');
   const [currencyFilter, setCurrencyFilter] = useState<'ALL' | 'USD' | 'SSP'>('ALL');
+  // Entry being edited (null = recording a new one)
+  const [editingTx, setEditingTx] = useState<CashflowTransaction | null>(null);
+  const [viewingTx, setViewingTx] = useState<CashflowTransaction | null>(null);
+  const [printJob, setPrintJob] = useState<CashflowTransaction | 'list' | null>(null);
+
+  // Print once the copy is in the portal
+  useEffect(() => {
+    if (!printJob) return;
+    const timer = setTimeout(() => { window.print(); setPrintJob(null); }, 120);
+    return () => clearTimeout(timer);
+  }, [printJob]);
+
+  const openNewEntry = () => {
+    setEditingTx(null);
+    setNewTitle('');
+    setNewType('Inflow');
+    setNewCategory('Rent Collection');
+    setNewAmount('');
+    setNewAccount('Central Vault Cash Float');
+    setNewNotes('');
+    setNewCurrency('USD');
+    setIsRecordModalOpen(true);
+  };
+
+  const openEdit = (t: CashflowTransaction) => {
+    setEditingTx(t);
+    setNewTitle(t.title);
+    setNewType(t.type);
+    setNewCategory(t.category);
+    setNewAmount(String(t.amount));
+    setNewAccount(t.account);
+    setNewNotes(t.notes || '');
+    setNewCurrency(t.currency || 'USD');
+    setIsRecordModalOpen(true);
+  };
 
   // Calculations
   // Dollars and SSP are never added together
@@ -75,6 +118,24 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
+    if (editingTx) {
+      // Same voucher (id, reference, date), new details
+      const updated: CashflowTransaction = {
+        ...editingTx,
+        title: newTitle.trim() || editingTx.title,
+        category: newCategory,
+        type: newType,
+        amount: parseFloat(newAmount) || 0,
+        currency: newCurrency,
+        account: newAccount,
+        notes: newNotes,
+      };
+      if (onSaveTransaction) onSaveTransaction(updated);
+      else setLocalTransactions(prev => prev.map(t => (t.id === updated.id ? updated : t)));
+      setIsRecordModalOpen(false);
+      setEditingTx(null);
+      return;
+    }
     const newTx: CashflowTransaction = {
       id: `cf-${Date.now()}`,
       referenceNumber: `CF-2024-${Math.floor(200 + Math.random() * 800)}`,
@@ -161,13 +222,23 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             <span>Export</span>
           </button>
 
+          <button
+            type="button"
+            disabled={filteredTransactions.length === 0}
+            onClick={() => setPrintJob('list')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-200 text-slate-700 rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Printer className="w-3.5 h-3.5 text-orange-500" />
+            <span>Print list</span>
+          </button>
+
           {onClearAllTransactions && (
             <ClearAllButton count={transactions.length} itemLabel="cashflow entries" onClear={onClearAllTransactions} />
           )}
 
           <button
             type="button"
-            onClick={() => setIsRecordModalOpen(true)}
+            onClick={openNewEntry}
             className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs shadow-orange-500/25 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -285,13 +356,13 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 <th className="py-3 px-4">Account / Facility</th>
                 <th className="py-3 px-4">Type</th>
                 <th className="py-3 px-4 text-right">Amount</th>
-                {onDeleteTransaction && <th className="py-3 px-4 w-10" />}
+                <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={onDeleteTransaction ? 7 : 6} className="p-12 text-center">
+                  <td colSpan={7} className="p-12 text-center">
                     <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-slate-500">
                       <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
                         <Wallet className="w-6 h-6 text-slate-400 stroke-[1.5]" />
@@ -300,7 +371,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                       <p className="text-xs text-slate-400 mt-1 mb-4">Record revenue inflows or operating expense disbursements to track liquidity.</p>
                       <button
                         type="button"
-                        onClick={() => setIsRecordModalOpen(true)}
+                        onClick={openNewEntry}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5"
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -345,18 +416,46 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                         {formatMoney(t.amount, t.currency || 'USD')}
                       </span>
                     </td>
-                    {onDeleteTransaction && (
-                      <td className="py-3.5 px-4 text-right">
-                        <DeleteButton
-                          title="Delete entry"
-                          onDelete={() => onDeleteTransaction(t)}
-                          confirm={{
-                            title: 'Delete this cashflow entry?',
-                            subject: `${t.referenceNumber} • ${t.title}`,
-                          }}
-                        />
-                      </td>
-                    )}
+                    <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setViewingTx(t)}
+                          title="View voucher"
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-orange-600 hover:bg-orange-50 cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPrintJob(t)}
+                          title="Print voucher"
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-orange-600 hover:bg-orange-50 cursor-pointer"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
+                        {t.type === 'Outflow' && (
+                          <button
+                            type="button"
+                            onClick={() => openEdit(t)}
+                            title="Edit this outflow"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold text-slate-600 bg-slate-100 hover:text-orange-700 hover:bg-orange-50 cursor-pointer"
+                          >
+                            <Pencil className="w-3 h-3" /> Edit
+                          </button>
+                        )}
+                        {onDeleteTransaction && (
+                          <DeleteButton
+                            title="Delete entry"
+                            onDelete={() => onDeleteTransaction(t)}
+                            confirm={{
+                              title: 'Delete this cashflow entry?',
+                              subject: `${t.referenceNumber} • ${t.title}`,
+                            }}
+                          />
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -370,9 +469,12 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900">Record Cashflow Transaction</h3>
-              <button 
-                onClick={() => setIsRecordModalOpen(false)}
+              <h3 className="text-base font-bold text-slate-900">
+                {editingTx ? `Edit ${editingTx.type} — ${editingTx.referenceNumber}` : 'Record Cashflow Transaction'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => { setIsRecordModalOpen(false); setEditingTx(null); }}
                 className="text-slate-400 hover:text-slate-600"
               >
                 ✕
@@ -445,15 +547,15 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Disbursement Account</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Bank / Account</label>
                   <select
                     value={newAccount}
-                    onChange={(e) => setNewAccount(e.target.value as any)}
+                    onChange={(e) => setNewAccount(e.target.value as CashflowTransaction['account'])}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white"
                   >
-                    <option value="Central Vault Cash Float">Central Vault Cash Float</option>
-                    <option value="Stanbic Bank Operating">Stanbic Bank Operating</option>
-                    <option value="Ecobank Operating">Ecobank Operating</option>
+                    {[...ACCOUNTS, ...(ACCOUNTS.includes(newAccount) ? [] : [newAccount])].map(a => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -512,9 +614,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs"
+                  className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer"
                 >
-                  Confirm & Post to Float
+                  {editingTx ? 'Save changes' : 'Confirm & Post to Float'}
                 </button>
               </div>
             </form>
@@ -522,6 +624,59 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         </div>
       )}
 
+      {/* Voucher preview */}
+      {viewingTx && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto" onClick={() => setViewingTx(null)}>
+          <div className="bg-slate-100 rounded-3xl max-w-3xl w-full shadow-2xl my-6 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 px-5 py-3 bg-white border-b border-slate-200">
+              <p className="text-sm font-extrabold text-slate-900 truncate">Voucher {viewingTx.referenceNumber}</p>
+              <div className="flex items-center gap-2">
+                {viewingTx.type === 'Outflow' && (
+                  <button
+                    type="button"
+                    onClick={() => { const t = viewingTx; setViewingTx(null); openEdit(t); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-orange-50 text-slate-700 hover:text-orange-700 text-xs font-bold cursor-pointer"
+                  >
+                    <Pencil className="w-3.5 h-3.5" /> Edit
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPrintJob(viewingTx)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs font-bold cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" /> Print voucher
+                </button>
+                <button type="button" onClick={() => setViewingTx(null)} className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer" aria-label="Close">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 sm:p-6">
+              <div className="rounded-xl shadow-lg overflow-hidden">
+                <CashflowVoucher tx={transactions.find(t => t.id === viewingTx.id) || viewingTx} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {printJob && (
+        <PrintPortal>
+          {printJob === 'list' ? (
+            <CashflowStatement
+              transactions={filteredTransactions}
+              filterLabel={[
+                currencyFilter === 'ALL' ? 'All money' : currencyFilter === 'USD' ? 'Dollar only' : 'SSP only',
+                typeFilter === 'ALL' ? 'in & out' : typeFilter,
+                searchTerm.trim() ? `search "${searchTerm.trim()}"` : '',
+              ].filter(Boolean).join(' • ')}
+            />
+          ) : (
+            <CashflowVoucher tx={printJob} />
+          )}
+        </PrintPortal>
+      )}
     </div>
   );
 };
