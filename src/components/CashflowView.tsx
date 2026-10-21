@@ -1,32 +1,56 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  Landmark, 
-  TrendingUp, 
-  TrendingDown, 
-  Plus, 
-  Download, 
-  Search, 
-  ArrowDownLeft, 
-  ArrowUpRight, 
-  Shield, 
-  Sparkles, 
-  Wrench, 
-  FileSpreadsheet, 
-  CheckCircle2,
+import {
+  Landmark,
+  TrendingUp,
+  TrendingDown,
+  Download,
+  Search,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Shield,
+  Sparkles,
+  Wrench,
   DollarSign,
   Wallet,
   Printer,
   Pencil,
   Eye,
   X,
+  Users,
+  FileText,
+  Zap,
+  Store,
+  ShieldCheck,
+  Calendar,
 } from 'lucide-react';
 import { CashflowTransaction, CurrencyMode, CashflowCategory } from '../types';
-import { formatMoney } from '../utils/printUtils';
+import { formatMoney, parsePaymentDate } from '../utils/printUtils';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
 import { PrintPortal } from './PrintPortal';
 import { CashflowVoucher, CashflowStatement } from './CashflowVoucher';
 
 const ACCOUNTS: CashflowTransaction['account'][] = ['Central Vault Cash Float', 'Stanbic Bank Operating', 'Ecobank Operating', 'Escrow Trust Account'];
+
+// Categories offered for each direction
+const IN_CATEGORIES: CashflowCategory[] = ['Rent Collection', 'Escrow Deposit', 'Utilities Surcharge', 'Kiosk Permit'];
+const OUT_CATEGORIES: CashflowCategory[] = ['Repairs & Maintenance', 'Security & Guards', 'Cleaning & Waste', 'Staff Payroll', 'Taxes & Licensing', 'Utilities Surcharge'];
+
+const CATEGORY_ICON: Partial<Record<CashflowCategory, React.ComponentType<{ className?: string }>>> = {
+  'Rent Collection': Store,
+  'Escrow Deposit': ShieldCheck,
+  'Utilities Surcharge': Zap,
+  'Security & Guards': Shield,
+  'Cleaning & Waste': Sparkles,
+  'Repairs & Maintenance': Wrench,
+  'Taxes & Licensing': FileText,
+  'Staff Payroll': Users,
+};
+
+const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const toDisplayDate = (iso: string) => {
+  const d = parsePaymentDate(iso) || new Date();
+  return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+};
 
 interface CashflowViewProps {
   currencyMode: CurrencyMode;
@@ -36,8 +60,7 @@ interface CashflowViewProps {
   onClearAllTransactions?: () => void;
 }
 
-export const CashflowView: React.FC<CashflowViewProps> = ({ 
-  currencyMode,
+export const CashflowView: React.FC<CashflowViewProps> = ({
   transactions: propTransactions,
   onSaveTransaction,
   onDeleteTransaction,
@@ -47,8 +70,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const transactions = propTransactions || localTransactions;
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'Inflow' | 'Outflow'>('ALL');
+  const [currencyFilter, setCurrencyFilter] = useState<'ALL' | 'USD' | 'SSP'>('ALL');
 
-  // Modal State
+  // Entry form
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newType, setNewType] = useState<'Inflow' | 'Outflow'>('Inflow');
@@ -57,7 +81,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const [newAccount, setNewAccount] = useState<CashflowTransaction['account']>('Central Vault Cash Float');
   const [newNotes, setNewNotes] = useState('');
   const [newCurrency, setNewCurrency] = useState<'USD' | 'SSP'>('USD');
-  const [currencyFilter, setCurrencyFilter] = useState<'ALL' | 'USD' | 'SSP'>('ALL');
+  const [newDate, setNewDate] = useState(toISO(new Date()));
   // Entry being edited (null = recording a new one)
   const [editingTx, setEditingTx] = useState<CashflowTransaction | null>(null);
   const [viewingTx, setViewingTx] = useState<CashflowTransaction | null>(null);
@@ -70,15 +94,16 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     return () => clearTimeout(timer);
   }, [printJob]);
 
-  const openNewEntry = () => {
+  const openNewEntry = (type: 'Inflow' | 'Outflow') => {
     setEditingTx(null);
     setNewTitle('');
-    setNewType('Inflow');
-    setNewCategory('Rent Collection');
+    setNewType(type);
+    setNewCategory(type === 'Inflow' ? 'Rent Collection' : 'Repairs & Maintenance');
     setNewAmount('');
     setNewAccount('Central Vault Cash Float');
     setNewNotes('');
     setNewCurrency('USD');
+    setNewDate(toISO(new Date()));
     setIsRecordModalOpen(true);
   };
 
@@ -91,10 +116,15 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     setNewAccount(t.account);
     setNewNotes(t.notes || '');
     setNewCurrency(t.currency || 'USD');
+    setNewDate(toISO(parsePaymentDate(t.date) || new Date()));
     setIsRecordModalOpen(true);
   };
 
-  // Calculations
+  const closeModal = () => {
+    setIsRecordModalOpen(false);
+    setEditingTx(null);
+  };
+
   // Dollars and SSP are never added together
   const sumOf = (currency: 'USD' | 'SSP', type: 'Inflow' | 'Outflow') =>
     transactions.filter(t => (t.currency || 'USD') === currency && t.type === type).reduce((sum, t) => sum + t.amount, 0);
@@ -104,61 +134,49 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     return { currency, inflow, outflow, net: inflow - outflow, count: transactions.filter(t => (t.currency || 'USD') === currency).length };
   });
 
-  // Filtered transactions
+  const q = searchTerm.toLowerCase();
   const filteredTransactions = transactions.filter(t => {
-    const matchesSearch = 
-      t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.referenceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.account.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = [t.title, t.category, t.referenceNumber, t.account].some(v => (v || '').toLowerCase().includes(q));
     const matchesType = typeFilter === 'ALL' || t.type === typeFilter;
     const matchesCurrency = currencyFilter === 'ALL' || (t.currency || 'USD') === currencyFilter;
     return matchesSearch && matchesType && matchesCurrency;
   });
 
+  // Next reference in this year's sequence: CF-2026-0001, CF-2026-0002, ...
+  const nextReference = () => {
+    const year = new Date().getFullYear();
+    const pattern = new RegExp(`^CF-${year}-(\\d+)$`);
+    const last = transactions.reduce((max, t) => {
+      const m = pattern.exec(t.referenceNumber || '');
+      return m ? Math.max(max, Number(m[1])) : max;
+    }, 0);
+    return `CF-${year}-${String(last + 1).padStart(4, '0')}`;
+  };
+
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingTx) {
-      // Same voucher (id, reference, date), new details
-      const updated: CashflowTransaction = {
-        ...editingTx,
-        title: newTitle.trim() || editingTx.title,
-        category: newCategory,
-        type: newType,
-        amount: parseFloat(newAmount) || 0,
-        currency: newCurrency,
-        account: newAccount,
-        notes: newNotes,
-      };
-      if (onSaveTransaction) onSaveTransaction(updated);
-      else setLocalTransactions(prev => prev.map(t => (t.id === updated.id ? updated : t)));
-      setIsRecordModalOpen(false);
-      setEditingTx(null);
-      return;
-    }
-    const newTx: CashflowTransaction = {
-      id: `cf-${Date.now()}`,
-      referenceNumber: `CF-2024-${Math.floor(200 + Math.random() * 800)}`,
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
-      title: newTitle || `${newCategory} Voucher`,
+    const details = {
+      title: newTitle.trim() || `${newCategory} Voucher`,
       category: newCategory,
       type: newType,
       amount: parseFloat(newAmount) || 0,
       currency: newCurrency,
       account: newAccount,
-      recordedBy: 'Mohamed Mohamoud',
-      status: 'Completed',
-      notes: newNotes
+      notes: newNotes,
+      date: toDisplayDate(newDate),
     };
-    if (onSaveTransaction) {
-      onSaveTransaction(newTx);
-    } else {
-      setLocalTransactions(prev => [newTx, ...prev]);
-    }
-    setIsRecordModalOpen(false);
-    setNewTitle('');
-    setNewAmount('');
-    setNewNotes('');
+    const tx: CashflowTransaction = editingTx
+      ? { ...editingTx, ...details }
+      : {
+          id: `cf-${Date.now()}`,
+          referenceNumber: nextReference(),
+          recordedBy: 'Mohamed Mohamoud',
+          status: 'Completed',
+          ...details,
+        };
+    if (onSaveTransaction) onSaveTransaction(tx);
+    else setLocalTransactions(prev => (editingTx ? prev.map(t => (t.id === tx.id ? tx : t)) : [tx, ...prev]));
+    closeModal();
   };
 
   const handleExportCSV = () => {
@@ -176,170 +194,149 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
       `"${t.notes || ''}"`
     ]);
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `NBC_Cashflow_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute('href', encodeURI(csvContent));
+    link.setAttribute('download', `NBC_Cashflow_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const getCategoryIcon = (category: CashflowCategory) => {
-    switch (category) {
-      case 'Security & Guards':
-        return <Shield className="w-3.5 h-3.5 text-blue-600" />;
-      case 'Cleaning & Waste':
-        return <Sparkles className="w-3.5 h-3.5 text-emerald-600" />;
-      case 'Repairs & Maintenance':
-        return <Wrench className="w-3.5 h-3.5 text-rose-600" />;
-      default:
-        return <Landmark className="w-3.5 h-3.5 text-slate-600" />;
-    }
-  };
+  const pill = (active: boolean) =>
+    `px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+      active ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+    }`;
+  const isOut = newType === 'Outflow';
+  const categories = isOut ? OUT_CATEGORIES : IN_CATEGORIES;
 
   return (
     <div id="cashflow-view" className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
-      
-      {/* Header - Clean & Minimal */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            Cash Flow & Reserves
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Money in and out, kept separately in dollars and SSP
-          </p>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Export</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={filteredTransactions.length === 0}
-            onClick={() => setPrintJob('list')}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-200 text-slate-700 rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Printer className="w-3.5 h-3.5 text-orange-500" />
-            <span>Print list</span>
-          </button>
-
-          {onClearAllTransactions && (
-            <ClearAllButton count={transactions.length} itemLabel="cashflow entries" onClear={onClearAllTransactions} />
-          )}
-
-          <button
-            type="button"
-            onClick={openNewEntry}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs shadow-orange-500/25 cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Record Entry</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Dollar and SSP shown separately */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {totals.map(t => (
-          <div key={t.currency} className="relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 shadow-xs">
-            <div className={`h-1.5 ${t.currency === 'USD' ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} />
-            <div className="p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className={`w-11 h-11 rounded-2xl text-white flex items-center justify-center font-black shadow-md ${
-                    t.currency === 'USD' ? 'bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-500/30' : 'bg-gradient-to-br from-orange-500 to-amber-500 shadow-orange-500/30 text-[11px]'
-                  }`}>
-                    {t.currency === 'USD' ? <DollarSign className="w-5 h-5" /> : 'SSP'}
-                  </span>
-                  <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{t.currency === 'USD' ? 'Dollar ($)' : 'South Sudanese Pound (SSP)'}</p>
-                    <p className="text-[11px] text-slate-400">{t.count} entr{t.count === 1 ? 'y' : 'ies'}</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCurrencyFilter(currencyFilter === t.currency ? 'ALL' : t.currency)}
-                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer transition-colors ${
-                    currencyFilter === t.currency ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {currencyFilter === t.currency ? 'Showing only' : 'Show only'} {t.currency === 'USD' ? '$' : 'SSP'}
-                </button>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mt-4">
-                <div className="rounded-2xl bg-emerald-50 px-3 py-2.5">
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700"><TrendingUp className="w-3 h-3" /> Collected</span>
-                  <span className="block text-base font-black text-emerald-700 truncate">{formatMoney(t.inflow, t.currency)}</span>
-                </div>
-                <div className="rounded-2xl bg-rose-50 px-3 py-2.5">
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-rose-700"><TrendingDown className="w-3 h-3" /> Spent</span>
-                  <span className="block text-base font-black text-rose-700 truncate">{formatMoney(t.outflow, t.currency)}</span>
-                </div>
-                <div className="rounded-2xl bg-slate-50 px-3 py-2.5">
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-slate-600"><Wallet className="w-3 h-3" /> Net</span>
-                  <span className={`block text-base font-black truncate ${t.net >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
-                    {t.net < 0 ? '-' : ''}{formatMoney(Math.abs(t.net), t.currency)}
-                  </span>
-                </div>
-              </div>
+      {/* Header */}
+      <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs">
+        <div className="h-1.5 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
+        <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-orange-100/50" />
+        <div className="relative p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/30">
+              <Wallet className="w-7 h-7" />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Cash Flow</h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Money in and out — dollars and SSP kept apart.</p>
             </div>
           </div>
-        ))}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold shadow-2xs cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-500" /> Export
+            </button>
+            <button
+              type="button"
+              disabled={filteredTransactions.length === 0}
+              onClick={() => setPrintJob('list')}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-200 text-slate-700 rounded-xl text-xs font-bold shadow-2xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Printer className="w-3.5 h-3.5 text-orange-500" /> Print list
+            </button>
+            {onClearAllTransactions && (
+              <ClearAllButton count={transactions.length} itemLabel="cashflow entries" onClear={onClearAllTransactions} />
+            )}
+            <button
+              type="button"
+              onClick={() => openNewEntry('Inflow')}
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-md shadow-emerald-500/25 cursor-pointer"
+            >
+              <ArrowDownLeft className="w-4 h-4" /> Money In
+            </button>
+            <button
+              type="button"
+              onClick={() => openNewEntry('Outflow')}
+              className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600 text-white rounded-xl text-xs font-extrabold shadow-md shadow-rose-500/25 cursor-pointer"
+            >
+              <ArrowUpRight className="w-4 h-4" /> Money Out
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Cashflow Ledger Table Container */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-        
-        {/* Integrated Filter Bar */}
-        <div className="p-3.5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      {/* Dollar and SSP cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {totals.map(t => {
+          const usd = t.currency === 'USD';
+          const active = currencyFilter === t.currency;
+          return (
+            <button
+              key={t.currency}
+              type="button"
+              onClick={() => setCurrencyFilter(active ? 'ALL' : t.currency)}
+              title={active ? 'Show all money' : `Show only ${usd ? 'dollar' : 'SSP'} entries`}
+              className={`group text-left relative overflow-hidden rounded-3xl p-5 transition-all cursor-pointer ${
+                usd
+                  ? 'bg-gradient-to-br from-slate-900 to-slate-800 text-white'
+                  : 'bg-gradient-to-br from-orange-500 to-amber-500 text-white'
+              } ${active ? 'ring-4 ring-orange-300' : 'hover:shadow-lg'}`}
+            >
+              <div className="absolute -right-8 -bottom-10 w-36 h-36 rounded-full bg-white/10" />
+              <div className="relative flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black ${usd ? 'bg-orange-500' : 'bg-white/20'}`}>
+                    {usd ? <DollarSign className="w-5 h-5" /> : <span className="text-[11px]">SSP</span>}
+                  </span>
+                  <div>
+                    <p className="text-sm font-extrabold">{usd ? 'Dollar ($)' : 'South Sudanese Pound'}</p>
+                    <p className="text-[11px] opacity-70">{t.count} entr{t.count === 1 ? 'y' : 'ies'} • {active ? 'showing only these' : 'tap to filter'}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider opacity-70">Net</span>
+                  <span className="block text-2xl font-black">{t.net < 0 ? '-' : ''}{formatMoney(Math.abs(t.net), t.currency)}</span>
+                </div>
+              </div>
+              <div className="relative grid grid-cols-2 gap-2 mt-4">
+                <div className="rounded-2xl bg-white/10 px-3 py-2">
+                  <span className="flex items-center gap-1 text-[10px] font-bold opacity-80"><TrendingUp className="w-3 h-3" /> Money in</span>
+                  <span className="block text-base font-black truncate">{formatMoney(t.inflow, t.currency)}</span>
+                </div>
+                <div className="rounded-2xl bg-white/10 px-3 py-2">
+                  <span className="flex items-center gap-1 text-[10px] font-bold opacity-80"><TrendingDown className="w-3 h-3" /> Money out</span>
+                  <span className="block text-base font-black truncate">{formatMoney(t.outflow, t.currency)}</span>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Ledger */}
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+        <div className="p-4 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="relative flex-1 max-w-sm">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search description, ref #, category..."
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-blue-600"
+              placeholder="Search name, reference, category, bank..."
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             />
           </div>
-
-          <div className="flex items-center gap-2">
-            {/* Currency Filter */}
-            <div className="inline-flex bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex bg-slate-100 p-0.5 rounded-xl">
               {(['ALL', 'USD', 'SSP'] as const).map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setCurrencyFilter(c)}
-                  className={`px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                    currencyFilter === c ? 'bg-white text-orange-600 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
+                <button key={c} type="button" onClick={() => setCurrencyFilter(c)} className={pill(currencyFilter === c)}>
                   {c === 'ALL' ? 'All money' : c === 'USD' ? '$ Dollar' : 'SSP'}
                 </button>
               ))}
             </div>
-            {/* Type Filter */}
-            <div className="inline-flex bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
-              {(['ALL', 'Inflow', 'Outflow'] as const).map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setTypeFilter(type)}
-                  className={`px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                    typeFilter === type ? 'bg-white text-blue-700 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {type === 'ALL' ? 'All' : type}
+            <div className="inline-flex bg-slate-100 p-0.5 rounded-xl">
+              {(['ALL', 'Inflow', 'Outflow'] as const).map(type => (
+                <button key={type} type="button" onClick={() => setTypeFilter(type)} className={pill(typeFilter === type)}>
+                  {type === 'ALL' ? 'In & Out' : type === 'Inflow' ? 'Money in' : 'Money out'}
                 </button>
               ))}
             </div>
@@ -349,11 +346,11 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              <tr className="bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider">
                 <th className="py-3 px-4">Ref / Date</th>
                 <th className="py-3 px-4">Description</th>
                 <th className="py-3 px-4">Category</th>
-                <th className="py-3 px-4">Account / Facility</th>
+                <th className="py-3 px-4">Account / Bank</th>
                 <th className="py-3 px-4">Type</th>
                 <th className="py-3 px-4 text-right">Amount</th>
                 <th className="py-3 px-4 text-right">Actions</th>
@@ -362,261 +359,226 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-12 text-center">
-                    <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-slate-500">
-                      <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
-                        <Wallet className="w-6 h-6 text-slate-400 stroke-[1.5]" />
-                      </div>
-                      <p className="font-bold text-slate-800 text-sm">No Cashflow Records Found</p>
-                      <p className="text-xs text-slate-400 mt-1 mb-4">Record revenue inflows or operating expense disbursements to track liquidity.</p>
-                      <button
-                        type="button"
-                        onClick={openNewEntry}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Record Inflow / Expense</span>
+                  <td colSpan={7} className="p-14 text-center">
+                    <div className="w-14 h-14 rounded-3xl bg-orange-50 text-orange-500 flex items-center justify-center mx-auto mb-3">
+                      <Wallet className="w-7 h-7" />
+                    </div>
+                    <p className="font-extrabold text-slate-900 text-sm">No cashflow entries</p>
+                    <p className="text-xs text-slate-500 mt-1 mb-4">Record money coming in or going out.</p>
+                    <div className="inline-flex gap-2">
+                      <button type="button" onClick={() => openNewEntry('Inflow')} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5">
+                        <ArrowDownLeft className="w-3.5 h-3.5" /> Money In
+                      </button>
+                      <button type="button" onClick={() => openNewEntry('Outflow')} className="px-4 py-2 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5">
+                        <ArrowUpRight className="w-3.5 h-3.5" /> Money Out
                       </button>
                     </div>
                   </td>
                 </tr>
               ) : (
-                filteredTransactions.map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4">
-                      <span className="font-mono text-slate-400 block text-[10px]">{t.referenceNumber}</span>
-                      <span className="font-semibold text-slate-700">{t.date}</span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div className="font-bold text-slate-900">{t.title}</div>
-                      {t.notes && <span className="text-[11px] text-slate-400 block mt-0.5">{t.notes}</span>}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-[11px] font-semibold text-slate-700">
-                        {getCategoryIcon(t.category)}
-                        <span>{t.category}</span>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4 text-[11px] text-slate-600 font-medium">
-                      {t.account}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                        t.type === 'Inflow' 
-                          ? 'bg-emerald-50 text-emerald-700' 
-                          : 'bg-rose-50 text-rose-700'
-                      }`}>
-                        {t.type === 'Inflow' ? <ArrowDownLeft className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
-                        {t.type}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-black">
-                      <span className={t.type === 'Inflow' ? 'text-emerald-600' : 'text-slate-900'}>
-                        {t.type === 'Inflow' ? '+' : '-'}
-                        {formatMoney(t.amount, t.currency || 'USD')}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setViewingTx(t)}
-                          title="View voucher"
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-orange-600 hover:bg-orange-50 cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPrintJob(t)}
-                          title="Print voucher"
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-orange-600 hover:bg-orange-50 cursor-pointer"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                        </button>
-                        {t.type === 'Outflow' && (
-                          <button
-                            type="button"
-                            onClick={() => openEdit(t)}
-                            title="Edit this outflow"
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold text-slate-600 bg-slate-100 hover:text-orange-700 hover:bg-orange-50 cursor-pointer"
-                          >
-                            <Pencil className="w-3 h-3" /> Edit
+                filteredTransactions.map((t, i) => {
+                  const Icon = CATEGORY_ICON[t.category] || Landmark;
+                  const inflow = t.type === 'Inflow';
+                  return (
+                    <tr key={t.id} className={`hover:bg-orange-50/40 transition-colors ${i % 2 ? 'bg-slate-50/40' : ''}`}>
+                      <td className="py-3 px-4">
+                        <span className="inline-block font-mono text-[10px] font-bold text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded-md">{t.referenceNumber}</span>
+                        <span className="block font-semibold text-slate-600 mt-1">{t.date}</span>
+                      </td>
+                      <td className="py-3 px-4 max-w-[260px]">
+                        <div className="font-bold text-slate-900 truncate">{t.title}</div>
+                        {t.notes && <span className="text-[11px] text-slate-400 block truncate">{t.notes}</span>}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-[11px] font-semibold text-slate-700">
+                          <Icon className="w-3.5 h-3.5 text-orange-500" /> {t.category}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-[11px] text-slate-600 font-medium">{t.account}</td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg ${
+                          inflow ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                        }`}>
+                          {inflow ? <ArrowDownLeft className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
+                          {inflow ? 'In' : 'Out'}
+                        </span>
+                      </td>
+                      <td className={`py-3 px-4 text-right font-black text-sm whitespace-nowrap ${inflow ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {inflow ? '+' : '-'}{formatMoney(t.amount, t.currency || 'USD')}
+                      </td>
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1">
+                          <button type="button" onClick={() => setViewingTx(t)} title="View voucher" className="p-1.5 rounded-lg text-slate-500 hover:text-orange-600 hover:bg-orange-50 cursor-pointer">
+                            <Eye className="w-3.5 h-3.5" />
                           </button>
-                        )}
-                        {onDeleteTransaction && (
-                          <DeleteButton
-                            title="Delete entry"
-                            onDelete={() => onDeleteTransaction(t)}
-                            confirm={{
-                              title: 'Delete this cashflow entry?',
-                              subject: `${t.referenceNumber} • ${t.title}`,
-                            }}
-                          />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          <button type="button" onClick={() => setPrintJob(t)} title="Print voucher" className="p-1.5 rounded-lg text-slate-500 hover:text-orange-600 hover:bg-orange-50 cursor-pointer">
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
+                          {!inflow && (
+                            <button
+                              type="button"
+                              onClick={() => openEdit(t)}
+                              title="Edit this outflow"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold text-slate-600 bg-slate-100 hover:text-orange-700 hover:bg-orange-50 cursor-pointer"
+                            >
+                              <Pencil className="w-3 h-3" /> Edit
+                            </button>
+                          )}
+                          {onDeleteTransaction && (
+                            <DeleteButton
+                              title="Delete entry"
+                              onDelete={() => onDeleteTransaction(t)}
+                              confirm={{ title: 'Delete this cashflow entry?', subject: `${t.referenceNumber} • ${t.title}` }}
+                            />
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
+        {filteredTransactions.length > 0 && (
+          <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 text-[11px] text-slate-500">
+            Showing <strong className="text-slate-900">{filteredTransactions.length}</strong> of {transactions.length} entries
+          </div>
+        )}
       </div>
 
-      {/* Record Inflow/Outflow Modal */}
+      {/* Money in / out form */}
       {isRecordModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900">
-                {editingTx ? `Edit ${editingTx.type} — ${editingTx.referenceNumber}` : 'Record Cashflow Transaction'}
-              </h3>
-              <button
-                type="button"
-                onClick={() => { setIsRecordModalOpen(false); setEditingTx(null); }}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                ✕
-              </button>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 my-6">
+            <div className={`px-6 py-5 text-white ${isOut ? 'bg-gradient-to-r from-rose-500 to-orange-500' : 'bg-gradient-to-r from-emerald-600 to-teal-500'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center">
+                    {isOut ? <ArrowUpRight className="w-5 h-5" /> : <ArrowDownLeft className="w-5 h-5" />}
+                  </span>
+                  <div>
+                    <h3 className="text-base font-extrabold">{editingTx ? `Edit ${isOut ? 'Money Out' : 'Money In'}` : isOut ? 'Money Out' : 'Money In'}</h3>
+                    <p className="text-[11px] opacity-80">{editingTx ? editingTx.referenceNumber : isOut ? 'Record an expense or payment' : 'Record money received'}</p>
+                  </div>
+                </div>
+                <button type="button" onClick={closeModal} className="p-1.5 rounded-lg hover:bg-white/20 cursor-pointer" aria-label="Close">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
-            <form onSubmit={handleAddTransaction} className="mt-4 space-y-4">
-              
-              {/* Type Toggle */}
+            <form onSubmit={handleAddTransaction} className="p-6 space-y-4">
+              {/* Amount first: the main thing being recorded */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Transaction Flow</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setNewType('Inflow')}
-                    className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      newType === 'Inflow'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    <ArrowDownLeft className="w-4 h-4" />
-                    <span>Inflow (Revenue)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewType('Outflow')}
-                    className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      newType === 'Outflow'
-                        ? 'bg-rose-600 text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    <ArrowUpRight className="w-4 h-4" />
-                    <span>Outflow (Expense)</span>
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Description / Payee</label>
-                <input
-                  type="text"
-                  required
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="e.g. Tenant rent or cleaning supplies"
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Category</label>
-                  <select
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value as CashflowCategory)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white"
-                  >
-                    <option value="Rent Collection">Rent Collection</option>
-                    <option value="Escrow Deposit">Escrow Deposit</option>
-                    <option value="Utilities Surcharge">Utilities Surcharge</option>
-                    <option value="Kiosk Permit">Kiosk Permit</option>
-                    <option value="Security & Guards">Security & Guards</option>
-                    <option value="Cleaning & Waste">Cleaning & Waste</option>
-                    <option value="Repairs & Maintenance">Repairs & Maintenance</option>
-                    <option value="Taxes & Licensing">Taxes & Licensing</option>
-                    <option value="Staff Payroll">Staff Payroll</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Bank / Account</label>
-                  <select
-                    value={newAccount}
-                    onChange={(e) => setNewAccount(e.target.value as CashflowTransaction['account'])}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white"
-                  >
-                    {[...ACCOUNTS, ...(ACCOUNTS.includes(newAccount) ? [] : [newAccount])].map(a => (
-                      <option key={a} value={a}>{a}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Currency</label>
-                  <div className="grid grid-cols-2 gap-1 bg-slate-100 p-0.5 rounded-xl">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700">Amount</label>
+                  <div className="inline-flex bg-slate-100 p-0.5 rounded-lg">
                     {(['USD', 'SSP'] as const).map(c => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setNewCurrency(c)}
-                        className={`py-1.5 rounded-lg text-xs font-extrabold cursor-pointer transition-all ${
-                          newCurrency === c ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs' : 'text-slate-600'
-                        }`}
-                      >
+                      <button key={c} type="button" onClick={() => setNewCurrency(c)} className={`px-3 py-1 rounded-md text-[11px] font-extrabold cursor-pointer ${newCurrency === c ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs' : 'text-slate-500'}`}>
                         {c === 'USD' ? '$ Dollar' : 'SSP'}
                       </button>
                     ))}
                   </div>
                 </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Amount ({newCurrency === 'USD' ? '$' : 'SSP'})</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{newCurrency === 'USD' ? '$' : 'SSP'}</span>
                   <input
                     type="number"
-                    step="0.01"
+                    step="any"
+                    min="0"
                     required
+                    autoFocus
                     value={newAmount}
                     onChange={(e) => setNewAmount(e.target.value)}
-                    placeholder={newCurrency === 'USD' ? 'e.g. 1500' : 'e.g. 650000'}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs"
+                    placeholder={newCurrency === 'USD' ? '0.00' : '0'}
+                    className="w-full pl-14 pr-4 py-3 bg-slate-50 focus:bg-white border border-slate-200 rounded-2xl text-xl font-black text-slate-900 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Audit Notes / Supplier Voucher</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{isOut ? 'Paid to / for' : 'Received from'}</label>
+                <input
+                  type="text"
+                  required
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder={isOut ? 'e.g. Plumber — water pipe repair' : 'e.g. Tenant rent'}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Bank / Account</label>
+                  <select
+                    value={newAccount}
+                    onChange={(e) => setNewAccount(e.target.value as CashflowTransaction['account'])}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:border-orange-500"
+                  >
+                    {[...ACCOUNTS, ...(ACCOUNTS.includes(newAccount) ? [] : [newAccount])].map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Date</label>
+                  <div className="relative">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="date"
+                      required
+                      value={newDate}
+                      onChange={(e) => setNewDate(e.target.value)}
+                      className="w-full pl-8 pr-2 py-2.5 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Category</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[...categories, ...(categories.includes(newCategory) ? [] : [newCategory])].map(c => {
+                    const Icon = CATEGORY_ICON[c] || Landmark;
+                    const on = newCategory === c;
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setNewCategory(c)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold cursor-pointer transition-all ${
+                          on ? 'bg-orange-50 border-orange-400 text-orange-800' : 'bg-white border-slate-200 text-slate-600 hover:border-orange-200'
+                        }`}
+                      >
+                        <Icon className="w-3 h-3" /> {c}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Note <span className="font-normal text-slate-400">(optional)</span></label>
                 <input
                   type="text"
                   value={newNotes}
                   onChange={(e) => setNewNotes(e.target.value)}
-                  placeholder="Receipt # or invoice identifier"
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs"
+                  placeholder="Receipt or invoice number"
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-orange-500"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsRecordModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
-                >
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button type="button" onClick={closeModal} className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer">
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer"
+                  className={`px-5 py-2.5 text-white text-xs font-extrabold rounded-xl shadow-md cursor-pointer ${
+                    isOut ? 'bg-gradient-to-r from-rose-500 to-orange-500 shadow-rose-500/25' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/25'
+                  }`}
                 >
-                  {editingTx ? 'Save changes' : 'Confirm & Post to Float'}
+                  {editingTx ? 'Save changes' : isOut ? 'Record Money Out' : 'Record Money In'}
                 </button>
               </div>
             </form>
@@ -668,7 +630,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
               transactions={filteredTransactions}
               filterLabel={[
                 currencyFilter === 'ALL' ? 'All money' : currencyFilter === 'USD' ? 'Dollar only' : 'SSP only',
-                typeFilter === 'ALL' ? 'in & out' : typeFilter,
+                typeFilter === 'ALL' ? 'in & out' : typeFilter === 'Inflow' ? 'money in' : 'money out',
                 searchTerm.trim() ? `search "${searchTerm.trim()}"` : '',
               ].filter(Boolean).join(' • ')}
             />
