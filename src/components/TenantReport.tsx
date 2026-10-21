@@ -57,7 +57,7 @@ interface TenantEntry {
   isCurrent: boolean;
 }
 
-type PeriodMode = 'all' | 'month' | 'year' | 'range';
+type PeriodMode = 'all' | 'month' | 'year' | 'day' | 'range';
 type ListFilter = 'all' | 'owing' | 'paid';
 
 const tenantKey = (name: string, unitNumber: string) => `${normalizeName(name)}|${normalizeUnitNumber(unitNumber)}`;
@@ -117,7 +117,11 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
   const [dbPayments, setDbPayments] = useState<PaymentRecord[] | null>(null);
   const [dbStatus, setDbStatus] = useState<'idle' | 'loading' | 'synced' | 'offline'>('idle');
   const [viewingDeposit, setViewingDeposit] = useState<DepositRecord | null>(null);
-  const [printing, setPrinting] = useState<'report' | DepositRecord | null>(null);
+  const [day, setDay] = useState(toISO(now));
+  // Tenants ticked in the list for a combined printout
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [printKeys, setPrintKeys] = useState<string[]>([]);
+  const [printing, setPrinting] = useState<'report' | 'tenants' | DepositRecord | null>(null);
   const latestRequest = useRef<string | null>(null);
 
   // Current tenants, plus former tenants who still have payments or deposits on file
@@ -163,8 +167,11 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
   }, [selectedKey]);
 
   // ----- Period -----
+  const dayDate = parsePaymentDate(day);
+  const sameDay = (d: Date | null) => Boolean(d && dayDate && d.toDateString() === dayDate.toDateString());
   const isMonthInPeriod = (y: number, m: number) => {
     if (periodMode === 'all') return true;
+    if (periodMode === 'day') return Boolean(dayDate) && y === dayDate!.getFullYear() && m === dayDate!.getMonth();
     if (periodMode === 'year') return y === year;
     if (periodMode === 'month') return y === year && m === month;
     const from = parsePaymentDate(fromDate);
@@ -174,6 +181,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
     return true;
   };
   const isPaymentInPeriod = (p: PaymentRecord) => {
+    if (periodMode === 'day') return sameDay(parsePaymentDate(p.date));
     if (periodMode === 'range') {
       const d = parsePaymentDate(p.date);
       const from = parsePaymentDate(fromDate);
@@ -185,6 +193,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
   const isDepositInPeriod = (d: DepositRecord) => {
     if (periodMode === 'all') return true;
     const dt = parseDepositDate(d.heldSince);
+    if (periodMode === 'day') return sameDay(dt);
     if (periodMode === 'range') {
       const from = parsePaymentDate(fromDate);
       const to = parsePaymentDate(toDate);
@@ -196,6 +205,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
   const periodLabel = periodMode === 'all' ? 'All time'
     : periodMode === 'year' ? `Year ${year}`
     : periodMode === 'month' ? `${MONTH_NAMES[month]} ${year}`
+    : periodMode === 'day' ? formatLongDate(day)
     : `${formatLongDate(fromDate)} – ${formatLongDate(toDate)}`;
 
   const availableYears = useMemo(() => {
@@ -218,14 +228,30 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [tenants, payments, deposits]);
 
+  // Each tenant's months and money inside the chosen period
+  const periodRows = useMemo(() => new Map(overview.map(o => {
+    const own = payments.filter(p => tenantKey(p.tenantName, p.unitNumber) === o.tenant.key);
+    const months = o.ledger.months.filter(m => isMonthInPeriod(m.year, m.month));
+    const sum = summarizeLedger(months);
+    const paidInPeriod = own.filter(isPaymentInPeriod).filter(p => p.currency === o.ledger.currency).reduce((t, p) => t + p.amount, 0);
+    return [o.tenant.key, {
+      months,
+      summary: sum,
+      paid: Math.round(paidInPeriod * 100) / 100,
+      owingMonths: months.filter(m => m.status !== 'Paid'),
+    }];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  })), [overview, payments, periodMode, year, month, day, fromDate, toDate]);
+
   const q = search.trim().toLowerCase();
   const shownOverview = overview.filter(o => {
-    if (listFilter === 'owing' && o.summary.outstanding <= 0) return false;
-    if (listFilter === 'paid' && o.summary.outstanding > 0) return false;
+    const outstanding = periodRows.get(o.tenant.key)?.summary.outstanding || 0;
+    if (listFilter === 'owing' && outstanding <= 0) return false;
+    if (listFilter === 'paid' && outstanding > 0) return false;
     return !q || [o.tenant.name, o.tenant.unitNumber, o.tenant.unit?.currentTenant?.phone, o.tenant.unit?.currentTenant?.code]
       .some(v => (v || '').toLowerCase().includes(q));
   });
-  const owingCount = overview.filter(o => o.summary.outstanding > 0).length;
+  const owingCount = overview.filter(o => (periodRows.get(o.tenant.key)?.summary.outstanding || 0) > 0).length;
 
   // ----- Selected tenant -----
   const tenantPayments = useMemo(() => {
@@ -276,7 +302,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
     <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-3 flex flex-wrap items-center gap-2">
       <span className="flex items-center gap-1.5 px-2 text-xs font-bold text-slate-700"><CalendarRange className="w-4 h-4 text-orange-500" /> Show</span>
       <div className="inline-flex bg-slate-100 p-0.5 rounded-xl">
-        {([['all', 'All'], ['month', 'Month'], ['year', 'Year'], ['range', 'Custom']] as [PeriodMode, string][]).map(([m, label]) => (
+        {([['all', 'All'], ['month', 'Month'], ['year', 'Year'], ['day', 'Day'], ['range', 'Custom']] as [PeriodMode, string][]).map(([m, label]) => (
           <button
             key={m}
             type="button"
@@ -298,6 +324,9 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
         <select value={month} onChange={e => setMonth(Number(e.target.value))} className={selectCls}>
           {MONTH_NAMES.map((n, i) => <option key={n} value={i}>{n}</option>)}
         </select>
+      )}
+      {periodMode === 'day' && (
+        <input type="date" value={day} onChange={e => setDay(e.target.value)} className={selectCls} />
       )}
       {periodMode === 'range' && (
         <span className="flex items-center gap-2">
@@ -467,6 +496,114 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
   );
 
   // ================================================================
+  // Combined printout: several tenants for the chosen period
+  // ================================================================
+  const printTenants = (keys: string[]) => {
+    if (!keys.length) return;
+    setPrintKeys(keys);
+    setPrinting('tenants');
+  };
+  const printedRows = overview.filter(o => printKeys.includes(o.tenant.key));
+  const sumRows = (cur: 'USD' | 'SSP', pick: (key: string) => number) =>
+    printedRows.filter(o => o.ledger.currency === cur).reduce((t, o) => t + pick(o.tenant.key), 0);
+  const printTotals = (['USD', 'SSP'] as const)
+    .map(cur => ({
+      cur,
+      count: printedRows.filter(o => o.ledger.currency === cur).length,
+      paid: sumRows(cur, k => periodRows.get(k)?.paid || 0),
+      balance: sumRows(cur, k => periodRows.get(k)?.summary.outstanding || 0),
+    }))
+    .filter(t => t.count > 0);
+
+  const tenantsPrint = (
+    <div className="bg-white text-slate-900 font-sans">
+      <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
+        <header className="bg-slate-900 text-white px-6 py-4 flex items-center gap-4">
+          <div className="w-14 h-14 shrink-0 rounded-xl bg-white p-1 flex items-center justify-center">
+            <img src={logoImg} alt={BUSINESS_PROFILE.name} className="w-full h-full object-contain" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-['Playfair_Display',serif] text-lg font-extrabold uppercase leading-tight">{BUSINESS_PROFILE.name}</p>
+            <p className="text-[8px] font-bold uppercase tracking-[0.25em] text-orange-300">{BUSINESS_PROFILE.tagline}</p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-[8px] font-black uppercase tracking-[0.3em] text-orange-300">{printedRows.length} tenant{printedRows.length === 1 ? '' : 's'}</p>
+            <h2 className="text-base font-black tracking-tight leading-tight">TENANTS RENT REPORT</h2>
+            <p className="text-[11px] font-black text-amber-300">{periodLabel}</p>
+          </div>
+        </header>
+        <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
+        <div className="bg-slate-50 px-6 py-1.5 flex flex-wrap items-center justify-between gap-x-4 text-[8.5px] text-slate-500 border-b border-slate-200">
+          <span>{BUSINESS_PROFILE.address}</span>
+          <span>Tel: {BUSINESS_PROFILE.phones.join(' / ')}</span>
+          <span>Printed {formatLongDate(now)}</span>
+        </div>
+
+        <main className="px-6 py-5 space-y-4">
+          <div className={`grid gap-2 print-avoid-break ${printTotals.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {printTotals.map(t => (
+              <div key={t.cur} className="grid grid-cols-3 rounded-xl border border-slate-300 overflow-hidden text-center">
+                <div className="bg-slate-900 text-white py-2 text-[10px] font-black uppercase">{t.cur === 'USD' ? 'Dollar tenants' : 'SSP tenants'} ({t.count})</div>
+                <div className="py-1.5"><span className="block text-[8px] font-bold uppercase text-slate-500">Paid in period</span><strong className="text-sm text-emerald-700">{formatMoney(t.paid, t.cur)}</strong></div>
+                <div className="py-1.5 bg-orange-50"><span className="block text-[8px] font-bold uppercase text-slate-500">Balance</span><strong className="text-sm text-rose-700">{formatMoney(t.balance, t.cur)}</strong></div>
+              </div>
+            ))}
+          </div>
+
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="border-y-2 border-slate-900 text-left uppercase tracking-wider">
+                <th className="py-1.5 w-6">#</th>
+                <th className="py-1.5">Tenant</th>
+                <th className="py-1.5">Unit</th>
+                <th className="py-1.5 text-right">Rent</th>
+                <th className="py-1.5 text-center">Paid</th>
+                <th className="py-1.5 text-center">Partly</th>
+                <th className="py-1.5">Not paid / owing months</th>
+                <th className="py-1.5 text-right">Paid in period</th>
+                <th className="py-1.5 text-right">Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {printedRows.map((o, i) => {
+                const r = periodRows.get(o.tenant.key)!;
+                const cur = o.ledger.currency;
+                return (
+                  <tr key={o.tenant.key} className={`border-b border-slate-200 print-avoid-break ${i % 2 ? 'bg-slate-50' : ''}`}>
+                    <td className="py-1.5 text-slate-400">{i + 1}</td>
+                    <td className="py-1.5 font-bold">{o.tenant.name}</td>
+                    <td className="py-1.5">{o.tenant.unitNumber}</td>
+                    <td className="py-1.5 text-right font-mono">{formatMoney(o.ledger.monthlyRent, cur)}</td>
+                    <td className="py-1.5 text-center font-bold text-emerald-700">{r.summary.paidCount}</td>
+                    <td className="py-1.5 text-center font-bold text-amber-700">{r.summary.partialCount}</td>
+                    <td className="py-1.5 text-rose-700">{r.owingMonths.length ? r.owingMonths.map(m => shortLabel(m)).join(', ') : <span className="text-slate-400">—</span>}</td>
+                    <td className="py-1.5 text-right font-mono font-bold">{formatMoney(r.paid, cur)}</td>
+                    <td className={`py-1.5 text-right font-mono font-black ${r.summary.outstanding > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                      {r.summary.outstanding > 0 ? formatMoney(r.summary.outstanding, cur) : 'Paid up'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          <div className="grid grid-cols-2 gap-10 pt-6 print-avoid-break">
+            <div>
+              <div className="h-10 border-b border-slate-500" />
+              <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">Checked by</p>
+            </div>
+            <div className="text-right">
+              <div className="h-10 border-b border-slate-500" />
+              <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">Prepared by</p>
+              <p className="text-[10px] font-bold">{DEPOSIT_RECEIVED_BY}</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+
+  // ================================================================
   // Tenant list
   // ================================================================
   if (!selected) {
@@ -524,6 +661,41 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
           </div>
         </div>
 
+        {/* Print panel: pick the period, then print everyone or the ticked tenants */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 text-white p-4 sm:p-5 space-y-3">
+          <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-orange-500/20" />
+          <div className="relative flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-md shadow-orange-500/30">
+                <Printer className="w-5 h-5" />
+              </span>
+              <div>
+                <p className="text-sm font-extrabold">Print tenants report</p>
+                <p className="text-[11px] text-slate-300">Choose the period, then print all tenants or only the ones you tick.</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={picked.size === 0}
+                onClick={() => printTenants(shownOverview.filter(o => picked.has(o.tenant.key)).map(o => o.tenant.key))}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-extrabold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Printer className="w-4 h-4" /> Print selected ({picked.size})
+              </button>
+              <button
+                type="button"
+                disabled={shownOverview.length === 0}
+                onClick={() => printTenants(shownOverview.map(o => o.tenant.key))}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-xs font-extrabold shadow-md shadow-orange-500/30 cursor-pointer disabled:opacity-40"
+              >
+                <Printer className="w-4 h-4" /> Print all ({shownOverview.length})
+              </button>
+            </div>
+          </div>
+          <div className="relative text-slate-900">{periodBar}</div>
+        </div>
+
         {shownOverview.length === 0 ? (
           <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 text-xs">
             {tenants.length === 0 ? 'No tenants yet.' : 'No tenant matches your search.'}
@@ -534,24 +706,50 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider">
+                    <th className="py-3 pl-4 w-8">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all tenants"
+                        checked={shownOverview.length > 0 && shownOverview.every(o => picked.has(o.tenant.key))}
+                        onChange={e => setPicked(e.target.checked ? new Set(shownOverview.map(o => o.tenant.key)) : new Set())}
+                        className="w-4 h-4 rounded accent-orange-500 cursor-pointer"
+                      />
+                    </th>
                     <th className="py-3 px-4 w-10">#</th>
                     <th className="py-3 px-4">Tenant</th>
                     <th className="py-3 px-4">Unit</th>
                     <th className="py-3 px-4">Last 6 months</th>
                     <th className="py-3 px-4 text-center">Paid</th>
                     <th className="py-3 px-4 text-center">Owing</th>
+                    <th className="py-3 px-4 text-right">Paid in period</th>
                     <th className="py-3 px-4">Deposit</th>
                     <th className="py-3 px-4 text-right">Balance</th>
                     <th className="py-3 px-4 text-right" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {shownOverview.map(({ tenant, ledger: l, summary: s, recent, held }, i) => (
+                  {shownOverview.map(({ tenant, ledger: l, recent, held }, i) => {
+                    const r = periodRows.get(tenant.key)!;
+                    const s = r.summary;
+                    return (
                     <tr
                       key={tenant.key}
                       onClick={() => setSelectedKey(tenant.key)}
                       className={`group cursor-pointer transition-colors hover:bg-orange-50/50 ${i % 2 ? 'bg-slate-50/40' : ''}`}
                     >
+                      <td className="py-3 pl-4" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${tenant.name}`}
+                          checked={picked.has(tenant.key)}
+                          onChange={() => setPicked(prev => {
+                            const next = new Set(prev);
+                            if (next.has(tenant.key)) next.delete(tenant.key); else next.add(tenant.key);
+                            return next;
+                          })}
+                          className="w-4 h-4 rounded accent-orange-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="py-3 px-4 font-bold text-slate-400">{i + 1}</td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
@@ -588,6 +786,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
                           {s.unpaidCount + s.partialCount}
                         </span>
                       </td>
+                      <td className="py-3 px-4 text-right font-bold text-emerald-700 whitespace-nowrap">{formatMoney(r.paid, l.currency)}</td>
                       <td className="py-3 px-4">
                         {held.length > 0
                           ? <span className="inline-flex items-center gap-1 text-sky-700 font-bold"><ShieldCheck className="w-3.5 h-3.5" /> {heldText(held)}</span>
@@ -606,12 +805,14 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
                         </span>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
             <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 text-[11px] text-slate-500">
-              Showing <strong className="text-slate-900">{shownOverview.length}</strong> of {overview.length} tenants • click a row to open the report
+              {printing === 'tenants' && <PrintPortal>{tenantsPrint}</PrintPortal>}
+              Showing <strong className="text-slate-900">{shownOverview.length}</strong> of {overview.length} tenants • {periodLabel} • click a row to open the report
             </div>
           </div>
         )}
@@ -855,7 +1056,9 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
         <PrintPortal>
           {printing === 'report'
             ? printReport
-            : <DepositVoucher deposit={printing} unit={findDepositUnit(printing, units)} />}
+            : printing === 'tenants'
+              ? tenantsPrint
+              : <DepositVoucher deposit={printing} unit={findDepositUnit(printing, units)} />}
         </PrintPortal>
       )}
     </div>
