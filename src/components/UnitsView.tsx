@@ -1,27 +1,49 @@
 import React, { useState } from 'react';
-import { 
-  Building2, 
-  CheckCircle2, 
-  DoorOpen, 
-  Clock, 
-  Wrench, 
-  Download, 
-  Map, 
-  Plus, 
-  Filter, 
-  Check, 
+import {
+  Building2,
+  CheckCircle2,
+  DoorOpen,
+  Clock,
+  Wrench,
+  Download,
+  Map,
+  Plus,
+  Filter,
+  Check,
   Store,
-  ChevronDown,
   X,
   UserPlus,
   Edit2,
   Trash2,
-  Search
+  Search,
+  LayoutGrid,
+  List,
+  Layers,
+  Ruler,
+  Gauge,
+  Star,
 } from 'lucide-react';
-import { PropertyUnit, CurrencyMode, OccupancyStatus } from '../types';
+import { PropertyUnit, CurrencyMode } from '../types';
 import { exportUnitsToCSV } from '../utils/exportUtils';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
 import { useConfirm } from './ConfirmDialog';
+import { parsePaymentDate, formatLongDate } from '../utils/printUtils';
+
+// Colour per occupancy status: top bar, pill and dot
+const STATUS_STYLE: Record<string, { bar: string; pill: string; dot: string }> = {
+  Occupied: { bar: 'bg-gradient-to-r from-orange-500 to-amber-400', pill: 'bg-orange-50 text-orange-700', dot: 'bg-orange-500' },
+  Available: { bar: 'bg-gradient-to-r from-emerald-500 to-teal-400', pill: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
+  Reserved: { bar: 'bg-gradient-to-r from-sky-500 to-blue-400', pill: 'bg-sky-50 text-sky-700', dot: 'bg-sky-500' },
+  Maintenance: { bar: 'bg-gradient-to-r from-slate-500 to-slate-400', pill: 'bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
+};
+
+// Days until the lease ends, from the saved end date (null when there is none)
+const daysLeftOf = (unit: PropertyUnit): number | null => {
+  const end = parsePaymentDate(unit.leaseEnd || unit.currentTenant?.leaseEnd);
+  if (!end) return null;
+  const today = new Date(new Date().setHours(0, 0, 0, 0));
+  return Math.round((end.getTime() - today.getTime()) / 86_400_000);
+};
 
 interface UnitsViewProps {
   units: PropertyUnit[];
@@ -104,6 +126,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
 
   // Selected row checkboxes
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   // Filter application
   const filteredUnits = units.filter(unit => {
@@ -164,7 +187,10 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
 
     // Quick filters
     if (quickGroundFloor && unit.floor !== 'Ground Floor') return false;
-    if (quickExpiring30 && (!unit.daysToExpiry || unit.daysToExpiry > 30)) return false;
+    if (quickExpiring30) {
+      const days = unit.currentTenant ? daysLeftOf(unit) : null;
+      if (days === null || days < 0 || days > 30) return false;
+    }
     if (quickHighArrears && unit.arrearsUSD === 0 && unit.arrearsSSP === 0) return false;
     if (quickAnchor && unit.footfallBadge !== 'Anchor Tenant') return false;
 
@@ -204,135 +230,159 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
     exportUnitsToCSV(filteredUnits);
   };
 
+  const hasFilters = Boolean(search.trim()) || floorFilter !== 'All' || occupancyFilter !== 'All' || activeCategoryTab !== 'All'
+    || quickGroundFloor || quickExpiring30 || quickHighArrears || quickAnchor;
+
+  const metrics = [
+    { label: 'Total units', value: totalInventoryCount, sub: `${shopsCount} shops · ${spacesCount} spaces`, icon: Building2, tone: 'from-orange-500 to-amber-500 shadow-orange-500/30' },
+    { label: 'Occupied', value: occupiedCount, sub: `${occupancyPct}% occupancy`, icon: CheckCircle2, tone: 'from-emerald-500 to-teal-500 shadow-emerald-500/30' },
+    { label: 'Available', value: availableCount, sub: `${Math.round(availableSqM).toLocaleString()} m² vacant · ${vacancyPct}%`, icon: DoorOpen, tone: 'from-sky-500 to-blue-500 shadow-sky-500/30' },
+    { label: 'Hold & maintenance', value: reservedCount + maintenanceCount, sub: `${reservedCount} hold · ${maintenanceCount} maint`, icon: Wrench, tone: 'from-slate-600 to-slate-800 shadow-slate-500/30' },
+  ];
+
+  const quickChips: { label: string; on: boolean; toggle: () => void; icon: React.ComponentType<{ className?: string }> }[] = [
+    { label: 'Ground Floor', on: quickGroundFloor, toggle: () => setQuickGroundFloor(v => !v), icon: Layers },
+    { label: 'Expiring in 30 days', on: quickExpiring30, toggle: () => setQuickExpiring30(v => !v), icon: Clock },
+    { label: 'With arrears', on: quickHighArrears, toggle: () => setQuickHighArrears(v => !v), icon: Filter },
+    { label: 'Anchor tenants', on: quickAnchor, toggle: () => setQuickAnchor(v => !v), icon: Star },
+  ];
+
+  const selectCls = 'px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 font-semibold focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 cursor-pointer';
+
+  const billingChip = (unit: PropertyUnit) => {
+    if (!unit.currentTenant) return null;
+    const map: Record<string, string> = {
+      Paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      'Partially Paid': 'bg-amber-50 text-amber-700 border-amber-200',
+      Overdue: 'bg-rose-50 text-rose-700 border-rose-200',
+    };
+    const cls = map[unit.billingStatus] || 'bg-slate-50 text-slate-600 border-slate-200';
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold ${cls}`}>
+        {unit.billingStatus === 'Paid' && <Check className="w-3 h-3" />}
+        {unit.billingStatus === 'Paid' || unit.billingStatus === 'Partially Paid' || unit.billingStatus === 'Overdue' ? unit.billingStatus : 'No balance'}
+      </span>
+    );
+  };
+
+  const leaseInfo = (unit: PropertyUnit) => {
+    const start = parsePaymentDate(unit.leaseStart || unit.currentTenant?.leaseStart);
+    const end = parsePaymentDate(unit.leaseEnd || unit.currentTenant?.leaseEnd);
+    if (!end) return null;
+    const today = new Date(new Date().setHours(0, 0, 0, 0));
+    const days = Math.round((end.getTime() - today.getTime()) / 86_400_000);
+    const pct = start && end > start
+      ? Math.min(100, Math.max(0, ((today.getTime() - start.getTime()) / (end.getTime() - start.getTime())) * 100))
+      : 0;
+    return { start, end, days, pct };
+  };
+
   return (
     <div id="units-management-container" className="p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
-      
-      {/* Top Header Section - Clean & Minimal */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            Properties & Units
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Storefronts, kiosks, and tenant occupancy directory
-          </p>
-        </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2">
-          {onDeleteAllUnits && (
-            <ClearAllButton
-              count={units.length}
-              itemLabel="units"
-              onClear={onDeleteAllUnits}
-              message="All units and properties are deleted, together with their connected tenants, for every user. This cannot be undone."
-            />
-          )}
+      {/* Header */}
+      <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs">
+        <div className="h-1.5 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
+        <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-orange-100/50" />
+        <div className="absolute right-32 -bottom-20 w-40 h-40 rounded-full bg-amber-100/40" />
+        <div className="relative p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/30">
+              <Building2 className="w-7 h-7" />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Properties & Units</h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Shops, spaces and who leases them — all in one place.</p>
+            </div>
+          </div>
 
-          <button
-            type="button"
-            onClick={handleExport}
-            className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Export</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenFloorMap}
-            className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <Map className="w-3.5 h-3.5 text-blue-600" />
-            <span>Floor Map</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenAddUnit}
-            className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs shadow-blue-500/25 flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Create Unit</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {onDeleteAllUnits && (
+              <ClearAllButton
+                count={units.length}
+                itemLabel="units"
+                onClear={onDeleteAllUnits}
+                message="All units and properties are deleted, together with their connected tenants, for every user. This cannot be undone."
+              />
+            )}
+            <button
+              type="button"
+              onClick={handleExport}
+              className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-500" /> Export
+            </button>
+            <button
+              type="button"
+              onClick={onOpenFloorMap}
+              className="px-3.5 py-2 bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-200 text-slate-700 rounded-xl text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Map className="w-3.5 h-3.5 text-orange-500" /> Floor Map
+            </button>
+            <button
+              type="button"
+              onClick={onOpenAddUnit}
+              className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-extrabold shadow-md shadow-orange-500/25 flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> Create Unit
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Unified Minimalist Metric Strip (Replaces 5 separate bulky cards) */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 gap-y-3 sm:gap-y-0">
-        
-        <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Total Units</span>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-bold text-slate-900">{totalInventoryCount}</span>
-            <span className="text-[11px] text-slate-400 font-normal">{shopsCount} shops · {spacesCount} spaces</span>
+      {/* Metrics */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {metrics.map((m, i) => (
+          <div key={m.label} className="relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5 hover:shadow-md transition-shadow">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{m.label}</span>
+                <span className="block text-3xl font-black text-slate-900 mt-1 leading-none">{m.value}</span>
+              </div>
+              <span className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${m.tone} text-white flex items-center justify-center shadow-md`}>
+                <m.icon className="w-5 h-5" />
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-2">{m.sub}</p>
+            {i === 1 && (
+              <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400" style={{ width: `${occupancyPct}%` }} />
+              </div>
+            )}
+            {i === 0 && totalSqM > 0 && <p className="text-[10px] text-slate-400">{Math.round(totalSqM).toLocaleString()} m² total</p>}
           </div>
-        </div>
-
-        <div className="px-3 sm:px-4 py-1">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">Occupied</span>
-            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded-full">
-              {occupancyPct}%
-            </span>
-          </div>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-bold text-emerald-600">{occupiedCount}</span>
-            <span className="text-[11px] text-slate-400 font-normal">Active leases</span>
-          </div>
-        </div>
-
-        <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Available</span>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-bold text-slate-900">{availableCount}</span>
-            <span className="text-[11px] text-slate-400 font-normal">{vacancyPct}% vacancy</span>
-          </div>
-        </div>
-
-        <div className="px-3 sm:px-4 py-1">
-          <span className="text-xs font-medium text-slate-500 block">Hold & Maint</span>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-bold text-slate-900">{reservedCount + maintenanceCount}</span>
-            <span className="text-[11px] text-slate-400 font-normal">{reservedCount} hold · {maintenanceCount} maint</span>
-          </div>
-        </div>
-
+        ))}
       </div>
 
-      {/* Filter Toolbar - Clean, Single Tier (Replaces large layered box) */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs space-y-3">
-        
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          
-          {/* Category Tabs */}
-          <div className="inline-flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-semibold overflow-x-auto max-w-full">
+      {/* Toolbar */}
+      <div className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-xs space-y-3">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+          <div className="inline-flex items-center bg-slate-100 p-1 rounded-2xl text-xs font-bold overflow-x-auto max-w-full self-start">
             {(['All', 'Shops', 'Spaces', 'Available'] as const).map(tab => (
               <button
                 key={tab}
+                type="button"
                 onClick={() => setActiveCategoryTab(tab)}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                  activeCategoryTab === tab 
-                    ? 'bg-white text-orange-600 shadow-xs font-bold' 
+                className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                  activeCategoryTab === tab
+                    ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-sm shadow-orange-500/25'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                {tab === 'All' ? `All (${totalInventoryCount})` : tab === 'Shops' ? `Shops (${shopsCount})` : tab === 'Spaces' ? `Spaces (${spacesCount})` : `Available (${availableCount})`}
+                {tab} <span className="opacity-80">({tab === 'All' ? totalInventoryCount : tab === 'Shops' ? shopsCount : tab === 'Spaces' ? spacesCount : availableCount})</span>
               </button>
             ))}
           </div>
 
-          {/* Search Bar & Quick Select Filters */}
-          <div className="flex flex-wrap items-center gap-2 text-xs flex-1 lg:justify-end">
-            {/* Units/Properties Search Bar */}
-            <div className="relative w-full sm:w-64">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                placeholder="Search unit #, tenant, meter, type..."
-                className="w-full pl-9 pr-8 py-1.5 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all"
+                placeholder="Search unit, tenant, phone, meter..."
+                className="w-full pl-9 pr-8 py-2 bg-slate-50 focus:bg-white border border-slate-200 focus:border-orange-500 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-100 transition-all"
               />
               {search && (
                 <button
@@ -341,335 +391,257 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5 rounded-full hover:bg-slate-200/50"
                   title="Clear search"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
-
-            <select
-              value={floorFilter}
-              onChange={(e) => setFloorFilter(e.target.value)}
-              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:outline-none focus:border-blue-600 cursor-pointer"
-            >
-              <option value="All">All Floors</option>
+            <select value={floorFilter} onChange={(e) => setFloorFilter(e.target.value)} className={selectCls}>
+              <option value="All">All floors</option>
               <option value="Ground Floor">Ground Floor</option>
               <option value="Floor 1">Floor 1</option>
               <option value="Floor 2">Floor 2</option>
               <option value="Floor 3">Floor 3</option>
             </select>
-
-            <select
-              value={occupancyFilter}
-              onChange={(e) => setOccupancyFilter(e.target.value)}
-              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:outline-none focus:border-blue-600 cursor-pointer"
-            >
-              <option value="All">All Statuses</option>
+            <select value={occupancyFilter} onChange={(e) => setOccupancyFilter(e.target.value)} className={selectCls}>
+              <option value="All">All statuses</option>
               <option value="Occupied">Occupied</option>
               <option value="Available">Available</option>
               <option value="Reserved">Reserved</option>
               <option value="Maintenance">Maintenance</option>
             </select>
+            <div className="inline-flex bg-slate-100 p-0.5 rounded-xl">
+              {([['cards', LayoutGrid, 'Cards'], ['table', List, 'Table']] as const).map(([v, Icon, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setViewMode(v)}
+                  title={`${label} view`}
+                  className={`p-2 rounded-lg cursor-pointer transition-all ${viewMode === v ? 'bg-white text-orange-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                >
+                  <Icon className="w-4 h-4" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
 
-            {(floorFilter !== 'All' || occupancyFilter !== 'All' || activeCategoryTab !== 'All' || Boolean(search.trim()) || quickGroundFloor || quickExpiring30 || quickHighArrears || quickAnchor) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {quickChips.map(c => (
               <button
-                onClick={handleResetFilters}
-                className="px-2 py-1.5 text-xs text-blue-600 hover:text-blue-800 font-semibold transition-colors cursor-pointer"
+                key={c.label}
+                type="button"
+                onClick={c.toggle}
+                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${
+                  c.on ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-white text-slate-600 border-slate-200 hover:border-orange-200 hover:text-orange-700'
+                }`}
               >
-                Reset
+                <c.icon className="w-3 h-3" /> {c.label}
+              </button>
+            ))}
+            {hasFilters && (
+              <button type="button" onClick={handleResetFilters} className="px-2.5 py-1.5 text-[11px] font-bold text-orange-600 hover:text-orange-800 cursor-pointer">
+                Reset all
               </button>
             )}
           </div>
-
+          <span className="text-xs text-slate-500">
+            Showing <strong className="text-slate-900">{filteredUnits.length}</strong>{hasFilters ? ` of ${units.length}` : ''} units
+          </span>
         </div>
+      </div>
 
-        {/* Quick Filter Tag Chips - Minimal & Refined */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-slate-400 mr-1">Filter:</span>
-
-            <button
-              onClick={() => setQuickGroundFloor(!quickGroundFloor)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                quickGroundFloor
-                  ? 'bg-blue-100 text-blue-800'
-                  : 'bg-slate-100/80 text-slate-600 hover:bg-slate-200/80'
-              }`}
-            >
-              Ground Floor
+      {/* Selection bar */}
+      {selectedUnitIds.length > 0 && (
+        <div className="sticky top-2 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-900 text-white px-4 py-3 shadow-lg">
+          <span className="text-xs font-bold">{selectedUnitIds.length} unit{selectedUnitIds.length === 1 ? '' : 's'} selected</span>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setSelectedUnitIds([])} className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white cursor-pointer">
+              Clear selection
             </button>
-
-            <button
-              onClick={() => setQuickExpiring30(!quickExpiring30)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                quickExpiring30
-                  ? 'bg-amber-100 text-amber-800'
-                  : 'bg-slate-100/80 text-slate-600 hover:bg-slate-200/80'
-              }`}
-            >
-              Expiring Soon
+            <button type="button" onClick={() => exportUnitsToCSV(units.filter(u => selectedUnitIds.includes(u.id)))} className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold cursor-pointer flex items-center gap-1.5">
+              <Download className="w-3.5 h-3.5" /> Export
             </button>
-
-            <button
-              onClick={() => setQuickHighArrears(!quickHighArrears)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                quickHighArrears
-                  ? 'bg-rose-100 text-rose-800'
-                  : 'bg-slate-100/80 text-slate-600 hover:bg-slate-200/80'
-              }`}
-            >
-              Arrears (&gt;60d)
-            </button>
-
-            <button
-              onClick={() => setQuickAnchor(!quickAnchor)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                quickAnchor
-                  ? 'bg-blue-100 text-blue-800'
-                  : 'bg-slate-100/80 text-slate-600 hover:bg-slate-200/80'
-              }`}
-            >
-              Anchor Tenants
-            </button>
-          </div>
-
-          <div className="text-xs text-slate-500 font-medium">
-            {Boolean(search.trim()) || floorFilter !== 'All' || occupancyFilter !== 'All' || activeCategoryTab !== 'All' || quickGroundFloor || quickExpiring30 || quickHighArrears || quickAnchor ? (
-              <span>Showing <strong className="text-slate-800">{filteredUnits.length}</strong> of {units.length} units</span>
-            ) : (
-              <span><strong className="text-slate-800">{filteredUnits.length}</strong> units</span>
+            {onDeleteSelectedUnits && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: `Delete ${selectedUnitIds.length} selected unit(s)?`,
+                    subject: `${selectedUnitIds.length} unit(s) and their connected tenants`,
+                  });
+                  if (ok) {
+                    onDeleteSelectedUnits(selectedUnitIds);
+                    setSelectedUnitIds([]);
+                  }
+                }}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Delete
+              </button>
             )}
           </div>
         </div>
+      )}
 
-      </div>
-
-      {/* Main Units Table (Exact Match to Image 2) */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-700">
-            <thead className="bg-slate-50/90 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
-              <tr>
-                <th className="p-4 w-10">
-                  <input
-                    type="checkbox"
-                    onChange={handleSelectAll}
-                    checked={selectedUnitIds.length > 0 && selectedUnitIds.length === filteredUnits.length}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
-                  />
-                </th>
-                <th className="p-4">Unit & Specs</th>
-                <th className="p-4">Floor & Size / Meter</th>
-                <th className="p-4">Current Tenant & Trade</th>
-                <th className="p-4">Monthly Rate / Escrow</th>
-                <th className="p-4">Lease Term & Maturity</th>
-                <th className="p-4">Billing Status</th>
-                <th className="p-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredUnits.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-12 text-center">
-                    {units.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-slate-500">
-                        <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
-                          <Store className="w-6 h-6 text-slate-400 stroke-[1.5]" />
+      {/* Empty states */}
+      {filteredUnits.length === 0 ? (
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-14 text-center">
+          <div className="w-16 h-16 rounded-3xl bg-orange-50 text-orange-500 flex items-center justify-center mx-auto mb-4">
+            {units.length === 0 ? <Store className="w-8 h-8" /> : <Search className="w-8 h-8" />}
+          </div>
+          <p className="font-extrabold text-slate-900">{units.length === 0 ? 'No units yet' : 'No matching units'}</p>
+          <p className="text-xs text-slate-500 mt-1 mb-5 max-w-sm mx-auto">
+            {units.length === 0
+              ? 'Create your first shop or space to start managing tenants and rent.'
+              : search.trim()
+                ? <>Nothing matches <strong className="text-slate-700">"{search.trim()}"</strong> with the current filters.</>
+                : 'No units match the selected filters.'}
+          </p>
+          <button
+            type="button"
+            onClick={units.length === 0 ? onOpenAddUnit : handleResetFilters}
+            className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl text-xs font-extrabold shadow-md shadow-orange-500/25 cursor-pointer inline-flex items-center gap-1.5"
+          >
+            {units.length === 0 ? <><Plus className="w-4 h-4" /> Create first unit</> : <><X className="w-4 h-4" /> Clear search & filters</>}
+          </button>
+        </div>
+      ) : viewMode === 'cards' ? (
+        <>
+          <label className="flex items-center gap-2 text-xs font-semibold text-slate-500 cursor-pointer select-none w-fit">
+            <input
+              type="checkbox"
+              onChange={handleSelectAll}
+              checked={selectedUnitIds.length > 0 && selectedUnitIds.length === filteredUnits.length}
+              className="w-4 h-4 rounded accent-orange-500 cursor-pointer"
+            />
+            Select all
+          </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filteredUnits.map(unit => {
+              const isSelected = selectedUnitIds.includes(unit.id);
+              const status = STATUS_STYLE[unit.occupancyStatus] || STATUS_STYLE.Available;
+              const lease = unit.currentTenant ? leaseInfo(unit) : null;
+              const [badgeTop, badgeBottom] = (unit.codeBadge || unit.unitNumber).split(' ');
+              return (
+                <div
+                  key={unit.id}
+                  className={`group relative bg-white rounded-3xl border shadow-xs hover:shadow-lg hover:-translate-y-0.5 transition-all overflow-hidden flex flex-col ${
+                    isSelected ? 'border-orange-400 ring-2 ring-orange-200' : 'border-slate-200/80'
+                  }`}
+                >
+                  <div className={`h-1.5 ${status.bar}`} />
+                  <div className="p-5 flex-1 flex flex-col">
+                    {/* Unit header */}
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-50 to-amber-100 border border-orange-200 text-orange-800 flex flex-col items-center justify-center leading-tight shrink-0">
+                        <span className="text-[9px] font-bold">{badgeTop}</span>
+                        <span className="text-xs font-black">{badgeBottom || ''}</span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-black text-slate-900 text-base">{unit.unitNumber}</span>
+                          {unit.footfallBadge && (
+                            <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200">
+                              <Star className="w-2.5 h-2.5" /> {unit.footfallBadge}
+                            </span>
+                          )}
                         </div>
-                        <p className="font-bold text-slate-800 text-sm">No Commercial Units Registered</p>
-                        <p className="text-xs text-slate-400 mt-1 mb-4">Register your first commercial shop, kiosk, or space to start managing inventory.</p>
-                        <button
-                          type="button"
-                          onClick={onOpenAddUnit}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Register First Unit</span>
-                        </button>
+                        <p className="text-[11px] text-slate-500 truncate">{unit.type}{unit.subType ? ` • ${unit.subType}` : ''}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleRow(unit.id)}
+                          className="w-4 h-4 rounded accent-orange-500 cursor-pointer"
+                          aria-label={`Select ${unit.unitNumber}`}
+                        />
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black ${status.pill}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} /> {unit.occupancyStatus}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Specs */}
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                      {[
+                        { icon: Layers, label: unit.floor },
+                        { icon: Ruler, label: `${unit.sizeSqM} m²` },
+                        { icon: Gauge, label: unit.meterNumber || '—' },
+                      ].map((s, i) => (
+                        <div key={i} className="rounded-xl bg-slate-50 border border-slate-100 px-2 py-1.5 flex items-center gap-1.5 min-w-0">
+                          <s.icon className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                          <span className="text-[10px] font-bold text-slate-700 truncate">{s.label}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Tenant */}
+                    {unit.currentTenant ? (
+                      <div className="mt-4 rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white p-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-9 h-9 rounded-xl bg-slate-900 text-white text-[11px] font-black flex items-center justify-center shrink-0">
+                            {unit.currentTenant.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-extrabold text-slate-900 truncate">{unit.currentTenant.name}</p>
+                            <p className="text-[10px] text-slate-500 truncate">
+                              {unit.currentTenant.trade}{unit.currentTenant.phone ? ` • ${unit.currentTenant.phone}` : ''}
+                            </p>
+                          </div>
+                          {billingChip(unit)}
+                        </div>
+                        {lease && (
+                          <div className="mt-3">
+                            <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500">
+                              <span>{formatLongDate(lease.start || undefined)} → {formatLongDate(lease.end)}</span>
+                              <span className={`font-black ${lease.days < 0 ? 'text-rose-600' : lease.days <= 10 ? 'text-rose-600' : lease.days <= 30 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                {lease.days < 0 ? `Expired ${-lease.days}d ago` : lease.days === 0 ? 'Ends today' : `${lease.days} days left`}
+                              </span>
+                            </div>
+                            <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${lease.days <= 10 ? 'bg-rose-500' : lease.days <= 30 ? 'bg-amber-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`}
+                                style={{ width: `${lease.pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ) : (
-                      <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-slate-500">
-                        <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
-                          <Search className="w-6 h-6 text-slate-400 stroke-[1.5]" />
+                      <div className="mt-4 rounded-2xl border border-dashed border-emerald-300 bg-emerald-50/50 p-3 flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-extrabold text-emerald-800">Vacant — ready to lease</p>
+                          <p className="text-[10px] text-emerald-700/80">No tenant on this unit yet</p>
                         </div>
-                        <p className="font-bold text-slate-800 text-sm">No Matching Units Found</p>
-                        <p className="text-xs text-slate-400 mt-1 mb-4">
-                          {search.trim() ? (
-                            <>No properties match <span className="font-semibold text-slate-700">"{search.trim()}"</span> with current filters.</>
-                          ) : (
-                            <>No properties match the currently selected filter criteria.</>
-                          )}
-                        </p>
                         <button
                           type="button"
-                          onClick={handleResetFilters}
-                          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                          onClick={() => onAssignTenant ? onAssignTenant(unit) : (onEditUnit ? onEditUnit(unit) : onOpenAddUnit())}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold shadow-sm cursor-pointer"
                         >
-                          <X className="w-3.5 h-3.5" />
-                          <span>Clear Search & Filters</span>
+                          <UserPlus className="w-3.5 h-3.5" /> Lease
                         </button>
                       </div>
                     )}
-                  </td>
-                </tr>
-              ) : (
-                filteredUnits.map((unit) => {
-                const isSelected = selectedUnitIds.includes(unit.id);
 
-                return (
-                  <tr 
-                    key={unit.id}
-                    className={`hover:bg-slate-50/80 transition-colors ${isSelected ? 'bg-blue-50/40' : ''}`}
-                  >
-                    {/* Checkbox */}
-                    <td className="p-4">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => handleToggleRow(unit.id)}
-                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
-                      />
-                    </td>
-
-                    {/* Unit & Specs */}
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-100/70 text-blue-800 font-bold flex flex-col items-center justify-center text-[10px] leading-tight shrink-0 border border-blue-200/80">
-                          <span>{unit.codeBadge.split(' ')[0]}</span>
-                          <span className="font-extrabold">{unit.codeBadge.split(' ')[1] || ''}</span>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-slate-900 text-sm">{unit.unitNumber}</span>
-                            {unit.footfallBadge && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                                {unit.footfallBadge}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-slate-500 font-medium">
-                            {unit.type} • {unit.subType}
-                          </p>
-                        </div>
+                    {/* Footer */}
+                    <div className="mt-auto pt-4 flex items-end justify-between gap-2">
+                      <div>
+                        <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Monthly rent</span>
+                        <span className="text-xl font-black text-slate-900">${unit.monthlyRateUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        {unit.escrowDepositUSD > 0 && (
+                          <span className="block text-[10px] font-bold text-sky-700">Deposit ${unit.escrowDepositUSD.toLocaleString()} held</span>
+                        )}
                       </div>
-                    </td>
-
-                    {/* Floor & Size / Meter */}
-                    <td className="p-4">
-                      <p className="font-semibold text-slate-800">{unit.floor}</p>
-                      <p className="text-slate-600 text-[11px]">
-                        {unit.sizeSqM} m² <span className="text-slate-400 font-mono">({unit.sizeSqFt} sq.ft)</span>
-                      </p>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        ⚙ {unit.meterNumber}
-                      </p>
-                    </td>
-
-                    {/* Current Tenant & Trade */}
-                    <td className="p-4">
-                      {unit.currentTenant ? (
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-lg bg-slate-900 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                            {unit.currentTenant.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                          </div>
-                          <div className="truncate max-w-[180px]">
-                            <p className="font-bold text-slate-900 truncate">{unit.currentTenant.name}</p>
-                            <p className="text-[11px] text-slate-500 truncate">{unit.currentTenant.trade}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">ID: {unit.currentTenant.code}</p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <p className="text-slate-400 italic">No Active Tenant</p>
-                          <button
-                            onClick={() => onAssignTenant ? onAssignTenant(unit) : (onEditUnit ? onEditUnit(unit) : onOpenAddUnit())}
-                            className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-0.5 cursor-pointer"
-                          >
-                            <UserPlus className="w-3 h-3" />
-                            <span>+ Assign Tenant Now</span>
-                          </button>
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Monthly Rate / Escrow */}
-                    <td className="p-4">
-                      <p className="font-bold text-slate-900 text-sm">
-                        ${unit.monthlyRateUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })} <span className="text-[10px] font-normal text-slate-500">USD</span>
-                      </p>
-                      <p className="text-[11px] text-slate-500">
-                        {unit.sizeSqM} m² ({unit.sizeSqFt} sq ft)
-                      </p>
-                      <p className="text-[10px] text-blue-700 font-medium mt-0.5">
-                        Deposit: ${unit.escrowDepositUSD.toLocaleString()} held
-                      </p>
-                    </td>
-
-                    {/* Lease Term & Maturity */}
-                    <td className="p-4">
-                      {unit.currentTenant ? (
-                        <div>
-                          <p className="text-[11px] font-medium text-slate-700">
-                            {unit.leaseStart} - {unit.leaseEnd}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
-                              {unit.leaseTermMonths} Mo Term
-                            </span>
-                            {unit.daysToExpiry && unit.daysToExpiry <= 30 ? (
-                              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">
-                                Exp in {unit.daysToExpiry} days
-                              </span>
-                            ) : unit.daysToExpiry ? (
-                              <span className="text-[10px] font-medium text-slate-500">
-                                Exp in {unit.daysToExpiry} days
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-medium text-emerald-600">Active</span>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                            Ready for Immediate Lease
-                          </span>
-                          <p className="text-[10px] text-slate-400 mt-1">Standard 1-3 Year Contract</p>
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Billing Status */}
-                    <td className="p-4">
-                      {unit.billingStatus === 'Paid' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
-                          <Check className="w-3 h-3" />
-                          <span>{unit.billingMonthText || 'Paid • Oct 2024'}</span>
-                        </span>
-                      ) : unit.billingStatus === 'Partially Paid' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">
-                          <span>{unit.billingMonthText || 'Partially Paid'}</span>
-                        </span>
-                      ) : unit.billingStatus === 'Overdue' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 text-xs font-bold">
-                          <span>{unit.billingMonthText || 'Overdue'}</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold">
-                          <span>No Balance</span>
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Actions */}
-                    <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
+                      <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => onEditUnit ? onEditUnit(unit) : onOpenAddUnit()}
-                          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold text-slate-600 bg-slate-100 hover:text-orange-700 hover:bg-orange-50 rounded-xl transition-colors cursor-pointer"
                           title="Edit unit details"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
+                          <Edit2 className="w-3.5 h-3.5" /> Edit
                         </button>
                         {onDeleteUnit && (
                           <DeleteButton
@@ -683,51 +655,120 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                           />
                         )}
                       </div>
-                    </td>
-                  </tr>
-                );
-              }))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
-          <span>
-            Selected {selectedUnitIds.length} of {filteredUnits.length} total units
-          </span>
-          <div className="flex items-center gap-2">
-            {selectedUnitIds.length > 0 && onDeleteSelectedUnits && (
-              <button
-                type="button"
-                onClick={async () => {
-                  const ok = await confirm({
-                    title: `Delete ${selectedUnitIds.length} selected unit(s)?`,
-                    subject: `${selectedUnitIds.length} unit(s) and their connected tenants`,
-                  });
-                  if (ok) {
-                    onDeleteSelectedUnits(selectedUnitIds);
-                    setSelectedUnitIds([]);
-                  }
-                }}
-                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete Selected ({selectedUnitIds.length})</span>
-              </button>
-            )}
-            <button
-              disabled={selectedUnitIds.length === 0}
-              onClick={handleExport}
-              className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium disabled:opacity-50 cursor-pointer"
-            >
-              Export Selected
-            </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-700">
+              <thead className="bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider">
+                <tr>
+                  <th className="p-4 w-10">
+                    <input
+                      type="checkbox"
+                      onChange={handleSelectAll}
+                      checked={selectedUnitIds.length > 0 && selectedUnitIds.length === filteredUnits.length}
+                      className="w-4 h-4 rounded accent-orange-500 cursor-pointer"
+                    />
+                  </th>
+                  <th className="p-4">Unit</th>
+                  <th className="p-4">Floor & size</th>
+                  <th className="p-4">Tenant</th>
+                  <th className="p-4">Rent</th>
+                  <th className="p-4">Lease</th>
+                  <th className="p-4">Status</th>
+                  <th className="p-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredUnits.map(unit => {
+                  const isSelected = selectedUnitIds.includes(unit.id);
+                  const status = STATUS_STYLE[unit.occupancyStatus] || STATUS_STYLE.Available;
+                  const lease = unit.currentTenant ? leaseInfo(unit) : null;
+                  return (
+                    <tr key={unit.id} className={`hover:bg-orange-50/40 transition-colors ${isSelected ? 'bg-orange-50/60' : ''}`}>
+                      <td className="p-4">
+                        <input type="checkbox" checked={isSelected} onChange={() => handleToggleRow(unit.id)} className="w-4 h-4 rounded accent-orange-500 cursor-pointer" />
+                      </td>
+                      <td className="p-4">
+                        <p className="font-black text-slate-900 text-sm">{unit.unitNumber}</p>
+                        <p className="text-[11px] text-slate-500">{unit.type}{unit.subType ? ` • ${unit.subType}` : ''}</p>
+                      </td>
+                      <td className="p-4">
+                        <p className="font-semibold text-slate-800">{unit.floor}</p>
+                        <p className="text-[11px] text-slate-500">{unit.sizeSqM} m² • <span className="font-mono">{unit.meterNumber}</span></p>
+                      </td>
+                      <td className="p-4">
+                        {unit.currentTenant ? (
+                          <div className="max-w-[200px]">
+                            <p className="font-bold text-slate-900 truncate">{unit.currentTenant.name}</p>
+                            <p className="text-[11px] text-slate-500 truncate">{unit.currentTenant.trade}</p>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onAssignTenant ? onAssignTenant(unit) : (onEditUnit ? onEditUnit(unit) : onOpenAddUnit())}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
+                          >
+                            <UserPlus className="w-3.5 h-3.5" /> Lease now
+                          </button>
+                        )}
+                      </td>
+                      <td className="p-4 font-black text-slate-900">${unit.monthlyRateUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                      <td className="p-4">
+                        {lease ? (
+                          <>
+                            <p className="text-[11px] text-slate-600">{formatLongDate(lease.end)}</p>
+                            <p className={`text-[10px] font-black ${lease.days <= 10 ? 'text-rose-600' : lease.days <= 30 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                              {lease.days < 0 ? 'Expired' : `${lease.days} days left`}
+                            </p>
+                          </>
+                        ) : <span className="text-[11px] text-slate-400">—</span>}
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-col items-start gap-1">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black ${status.pill}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} /> {unit.occupancyStatus}
+                          </span>
+                          {billingChip(unit)}
+                        </div>
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => onEditUnit ? onEditUnit(unit) : onOpenAddUnit()}
+                            className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors cursor-pointer"
+                            title="Edit unit details"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          {onDeleteUnit && (
+                            <DeleteButton
+                              title="Delete unit"
+                              onDelete={() => onDeleteUnit(unit.id)}
+                              confirm={{
+                                title: `Delete unit ${unit.unitNumber}?`,
+                                subject: unit.currentTenant ? `${unit.unitNumber} • leased to ${unit.currentTenant.name}` : `${unit.unitNumber} • vacant`,
+                                message: 'The unit and any connected tenant are removed from the database. This cannot be undone.',
+                              }}
+                            />
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
-
-      </div>
-
+      )}
     </div>
   );
 };
