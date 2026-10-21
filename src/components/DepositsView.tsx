@@ -15,6 +15,7 @@ import {
 import { DepositRecord, PropertyUnit, CurrencyMode } from '../types';
 import { ClearAllButton } from './DeleteControls';
 import { DepositRecordsPanel } from './DepositRecordsPanel';
+import { formatDepositAmount } from './DepositVoucher';
 import { TenantAccount, depositMonthLabels, isCreditDeposit } from '../utils/tenantAccount';
 
 interface DepositsViewProps {
@@ -277,6 +278,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
       ) : (
         <DepositRecordsPanel
           deposits={deposits}
+          units={units}
           search={search}
           onRelease={onReleaseDeposit ? setReleasing : undefined}
           onDelete={onDeleteDeposit}
@@ -293,7 +295,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
             <div className="text-center">
               <h3 className="text-base font-bold text-slate-900">Release this deposit?</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Return <strong>{usd(releasing.amountUSD)}</strong> to <strong>{releasing.tenantName}</strong> ({releasing.unitNumber}).
+                Return <strong>{formatDepositAmount(releasing)}</strong> to <strong>{releasing.tenantName}</strong> ({releasing.unitNumber}).
                 It is recorded as an outflow in Cashflow and the record stays as "Refunded".
               </p>
             </div>
@@ -306,7 +308,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
                 onClick={() => { onReleaseDeposit?.(releasing); setReleasing(null); }}
                 className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer"
               >
-                Release {usd(releasing.amountUSD)}
+                Release {formatDepositAmount(releasing)}
               </button>
             </div>
           </div>
