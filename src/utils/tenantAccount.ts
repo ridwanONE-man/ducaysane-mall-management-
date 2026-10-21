@@ -49,6 +49,16 @@ export const depositMonthLabels = (d: DepositRecord): string[] => {
   return m ? m[1].split(',').map(x => x.trim()).filter(Boolean) : [];
 };
 
+// Deposits of any amount, not tied to a month, carry this tag in their notes.
+export const AMOUNT_DEPOSIT_TAG = 'Any-amount deposit (not for a month)';
+export const isAmountDeposit = (d: DepositRecord) => (d.notes || '').includes(AMOUNT_DEPOSIT_TAG);
+
+// Rewrites the "Deposit for: ..." list in a deposit's notes, keeping everything else.
+export function withDepositMonths(notes: string | undefined, labels: string[]): string {
+  const rest = (notes || '').replace(/Deposit for: [^.]+\.\s*/, '').trim();
+  return [labels.length ? `${DEPOSIT_MONTHS_PREFIX}${labels.join(', ')}.` : '', rest].filter(Boolean).join(' ');
+}
+
 const MONTHS_AHEAD = 11;
 
 export const accountKey = (name: string, unitNumber: string) =>
@@ -191,3 +201,54 @@ export function allocatePayment(selected: AccountMonth[], cash: number, creditTo
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
+
+// ---------------------------------------------------------------------------
+// Paying rent from a deposit once the month falls due
+// ---------------------------------------------------------------------------
+
+export interface DepositApplication {
+  deposit: DepositRecord; // the deposit as it was before
+  month: AccountMonth;
+  amount: number;
+}
+
+// For every month that is due now and not fully paid: a deposit taken for that month pays
+// it first, then any-amount deposits (oldest first) cover what is left. Returns what to
+// apply and how each touched deposit looks afterwards.
+export function planDepositApplications(account: TenantAccount, today = new Date()) {
+  const todayIdx = today.getFullYear() * 12 + today.getMonth();
+  const usable = account.securityDeposits
+    .filter(d => d.amountUSD > 0 && (depositMonthLabels(d).length > 0 || isAmountDeposit(d)))
+    .sort((a, b) => (parsePaymentDate(a.heldSince)?.getTime() || 0) - (parsePaymentDate(b.heldSince)?.getTime() || 0));
+  const left = new Map(usable.map(d => [d.id, d.amountUSD]));
+  const labels = new Map(usable.map(d => [d.id, depositMonthLabels(d)]));
+  const applications: DepositApplication[] = [];
+
+  const dueMonths = account.months.filter(m => m.contracted && m.idx <= todayIdx && m.remaining > 0);
+  for (const month of dueMonths) {
+    let need = month.remaining;
+    const forMonth = usable.filter(d => labels.get(d.id)!.includes(month.short));
+    const anyAmount = usable.filter(d => isAmountDeposit(d) && !forMonth.includes(d));
+    for (const d of [...forMonth, ...anyAmount]) {
+      if (need <= 0) break;
+      const take = round(Math.min(need, left.get(d.id) || 0));
+      if (take <= 0) continue;
+      need = round(need - take);
+      left.set(d.id, round((left.get(d.id) || 0) - take));
+      labels.set(d.id, labels.get(d.id)!.filter(l => l !== month.short));
+      applications.push({ deposit: d, month, amount: take });
+    }
+  }
+
+  const touched = [...new Set(applications.map(a => a.deposit))];
+  const updated: DepositRecord[] = touched.map(d => {
+    const remaining = left.get(d.id) || 0;
+    const applied = applications.filter(a => a.deposit.id === d.id);
+    let notes = withDepositMonths(d.notes, labels.get(d.id)!);
+    // A month deposit with money left but no months left becomes an any-amount deposit
+    if (remaining > 0 && labels.get(d.id)!.length === 0 && !isAmountDeposit(d)) notes = `${AMOUNT_DEPOSIT_TAG}. ${notes}`;
+    notes = `${notes} ${applied.map(a => `Paid $${a.amount.toFixed(2)} of ${a.month.short} rent.`).join(' ')}`.trim();
+    return { ...d, amountUSD: remaining, status: remaining > 0 ? d.status : 'Applied to Rent', notes };
+  });
+  return { applications, updated };
+}

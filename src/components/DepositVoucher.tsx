@@ -3,7 +3,7 @@ import { Scissors } from 'lucide-react';
 import { DepositRecord, PropertyUnit } from '../types';
 import { numberToWords } from '../utils/numberToWords';
 import { formatMoney, normalizeUnitNumber } from '../utils/printUtils';
-import { depositMonthLabels, isCreditDeposit } from '../utils/tenantAccount';
+import { depositMonthLabels, isCreditDeposit, isAmountDeposit, AMOUNT_DEPOSIT_TAG } from '../utils/tenantAccount';
 import { BUSINESS_PROFILE } from '../data/businessProfile';
 import logoImg from '../assets/logo.png';
 
@@ -99,9 +99,11 @@ export const DepositVoucher: React.FC<{ deposit: DepositRecord; unit?: PropertyU
   const title = credit ? 'Advance Credit Voucher' : 'Security Deposit Voucher';
   const covers = credit
     ? 'Advance rent credit (overpayment)'
-    : months.length ? months.join(', ') : monthCount ? `${monthCount} month${monthCount === 1 ? '' : 's'} of rent` : 'Security deposit';
-  const userNote = (deposit.notes || '').replace(/Deposit for: [^.]+\.\s*/, '').trim();
-  const status = refunded ? 'Refunded to tenant' : credit ? 'Credit on account' : 'Held in escrow';
+    : isAmountDeposit(deposit) && !months.length
+      ? 'Any amount — not for a specific month'
+      : months.length ? months.join(', ') : monthCount ? `${monthCount} month${monthCount === 1 ? '' : 's'} of rent` : 'Security deposit';
+  const userNote = (deposit.notes || '').replace(/Deposit for: [^.]+\.\s*/, '').replace(`${AMOUNT_DEPOSIT_TAG}.`, '').trim();
+  const status = refunded ? 'Refunded to tenant' : deposit.status === 'Applied to Rent' ? 'Used for rent' : credit ? 'Credit on account' : 'Held in escrow';
 
   return (
     <div className="bg-white text-slate-900 font-sans p-3">
@@ -291,7 +293,7 @@ export const DepositStatement: React.FC<DepositStatementProps> = ({ deposits, ti
                     <td className="py-2 px-3 font-mono font-bold">{d.depositSlip || d.id}</td>
                     <td className="py-2 px-3">{depositDateLabel(d.heldSince)}</td>
                     {!subtitle && <td className="py-2 px-3">{d.tenantName} • {d.unitNumber}</td>}
-                    <td className="py-2 px-3">{isCreditDeposit(d) ? 'Advance credit' : months.join(', ') || (count ? `${count} month(s)` : '—')}</td>
+                    <td className="py-2 px-3">{isCreditDeposit(d) ? 'Advance credit' : months.join(', ') || (isAmountDeposit(d) ? 'Any amount' : count ? `${count} month(s)` : '—')}</td>
                     <td className="py-2 px-3">{d.status === 'Held in Escrow' ? 'Held' : d.status}</td>
                     <td className="py-2 px-3 text-right font-mono font-bold">{formatDepositAmount(d)}</td>
                   </tr>

@@ -85,7 +85,8 @@ export type PaymentMethodType =
   | 'EVC Plus / Mobile Money'
   | 'Bank Wire Transfer'
   | 'Cheque / Slip'
-  | 'Advance Credit';
+  | 'Advance Credit'
+  | 'Security Deposit';
 
 export interface PaymentRecord {
   id: string;
@@ -121,7 +122,7 @@ export interface DepositRecord {
   monthlyRentUSD?: number;
   currency?: 'USD' | 'SSP' | 'DUAL';
   heldSince: string;
-  status: 'Held in Escrow' | 'Under Review' | 'Refunded';
+  status: 'Held in Escrow' | 'Under Review' | 'Refunded' | 'Applied to Rent';
   bankAccount: string;
   interestEarned?: number;
   notes?: string;

@@ -16,7 +16,7 @@ import { DepositRecord, PropertyUnit, CurrencyMode } from '../types';
 import { ClearAllButton } from './DeleteControls';
 import { DepositRecordsPanel } from './DepositRecordsPanel';
 import { formatDepositAmount } from './DepositVoucher';
-import { TenantAccount, depositMonthLabels, isCreditDeposit } from '../utils/tenantAccount';
+import { TenantAccount, depositMonthLabels, isCreditDeposit, isAmountDeposit } from '../utils/tenantAccount';
 
 interface DepositsViewProps {
   units: PropertyUnit[];
@@ -24,6 +24,7 @@ interface DepositsViewProps {
   currencyMode?: CurrencyMode;
   tenantAccounts?: TenantAccount[];
   onOpenDeposit?: (account: TenantAccount) => void;
+  onManageDeposit?: (account: TenantAccount) => void;
   onOpenTenantPayments?: (account: TenantAccount) => void;
   onReleaseDeposit?: (deposit: DepositRecord) => void;
   onDeleteDeposit?: (deposit: DepositRecord) => void;
@@ -40,6 +41,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
   deposits = [],
   tenantAccounts = [],
   onOpenDeposit,
+  onManageDeposit,
   onOpenTenantPayments,
   onReleaseDeposit,
   onDeleteDeposit,
@@ -204,6 +206,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {shownAccounts.map(a => {
               const depositMonths = a.securityDeposits.flatMap(depositMonthLabels);
+              const amountDeposits = a.securityDeposits.filter(isAmountDeposit).reduce((s, d) => s + d.amountUSD, 0);
               return (
                 <div key={a.key} className="bg-white rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all p-5 flex flex-col">
                   <div className="flex items-start justify-between gap-3">
@@ -238,7 +241,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
                   <div className="mt-2 rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-2 text-[11px] flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1.5 text-blue-900 min-w-0">
                       <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      <span className="truncate">{a.depositHeld > 0 ? (depositMonths.length ? depositMonths.join(', ') : 'Deposit held') : 'No deposit yet'}</span>
+                      <span className="truncate">{a.depositHeld > 0 ? [depositMonths.join(', '), amountDeposits > 0 ? `${usd(amountDeposits)} any amount` : ''].filter(Boolean).join(' • ') || 'Deposit held' : 'No deposit yet'}</span>
                     </span>
                     <span className="font-black text-blue-700 shrink-0">{a.depositHeld > 0 ? usd(a.depositHeld) : '—'}</span>
                   </div>
@@ -249,7 +252,17 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
                     </p>
                   )}
 
-                  <div className="mt-auto pt-4">
+                  <div className="mt-auto pt-4 flex gap-2">
+                    {a.depositHeld > 0 && onManageDeposit && (
+                      <button
+                        type="button"
+                        onClick={() => onManageDeposit(a)}
+                        className="shrink-0 px-3 py-2.5 rounded-xl bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 text-slate-700 hover:text-orange-700 text-xs font-extrabold cursor-pointer"
+                        title="Unmark months or clear this deposit"
+                      >
+                        Manage
+                      </button>
+                    )}
                     {a.canDeposit ? (
                       <button
                         type="button"

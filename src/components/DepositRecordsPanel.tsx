@@ -4,7 +4,7 @@ import { DepositRecord, PropertyUnit } from '../types';
 import { DeleteButton } from './DeleteControls';
 import { PrintPortal } from './PrintPortal';
 import { DepositVoucher, DepositStatement, parseDepositDate, depositDateLabel, depositMoney, formatDepositAmount, depositMonthCount, findDepositUnit } from './DepositVoucher';
-import { accountKey, depositMonthLabels, isCreditDeposit } from '../utils/tenantAccount';
+import { accountKey, depositMonthLabels, isCreditDeposit, isAmountDeposit } from '../utils/tenantAccount';
 import { MONTH_NAMES } from '../utils/rentLedger';
 import { formatLongDate, formatMoney } from '../utils/printUtils';
 
@@ -275,7 +275,7 @@ export const DepositRecordsPanel: React.FC<DepositRecordsPanelProps> = ({ deposi
                       </div>
                       {!selected && <p className="text-xs font-extrabold text-slate-900 mt-0.5 truncate">{d.tenantName} <span className="font-semibold text-slate-500">• {d.unitNumber}</span></p>}
                       <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                        {depositDateLabel(d.heldSince)} • {credit ? 'Overpayment kept as credit' : months.length ? months.join(', ') : depositMonthCount(d) ? `${depositMonthCount(d)} month(s)` : 'Security deposit'}
+                        {depositDateLabel(d.heldSince)} • {credit ? 'Overpayment kept as credit' : months.length ? months.join(', ') : isAmountDeposit(d) ? 'Any amount — not for a month' : depositMonthCount(d) ? `${depositMonthCount(d)} month(s)` : 'Security deposit'}
                       </p>
                     </div>
                     <span className="text-base font-black text-slate-900 sm:w-32 sm:text-right">{formatDepositAmount(d)}</span>

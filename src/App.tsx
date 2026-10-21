@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { LoginPage } from './components/LoginPage';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -19,7 +19,8 @@ import { FloorMapView } from './components/FloorMapView';
 import { NotificationsView } from './components/NotificationsView';
 import { SmartPayModal, SmartPayRequest } from './components/SmartPayModal';
 import { TenantDepositModal, TenantDepositRequest } from './components/TenantDepositModal';
-import { buildTenantAccount, buildTenantAccounts, CREDIT_BANK_LABEL, CREDIT_SLIP_PREFIX, DEPOSIT_MONTHS_PREFIX } from './utils/tenantAccount';
+import { DepositManageModal } from './components/DepositManageModal';
+import { buildTenantAccount, buildTenantAccounts, CREDIT_BANK_LABEL, CREDIT_SLIP_PREFIX, DEPOSIT_MONTHS_PREFIX, AMOUNT_DEPOSIT_TAG, depositMonthLabels, withDepositMonths, planDepositApplications, accountKey } from './utils/tenantAccount';
 import { nextReceiptNumber } from './utils/receiptNumbers';
 
 import { 
@@ -281,6 +282,11 @@ export default function App() {
   const smartPayAccount = tenantAccounts.find(a => a.key === smartPayKey) || null;
   const [depositKey, setDepositKey] = useState<string | null>(null);
   const depositAccount = tenantAccounts.find(a => a.key === depositKey) || null;
+  const [manageDepositKey, setManageDepositKey] = useState<string | null>(null);
+  const manageDepositAccount = tenantAccounts.find(a => a.key === manageDepositKey) || null;
+  // Becomes true once payments and deposits have been loaded from the database
+  const [dbReady, setDbReady] = useState(false);
+  const appliedDepositRows = useRef<Set<string>>(new Set());
 
   // Next deposit slip in this year's sequence: DEP-2026-0001, DEP-2026-0002, ...
   const nextDepositSlip = (() => {
@@ -321,6 +327,7 @@ export default function App() {
       if (data.payments) setPayments(data.payments);
       if (data.deposits) setDeposits(data.deposits);
       if (data.cashflow) setCashflow(data.cashflow);
+      if (data.payments && data.deposits) setDbReady(true);
     }
 
     setRealtimeStatus('connecting');
@@ -954,8 +961,9 @@ export default function App() {
   };
 
   // Security deposit for chosen months, only offered once rent is paid up to date
-  const handleAddTenantDeposit = async ({ account, months, amount, bankAccount, notes }: TenantDepositRequest) => {
+  const handleAddTenantDeposit = async ({ account, mode, months, amount, bankAccount, notes }: TenantDepositRequest) => {
     const { tenant, unit } = account;
+    const coverText = mode === 'amount' ? 'any amount (not for a month)' : months.map(m => m.short).join(', ');
     const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const stamp = Date.now();
     const dep: DepositRecord = {
@@ -972,7 +980,7 @@ export default function App() {
       heldSince: date,
       status: 'Held in Escrow',
       bankAccount,
-      notes: `${DEPOSIT_MONTHS_PREFIX}${months.map(m => m.short).join(', ')}.${notes ? ` ${notes}` : ''}`,
+      notes: `${mode === 'amount' ? AMOUNT_DEPOSIT_TAG : `${DEPOSIT_MONTHS_PREFIX}${months.map(m => m.short).join(', ')}`}.${notes ? ` ${notes}` : ''}`,
     };
     const updatedUnit: PropertyUnit = {
       ...unit,
@@ -991,7 +999,7 @@ export default function App() {
       account: 'Escrow Trust Account',
       recordedBy: adminUser.name,
       status: 'Completed',
-      notes: `Security deposit ${dep.depositSlip} for ${months.map(m => m.short).join(', ')}.`,
+      notes: `Security deposit ${dep.depositSlip} for ${coverText}.`,
     };
 
     setDeposits(prev => [dep, ...prev]);
@@ -1007,7 +1015,7 @@ export default function App() {
     setNotifications(prev => [{
       id: `notif-${stamp}`,
       title: `Deposit Held: ${dep.depositSlip}`,
-      description: `$${amount.toFixed(2)} from ${tenant.name} (${unit.unitNumber}) for ${months.map(m => m.short).join(', ')}.`,
+      description: `$${amount.toFixed(2)} from ${tenant.name} (${unit.unitNumber}) for ${coverText}.`,
       timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
       type: 'payment',
       read: false,
@@ -1017,6 +1025,153 @@ export default function App() {
       ? `Deposit ${dep.depositSlip} of $${amount.toFixed(2)} held for ${tenant.name}.`
       : `Deposit ${dep.depositSlip} is saved on this device and will be uploaded automatically.`);
   };
+
+  // Tenant's deposit money still held, written onto the unit
+  const unitWithDeposits = (unit: PropertyUnit, allDeposits: DepositRecord[]): PropertyUnit => {
+    const key = unit.currentTenant ? accountKey(unit.currentTenant.name, unit.unitNumber) : '';
+    const held = allDeposits.filter(d =>
+      d.status === 'Held in Escrow' && !(d.depositSlip || '').startsWith(CREDIT_SLIP_PREFIX) && accountKey(d.tenantName, d.unitNumber) === key
+    );
+    return {
+      ...unit,
+      escrowDepositUSD: Math.round(held.reduce((s, d) => s + d.amountUSD, 0) * 100) / 100,
+      depositMonths: held.reduce((s, d) => s + depositMonthLabels(d).length, 0),
+    };
+  };
+
+  // Untick months on a month deposit: its money goes down by the removed months
+  const handleSaveDepositMonths = async (dep: DepositRecord, keep: string[]) => {
+    const labels = depositMonthLabels(dep);
+    const removed = labels.filter(l => !keep.includes(l));
+    if (!removed.length) return;
+    const perMonth = labels.length ? dep.amountUSD / labels.length : 0;
+    const newAmount = Math.round(perMonth * keep.length * 100) / 100;
+    const cut = Math.round((dep.amountUSD - newAmount) * 100) / 100;
+    const updated: DepositRecord = {
+      ...dep,
+      amountUSD: newAmount,
+      depositMonths: keep.length,
+      notes: `${withDepositMonths(dep.notes, keep)} Removed ${removed.join(', ')} ($${cut.toFixed(2)}) on ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.`,
+    };
+    const nextDeposits = deposits.map(d => d.id === dep.id ? updated : d);
+    const unit = units.find(u => u.unitNumber === dep.unitNumber);
+    const updatedUnit = unit ? unitWithDeposits(unit, nextDeposits) : null;
+    const tx = cashflow.find(c => c.id === `cf-${dep.id}`);
+    const updatedTx = tx ? { ...tx, amount: Math.max(0, Math.round((tx.amount - cut) * 100) / 100), notes: `${tx.notes || ''} Reduced by $${cut.toFixed(2)} (removed ${removed.join(', ')}).`.trim() } : null;
+
+    setDeposits(nextDeposits);
+    if (updatedUnit) setUnits(prev => prev.map(u => u.id === updatedUnit.id ? updatedUnit : u));
+    if (updatedTx) setCashflow(prev => prev.map(c => c.id === updatedTx.id ? updatedTx : c));
+
+    const results = await Promise.all([
+      persist('deposits', updated, saveDepositToSupabase),
+      ...(updatedUnit ? [persist('units', updatedUnit, saveUnitToSupabase)] : []),
+      ...(updatedTx ? [persist('cashflow', updatedTx, saveCashflowToSupabase)] : []),
+    ]);
+    showToast(results.every(Boolean)
+      ? `Removed ${removed.join(', ')} from ${dep.depositSlip}. Deposit is now $${newAmount.toFixed(2)}.`
+      : 'Change saved on this device and will be uploaded automatically.');
+  };
+
+  // Remove a deposit and its money completely
+  const handleClearTenantDeposit = async (dep: DepositRecord) => {
+    const nextDeposits = deposits.filter(d => d.id !== dep.id);
+    const unit = units.find(u => u.unitNumber === dep.unitNumber);
+    const updatedUnit = unit ? unitWithDeposits(unit, nextDeposits) : null;
+    const linkedTx = cashflow.filter(c => c.id === `cf-${dep.id}`);
+
+    setPending('deposits', dep.id, false);
+    setDeposits(nextDeposits);
+    setCashflow(prev => prev.filter(c => !linkedTx.includes(c)));
+    if (updatedUnit) setUnits(prev => prev.map(u => u.id === updatedUnit.id ? updatedUnit : u));
+
+    const ok = await deleteDepositFromSupabase(dep.id);
+    if (ok) {
+      await Promise.all([
+        ...linkedTx.map(c => { setPending('cashflow', c.id, false); return deleteCashflowFromSupabase(c.id); }),
+        ...(updatedUnit ? [persist('units', updatedUnit, saveUnitToSupabase)] : []),
+      ]);
+    }
+    await reportDeleteResult(ok, `Deposit ${dep.depositSlip || dep.id} cleared.`);
+  };
+
+  // When a rent month falls due and is unpaid, pay it from the tenant's deposit.
+  // Row ids are fixed per deposit + month, so running this twice (or on two devices)
+  // never books the same rent twice.
+  useEffect(() => {
+    if (!dbReady) return;
+    const rows: PaymentRecord[] = [];
+    const changedDeposits: DepositRecord[] = [];
+    const changedUnits: PropertyUnit[] = [];
+    const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    for (const account of tenantAccounts) {
+      const { applications, updated } = planDepositApplications(account);
+      const fresh = applications.filter(a => {
+        const id = `pay-dep-${a.deposit.id}-${a.month.key}`;
+        return !appliedDepositRows.current.has(id) && !payments.some(p => p.id === id);
+      });
+      if (!fresh.length) continue;
+      const left = new Map<string, number>();
+      fresh.forEach(a => {
+        const id = `pay-dep-${a.deposit.id}-${a.month.key}`;
+        appliedDepositRows.current.add(id);
+        const before = left.get(a.month.key) ?? a.month.remaining;
+        const after = Math.max(0, Math.round((before - a.amount) * 100) / 100);
+        left.set(a.month.key, after);
+        rows.push({
+          id,
+          receiptNumber: `#${a.deposit.depositSlip || a.deposit.id}-${a.month.key}`,
+          tenantName: account.tenant.name,
+          tenantId: account.tenant.code,
+          unitNumber: account.unit.unitNumber,
+          unitSpace: `${account.unit.unitNumber} (${account.unit.floor} ${account.unit.type})`,
+          date,
+          accountingPeriod: a.month.label,
+          currency: 'USD',
+          amount: a.amount,
+          paymentMethod: 'Security Deposit',
+          monthlyBaseRent: a.month.due,
+          previousArrears: 0,
+          totalDue: before,
+          remainingBalance: after,
+          advanceBalance: 0,
+          status: after > 0 ? 'Partially Paid' : 'Paid',
+          notes: `Paid automatically from deposit ${a.deposit.depositSlip || a.deposit.id}.`,
+          receivedBy: adminUser.name,
+        });
+      });
+      const touched = new Set(fresh.map(a => a.deposit.id));
+      changedDeposits.push(...updated.filter(d => touched.has(d.id)));
+    }
+    if (!rows.length) return;
+
+    const nextDeposits = deposits.map(d => changedDeposits.find(c => c.id === d.id) || d);
+    const tenantUnits = new Set(changedDeposits.map(d => d.unitNumber));
+    units.filter(u => tenantUnits.has(u.unitNumber)).forEach(u => changedUnits.push(unitWithDeposits(u, nextDeposits)));
+
+    setPayments(prev => [...rows.filter(r => !prev.some(p => p.id === r.id)), ...prev]);
+    setDeposits(nextDeposits);
+    if (changedUnits.length) setUnits(prev => prev.map(u => changedUnits.find(c => c.id === u.id) || u));
+
+    Promise.all([
+      ...rows.map(r => persist('payments', r, savePaymentToSupabase)),
+      ...changedDeposits.map(d => persist('deposits', d, saveDepositToSupabase)),
+      ...changedUnits.map(u => persist('units', u, saveUnitToSupabase)),
+    ]);
+    const summary = rows.map(r => `${r.tenantName}: ${r.accountingPeriod} $${r.amount.toFixed(2)}`).join(' • ');
+    setNotifications(prev => [{
+      id: `notif-dep-${Date.now()}`,
+      title: 'Rent paid from deposit',
+      description: summary,
+      timestamp: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      type: 'payment',
+      read: false,
+      priority: 'low',
+    }, ...prev]);
+    showToast(`Rent paid from deposit — ${summary}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbReady, tenantAccounts]);
 
   // Return a held deposit to the tenant
   const handleReleaseDeposit = async (dep: DepositRecord) => {
@@ -1254,6 +1409,7 @@ export default function App() {
               deposits={deposits}
               tenantAccounts={tenantAccounts}
               onOpenDeposit={(a) => setDepositKey(a.key)}
+              onManageDeposit={(a) => setManageDepositKey(a.key)}
               onOpenTenantPayments={(a) => {
                 setActiveTab('payments');
                 setSmartPayKey(a.key);
@@ -1346,6 +1502,13 @@ export default function App() {
       />
 
       {/* Official Printable Receipt Voucher */}
+      <DepositManageModal
+        account={manageDepositAccount}
+        onClose={() => setManageDepositKey(null)}
+        onSaveMonths={handleSaveDepositMonths}
+        onClearDeposit={handleClearTenantDeposit}
+      />
+
       <TenantDepositModal
         account={depositAccount}
         nextSlip={nextDepositSlip}

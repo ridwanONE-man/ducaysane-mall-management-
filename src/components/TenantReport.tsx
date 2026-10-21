@@ -25,7 +25,7 @@ import { PropertyUnit, PaymentRecord, DepositRecord } from '../types';
 import { getTenantPaymentsFromSupabase } from '../lib/supabaseService';
 import { parsePaymentDate, formatLongDate, formatMoney, normalizeName, normalizeUnitNumber } from '../utils/printUtils';
 import { MONTH_NAMES, LedgerMonth, LedgerStatus, RentLedger, buildRentLedger, paymentRentMonths, summarizeLedger } from '../utils/rentLedger';
-import { depositMonthLabels, isCreditDeposit } from '../utils/tenantAccount';
+import { depositMonthLabels, isCreditDeposit, isAmountDeposit } from '../utils/tenantAccount';
 import { BUSINESS_PROFILE } from '../data/businessProfile';
 import { PrintPortal } from './PrintPortal';
 import { DeleteButton } from './DeleteControls';
@@ -441,7 +441,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
                   <tr key={d.id} className="border-b border-slate-200 print-avoid-break">
                     <td className="py-1.5">{depositDateLabel(d.heldSince)}</td>
                     <td className="py-1.5 font-mono font-bold">{d.depositSlip || d.id}</td>
-                    <td className="py-1.5">{isCreditDeposit(d) ? 'Advance credit' : depositMonthLabels(d).join(', ') || `${depositMonthCount(d) || '—'} month(s)`}</td>
+                    <td className="py-1.5">{isCreditDeposit(d) ? 'Advance credit' : depositMonthLabels(d).join(', ') || (isAmountDeposit(d) ? 'Any amount' : `${depositMonthCount(d) || '—'} month(s)`)}</td>
                     <td className="py-1.5">{d.status === 'Held in Escrow' ? 'Held' : d.status}</td>
                     <td className="py-1.5 text-right font-mono font-bold">{formatDepositAmount(d)}</td>
                   </tr>
@@ -769,7 +769,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
                     <span className="w-9 h-9 shrink-0 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center"><ShieldCheck className="w-4 h-4" /></span>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-slate-900 truncate">
-                        {credit ? 'Advance credit' : months.length ? months.join(', ') : `${depositMonthCount(d) || '—'} month(s) deposit`}
+                        {credit ? 'Advance credit' : months.length ? months.join(', ') : isAmountDeposit(d) ? 'Any-amount deposit' : `${depositMonthCount(d) || '—'} month(s) deposit`}
                       </p>
                       <p className="text-[10px] text-slate-500 truncate">
                         {depositDateLabel(d.heldSince)} • <span className="font-mono">{d.depositSlip || d.id}</span> • {d.status === 'Held in Escrow' ? 'Held' : d.status}

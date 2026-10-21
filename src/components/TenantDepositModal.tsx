@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { X, ShieldCheck, Check, Landmark, Info } from 'lucide-react';
+import { X, ShieldCheck, Check, Landmark, Info, CalendarCheck, Coins } from 'lucide-react';
 import { AccountMonth, TenantAccount } from '../utils/tenantAccount';
+
+export type DepositMode = 'months' | 'amount';
 
 export interface TenantDepositRequest {
   account: TenantAccount;
+  mode: DepositMode;
   months: AccountMonth[];
   amount: number;
   bankAccount: string;
@@ -30,6 +33,7 @@ export const TenantDepositModal: React.FC<TenantDepositModalProps> = ({ account,
   const [amountText, setAmountText] = useState('');
   const [bankAccount, setBankAccount] = useState(BANKS[0]);
   const [notes, setNotes] = useState('');
+  const [mode, setMode] = useState<DepositMode>('months');
 
   const todayIdx = new Date().getFullYear() * 12 + new Date().getMonth();
   // A deposit covers months from now on that no other deposit covers yet
@@ -43,14 +47,16 @@ export const TenantDepositModal: React.FC<TenantDepositModalProps> = ({ account,
     setAmountText('');
     setBankAccount(BANKS[0]);
     setNotes('');
+    setMode('months');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account?.key]);
 
   if (!account) return null;
 
-  const chosen = months.filter(m => selected.has(m.key));
+  const chosen = mode === 'months' ? months.filter(m => selected.has(m.key)) : [];
   const suggested = chosen.length * account.monthlyRent;
-  const amount = amountText.trim() === '' ? suggested : Math.max(0, Number(amountText) || 0);
+  const amount = amountText.trim() === '' ? (mode === 'months' ? suggested : 0) : Math.max(0, Number(amountText) || 0);
+  const canSave = amount > 0 && (mode === 'amount' || chosen.length > 0);
 
   const toggle = (m: AccountMonth) => {
     if (isCovered(m)) return;
@@ -85,6 +91,32 @@ export const TenantDepositModal: React.FC<TenantDepositModalProps> = ({ account,
         </div>
 
         <div className="p-6 space-y-5">
+          {/* Deposit type */}
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              ['months', CalendarCheck, 'By months', 'Pick months • rent × months'],
+              ['amount', Coins, 'Any amount', 'Free amount • not for a month'],
+            ] as const).map(([m, Icon, title, sub]) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => { setMode(m); setAmountText(''); }}
+                className={`flex items-center gap-3 rounded-2xl border-2 p-3 text-left transition-all cursor-pointer ${
+                  mode === m ? 'border-orange-500 bg-orange-50/70 shadow-sm' : 'border-slate-200 hover:border-orange-200'
+                }`}
+              >
+                <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${mode === m ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                  <Icon className="w-4 h-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-xs font-extrabold text-slate-900">{title}</span>
+                  <span className="block text-[10px] text-slate-500">{sub}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {mode === 'months' ? (
           <div>
             <p className="text-xs font-bold text-slate-700 mb-2">Select the months this deposit covers</p>
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
@@ -115,6 +147,12 @@ export const TenantDepositModal: React.FC<TenantDepositModalProps> = ({ account,
               })}
             </div>
           </div>
+          ) : (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-[11px] text-amber-900 flex gap-2">
+              <Info className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>This deposit is <strong>not for a specific month</strong>. When a rent month falls due and is unpaid, the rent is taken from this money automatically until it runs out.</span>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -125,7 +163,7 @@ export const TenantDepositModal: React.FC<TenantDepositModalProps> = ({ account,
                 step="any"
                 value={amountText}
                 onChange={e => setAmountText(e.target.value)}
-                placeholder={`${chosen.length} × ${usd(account.monthlyRent)} = ${usd(suggested)}`}
+                placeholder={mode === 'months' ? `${chosen.length} × ${usd(account.monthlyRent)} = ${usd(suggested)}` : 'Enter any amount, e.g. 250'}
                 className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-100"
               />
             </div>
@@ -156,8 +194,8 @@ export const TenantDepositModal: React.FC<TenantDepositModalProps> = ({ account,
 
           <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 space-y-1.5 text-xs">
             <div className="flex justify-between text-slate-600">
-              <span>Months covered</span>
-              <span className="font-bold text-slate-900">{chosen.length ? chosen.map(m => m.short).join(', ') : '—'}</span>
+              <span>{mode === 'months' ? 'Months covered' : 'Type'}</span>
+              <span className="font-bold text-slate-900">{mode === 'amount' ? 'Any amount — not for a month' : chosen.length ? chosen.map(m => m.short).join(', ') : '—'}</span>
             </div>
             {account.depositHeld > 0 && (
               <div className="flex justify-between text-slate-600">
@@ -170,14 +208,14 @@ export const TenantDepositModal: React.FC<TenantDepositModalProps> = ({ account,
               <span className="text-2xl font-black text-blue-700">{usd(amount)}</span>
             </div>
             <p className="flex items-center gap-1.5 text-[10px] text-slate-500 font-semibold pt-1">
-              <Info className="w-3 h-3" /> Shown on the tenant's card on the Tenants and Payments pages.
+              <Info className="w-3 h-3" /> When the month falls due, its rent is paid from this deposit automatically.
             </p>
           </div>
 
           <button
             type="button"
-            disabled={chosen.length === 0 || amount <= 0}
-            onClick={() => onConfirm({ account, months: chosen, amount, bankAccount, notes: notes.trim() })}
+            disabled={!canSave}
+            onClick={() => onConfirm({ account, mode, months: chosen, amount, bankAccount, notes: notes.trim() })}
             className="w-full py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-md shadow-blue-500/25 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <ShieldCheck className="w-4 h-4" />
