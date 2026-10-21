@@ -97,6 +97,41 @@ const MONTH_STYLE: Record<LedgerStatus, { tile: string; dot: string; label: stri
   Unpaid: { tile: 'bg-rose-50 border-rose-200 text-rose-700', dot: 'bg-rose-500', label: 'Not paid' },
 };
 
+// Plain letterhead for printed reports: black on white, one thin orange rule.
+const PrintHeader: React.FC<{ title: string; lines: string[] }> = ({ title, lines }) => (
+  <header className="pb-3 border-b-2 border-slate-900">
+    <div className="flex items-center gap-4">
+      <img src={logoImg} alt={BUSINESS_PROFILE.name} className="w-14 h-14 object-contain" />
+      <div className="min-w-0 flex-1">
+        <p className="text-lg font-extrabold uppercase tracking-wide leading-tight">{BUSINESS_PROFILE.name}</p>
+        <p className="text-[9px] text-slate-500">{BUSINESS_PROFILE.address} • Tel: {BUSINESS_PROFILE.phones.join(' / ')} • {BUSINESS_PROFILE.email}</p>
+      </div>
+      <div className="text-right shrink-0">
+        <h2 className="text-base font-black tracking-tight">{title}</h2>
+        {lines.map(l => <p key={l} className="text-[10px] text-slate-600">{l}</p>)}
+      </div>
+    </div>
+    <div className="mt-3 h-0.5 w-16 bg-orange-500" />
+  </header>
+);
+
+const PrintSignatures: React.FC<{ left: string }> = ({ left }) => (
+  <div className="grid grid-cols-2 gap-16 pt-8 print-avoid-break">
+    <div>
+      <div className="h-8 border-b border-slate-400" />
+      <p className="mt-1 text-[9px] uppercase tracking-wider text-slate-500">{left}</p>
+    </div>
+    <div className="text-right">
+      <div className="h-8 border-b border-slate-400" />
+      <p className="mt-1 text-[9px] uppercase tracking-wider text-slate-500">Prepared by</p>
+      <p className="text-[10px] font-bold">{DEPOSIT_RECEIVED_BY}</p>
+    </div>
+  </div>
+);
+
+const th = 'py-1.5 px-2 font-semibold';
+const td = 'py-1.5 px-2';
+
 const Avatar: React.FC<{ name: string; size?: string }> = ({ name, size = 'w-11 h-11 text-base' }) => (
   <span className={`${size} shrink-0 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white font-black flex items-center justify-center shadow-sm shadow-orange-500/25`}>
     {name.trim().charAt(0).toUpperCase() || '?'}
@@ -340,158 +375,121 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
   );
 
   // ================================================================
-  // Printed report — side-panel layout, unlike receipts and deposit vouchers
+  // Printed report for one tenant — clean black and white
   // ================================================================
   const printReport = selected && ledger && (
-    <div className="bg-white text-slate-900 font-sans">
-      <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
-        {/* Top header: business + report title */}
-        <header className="bg-slate-900 text-white px-6 py-4 flex items-center gap-4">
-          <div className="w-14 h-14 shrink-0 rounded-xl bg-white p-1 flex items-center justify-center">
-            <img src={logoImg} alt={BUSINESS_PROFILE.name} className="w-full h-full object-contain" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-['Playfair_Display',serif] text-lg font-extrabold uppercase leading-tight">{BUSINESS_PROFILE.name}</p>
-            <p className="text-[8px] font-bold uppercase tracking-[0.25em] text-orange-300">{BUSINESS_PROFILE.tagline}</p>
-          </div>
-          <div className="text-right shrink-0">
-            <p className="text-[8px] font-black uppercase tracking-[0.3em] text-orange-300">Tenant account</p>
-            <h2 className="text-base font-black tracking-tight leading-tight">RENT &amp; DEPOSIT REPORT</h2>
-            <p className="font-mono text-[11px] font-black text-amber-300">{reportNumber}</p>
-          </div>
-        </header>
-        <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
-        <div className="bg-slate-50 px-6 py-1.5 flex flex-wrap items-center justify-between gap-x-4 text-[8.5px] text-slate-500 border-b border-slate-200">
-          <span>{BUSINESS_PROFILE.address}</span>
-          <span>Tel: {BUSINESS_PROFILE.phones.join(' / ')}</span>
-          <span>{BUSINESS_PROFILE.email}</span>
+    <div className="bg-white text-slate-900 font-sans px-8 py-6 space-y-5">
+      <PrintHeader title="Tenant Report" lines={[reportNumber, `Period: ${periodLabel}`, `Issued ${formatLongDate(now)}`]} />
+
+      {/* Tenant details and totals */}
+      <div className="grid grid-cols-2 gap-8 text-[10px] print-avoid-break">
+        <div className="space-y-0.5">
+          <p className="text-[9px] uppercase tracking-wider text-slate-500">Tenant</p>
+          <p className="text-sm font-bold">{selected.name}</p>
+          <p>Unit {selected.unitNumber}{selected.unit ? ` • ${selected.unit.floor} • ${selected.unit.type}` : ''}</p>
+          {selected.unit?.currentTenant?.phone && <p>Tel: {selected.unit.currentTenant.phone}</p>}
+          {selected.unit?.leaseStart && (
+            <p>Lease: {formatLongDate(selected.unit.leaseStart)}{selected.unit.leaseEnd ? ` – ${formatLongDate(selected.unit.leaseEnd)}` : ''}</p>
+          )}
+          <p>Rent: {money(ledger.monthlyRent)} / month</p>
         </div>
-
-        <main className="px-6 py-5 space-y-5">
-          {/* Tenant + period */}
-          <div className="grid grid-cols-[1.4fr_1fr] gap-3 print-avoid-break">
-            <div className="rounded-xl border border-slate-200 px-4 py-3">
-              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-orange-600">Tenant</p>
-              <p className="text-base font-extrabold leading-tight">{selected.name}</p>
-              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-slate-600">
-                <span>Unit: <strong className="text-slate-900">{selected.unitNumber}</strong></span>
-                <span>Rent: <strong className="text-slate-900">{money(ledger.monthlyRent)}</strong> / month</span>
-                {selected.unit && <span>{selected.unit.floor} • {selected.unit.type}</span>}
-                {selected.unit?.currentTenant?.phone && <span>Tel: {selected.unit.currentTenant.phone}</span>}
-                {selected.unit?.leaseStart && (
-                  <span className="col-span-2">Lease: {formatLongDate(selected.unit.leaseStart)}{selected.unit.leaseEnd ? ` – ${formatLongDate(selected.unit.leaseEnd)}` : ''} • {selected.isCurrent ? 'Current tenant' : 'Former tenant'}</span>
-                )}
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-200 px-4 py-3 text-[10px] text-slate-600 space-y-0.5">
-              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-orange-600">Report</p>
-              <p>Period: <strong className="text-slate-900">{periodLabel}</strong></p>
-              <p>Issued: <strong className="text-slate-900">{formatLongDate(now)}</strong></p>
-              <p>Prepared by: <strong className="text-slate-900">{DEPOSIT_RECEIVED_BY}</strong></p>
-            </div>
-          </div>
-
-          {/* Summary strip */}
-          <div className="grid grid-cols-6 gap-2 print-avoid-break">
+        <table className="w-full self-start">
+          <tbody className="divide-y divide-slate-200">
             {[
-              ['Months paid', String(summary.paidCount), 'bg-emerald-50 text-emerald-700 border-emerald-200'],
-              ['Partly paid', String(summary.partialCount), 'bg-amber-50 text-amber-700 border-amber-200'],
-              ['Not paid', String(summary.unpaidCount), 'bg-rose-50 text-rose-700 border-rose-200'],
-              ['Total paid', money(summary.totalPaid), 'bg-white text-slate-900 border-slate-200'],
-              ['Deposit held', heldText(securityHeld), 'bg-sky-50 text-sky-700 border-sky-200'],
-            ].map(([k, v, tone]) => (
-              <div key={k} className={`rounded-xl border px-2.5 py-2 ${tone}`}>
-                <span className="block text-[8px] font-bold uppercase tracking-wider opacity-80">{k}</span>
-                <span className="block text-sm font-black leading-tight">{v}</span>
-              </div>
+              ['Months paid', String(summary.paidCount)],
+              ['Months partly paid', String(summary.partialCount)],
+              ['Months not paid', String(summary.unpaidCount)],
+              ['Total paid', money(summary.totalPaid)],
+              ['Deposit held', heldText(securityHeld)],
+            ].map(([k, v]) => (
+              <tr key={k}><td className="py-1 text-slate-600">{k}</td><td className="py-1 text-right font-semibold">{v}</td></tr>
             ))}
-            <div className="rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white px-2.5 py-2">
-              <span className="block text-[8px] font-black uppercase tracking-wider text-orange-50">Balance due</span>
-              <span className="block text-sm font-black leading-tight">{money(summary.outstanding)}</span>
-            </div>
-          </div>
-
-          {/* Month grid */}
-          <section className="print-avoid-break">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Month by month</h3>
-            <div className="grid grid-cols-4 gap-1.5">
-              {periodMonths.map(m => (
-                <div key={m.key} className={`rounded-lg border px-2 py-1.5 ${MONTH_STYLE[m.status].tile}`}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black">{shortLabel(m)}</span>
-                    {depositCovered.has(shortLabel(m)) && <ShieldCheck className="w-3 h-3 text-sky-600" />}
-                  </div>
-                  <span className="block text-[9px] font-bold">{MONTH_STYLE[m.status].label} • {money(m.paid)}</span>
-                </div>
-              ))}
-              {periodMonths.length === 0 && <p className="col-span-4 text-[10px] text-slate-400">No rent months in this period.</p>}
-            </div>
-            <p className="mt-1.5 text-[9px] text-slate-500">
-              Green = paid • Amber = partly paid • Red = not paid • <ShieldCheck className="inline w-2.5 h-2.5 text-sky-600" /> = covered by deposit
-            </p>
-          </section>
-
-          {/* Payments */}
-          <section>
-            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Payments received ({periodPayments.length})</h3>
-            <table className="w-full text-[10px]">
-              <thead>
-                <tr className="border-y-2 border-slate-900 text-left uppercase tracking-wider">
-                  <th className="py-1.5">Date</th><th className="py-1.5">Receipt</th><th className="py-1.5">For month</th><th className="py-1.5">Method</th><th className="py-1.5 text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {periodPayments.map(p => (
-                  <tr key={p.id} className="border-b border-slate-200 print-avoid-break">
-                    <td className="py-1.5">{formatLongDate(p.date)}</td>
-                    <td className="py-1.5 font-mono font-bold">{p.receiptNumber}</td>
-                    <td className="py-1.5">{p.accountingPeriod}</td>
-                    <td className="py-1.5">{p.paymentMethod}</td>
-                    <td className="py-1.5 text-right font-mono font-bold">{formatMoney(p.amount, p.currency)}</td>
-                  </tr>
-                ))}
-                {periodPayments.length === 0 && <tr><td colSpan={5} className="py-3 text-center text-slate-400">No payments in this period.</td></tr>}
-              </tbody>
-            </table>
-          </section>
-
-          {/* Deposits */}
-          <section>
-            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Deposits ({periodDeposits.length})</h3>
-            <table className="w-full text-[10px]">
-              <thead>
-                <tr className="border-y-2 border-slate-900 text-left uppercase tracking-wider">
-                  <th className="py-1.5">Date</th><th className="py-1.5">Voucher</th><th className="py-1.5">Covers</th><th className="py-1.5">Status</th><th className="py-1.5 text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {periodDeposits.map(d => (
-                  <tr key={d.id} className="border-b border-slate-200 print-avoid-break">
-                    <td className="py-1.5">{depositDateLabel(d.heldSince)}</td>
-                    <td className="py-1.5 font-mono font-bold">{d.depositSlip || d.id}</td>
-                    <td className="py-1.5">{depositMonthLabels(d).join(', ') || (isAmountDeposit(d) ? 'Any amount' : `${depositMonthCount(d) || '—'} month(s)`)}</td>
-                    <td className="py-1.5">{d.status === 'Held in Escrow' ? 'Held' : d.status}</td>
-                    <td className="py-1.5 text-right font-mono font-bold">{formatDepositAmount(d)}</td>
-                  </tr>
-                ))}
-                {periodDeposits.length === 0 && <tr><td colSpan={5} className="py-3 text-center text-slate-400">No deposits in this period.</td></tr>}
-              </tbody>
-            </table>
-          </section>
-
-          <div className="grid grid-cols-2 gap-10 pt-6 print-avoid-break">
-            <div>
-              <div className="h-10 border-b border-slate-500" />
-              <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">Tenant's signature</p>
-            </div>
-            <div className="text-right">
-              <div className="h-10 border-b border-slate-500" />
-              <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">Prepared by</p>
-              <p className="text-[10px] font-bold">{DEPOSIT_RECEIVED_BY}</p>
-            </div>
-          </div>
-        </main>
+            <tr className="border-t-2 border-slate-900">
+              <td className="py-1.5 font-bold">Balance due</td>
+              <td className="py-1.5 text-right text-sm font-black">{money(summary.outstanding)}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
+
+      {/* Months */}
+      <section>
+        <h3 className="text-[10px] font-bold uppercase tracking-wider mb-1.5">Rent months</h3>
+        <table className="w-full text-[10px]">
+          <thead>
+            <tr className="border-y border-slate-900 text-left">
+              <th className={th}>Month</th>
+              <th className={`${th} text-right`}>Rent due</th>
+              <th className={`${th} text-right`}>Paid</th>
+              <th className={`${th} text-right`}>Balance</th>
+              <th className={th}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {periodMonths.map(m => (
+              <tr key={m.key} className="border-b border-slate-200 print-avoid-break">
+                <td className={td}>{m.label}{depositCovered.has(shortLabel(m)) ? ' (deposit)' : ''}</td>
+                <td className={`${td} text-right`}>{money(m.due)}</td>
+                <td className={`${td} text-right`}>{money(m.paid)}</td>
+                <td className={`${td} text-right`}>{m.balance > 0 ? money(m.balance) : '—'}</td>
+                <td className={`${td} ${m.status === 'Paid' ? '' : 'font-bold'}`}>{MONTH_STYLE[m.status].label}</td>
+              </tr>
+            ))}
+            {periodMonths.length === 0 && <tr><td colSpan={5} className="py-3 text-center text-slate-400">No rent months in this period.</td></tr>}
+          </tbody>
+        </table>
+      </section>
+
+      {/* Payments */}
+      <section>
+        <h3 className="text-[10px] font-bold uppercase tracking-wider mb-1.5">Payments received ({periodPayments.length})</h3>
+        <table className="w-full text-[10px]">
+          <thead>
+            <tr className="border-y border-slate-900 text-left">
+              <th className={th}>Date</th><th className={th}>Receipt</th><th className={th}>For month</th><th className={th}>Method</th><th className={`${th} text-right`}>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {periodPayments.map(p => (
+              <tr key={p.id} className="border-b border-slate-200 print-avoid-break">
+                <td className={td}>{formatLongDate(p.date)}</td>
+                <td className={`${td} font-mono`}>{p.receiptNumber}</td>
+                <td className={td}>{p.accountingPeriod}</td>
+                <td className={td}>{p.paymentMethod}</td>
+                <td className={`${td} text-right font-semibold`}>{formatMoney(p.amount, p.currency)}</td>
+              </tr>
+            ))}
+            {periodPayments.length === 0 && <tr><td colSpan={5} className="py-3 text-center text-slate-400">No payments in this period.</td></tr>}
+          </tbody>
+        </table>
+      </section>
+
+      {/* Deposits */}
+      {periodDeposits.length > 0 && (
+        <section>
+          <h3 className="text-[10px] font-bold uppercase tracking-wider mb-1.5">Deposits ({periodDeposits.length})</h3>
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="border-y border-slate-900 text-left">
+                <th className={th}>Date</th><th className={th}>Voucher</th><th className={th}>Covers</th><th className={th}>Status</th><th className={`${th} text-right`}>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {periodDeposits.map(d => (
+                <tr key={d.id} className="border-b border-slate-200 print-avoid-break">
+                  <td className={td}>{depositDateLabel(d.heldSince)}</td>
+                  <td className={`${td} font-mono`}>{d.depositSlip || d.id}</td>
+                  <td className={td}>{depositMonthLabels(d).join(', ') || (isAmountDeposit(d) ? 'Any amount' : `${depositMonthCount(d) || '—'} month(s)`)}</td>
+                  <td className={td}>{d.status === 'Held in Escrow' ? 'Held' : d.status}</td>
+                  <td className={`${td} text-right font-semibold`}>{formatDepositAmount(d)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      <PrintSignatures left="Tenant's signature" />
     </div>
   );
 
@@ -516,90 +514,57 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
     .filter(t => t.count > 0);
 
   const tenantsPrint = (
-    <div className="bg-white text-slate-900 font-sans">
-      <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
-        <header className="bg-slate-900 text-white px-6 py-4 flex items-center gap-4">
-          <div className="w-14 h-14 shrink-0 rounded-xl bg-white p-1 flex items-center justify-center">
-            <img src={logoImg} alt={BUSINESS_PROFILE.name} className="w-full h-full object-contain" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-['Playfair_Display',serif] text-lg font-extrabold uppercase leading-tight">{BUSINESS_PROFILE.name}</p>
-            <p className="text-[8px] font-bold uppercase tracking-[0.25em] text-orange-300">{BUSINESS_PROFILE.tagline}</p>
-          </div>
-          <div className="text-right shrink-0">
-            <p className="text-[8px] font-black uppercase tracking-[0.3em] text-orange-300">{printedRows.length} tenant{printedRows.length === 1 ? '' : 's'}</p>
-            <h2 className="text-base font-black tracking-tight leading-tight">TENANTS RENT REPORT</h2>
-            <p className="text-[11px] font-black text-amber-300">{periodLabel}</p>
-          </div>
-        </header>
-        <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
-        <div className="bg-slate-50 px-6 py-1.5 flex flex-wrap items-center justify-between gap-x-4 text-[8.5px] text-slate-500 border-b border-slate-200">
-          <span>{BUSINESS_PROFILE.address}</span>
-          <span>Tel: {BUSINESS_PROFILE.phones.join(' / ')}</span>
-          <span>Printed {formatLongDate(now)}</span>
-        </div>
+    <div className="bg-white text-slate-900 font-sans px-8 py-6 space-y-5">
+      <PrintHeader
+        title="Tenants Rent Report"
+        lines={[`Period: ${periodLabel}`, `${printedRows.length} tenant${printedRows.length === 1 ? '' : 's'}`, `Printed ${formatLongDate(now)}`]}
+      />
 
-        <main className="px-6 py-5 space-y-4">
-          <div className={`grid gap-2 print-avoid-break ${printTotals.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            {printTotals.map(t => (
-              <div key={t.cur} className="grid grid-cols-3 rounded-xl border border-slate-300 overflow-hidden text-center">
-                <div className="bg-slate-900 text-white py-2 text-[10px] font-black uppercase">{t.cur === 'USD' ? 'Dollar tenants' : 'SSP tenants'} ({t.count})</div>
-                <div className="py-1.5"><span className="block text-[8px] font-bold uppercase text-slate-500">Paid in period</span><strong className="text-sm text-emerald-700">{formatMoney(t.paid, t.cur)}</strong></div>
-                <div className="py-1.5 bg-orange-50"><span className="block text-[8px] font-bold uppercase text-slate-500">Balance</span><strong className="text-sm text-rose-700">{formatMoney(t.balance, t.cur)}</strong></div>
-              </div>
-            ))}
-          </div>
-
-          <table className="w-full text-[10px]">
-            <thead>
-              <tr className="border-y-2 border-slate-900 text-left uppercase tracking-wider">
-                <th className="py-1.5 w-6">#</th>
-                <th className="py-1.5">Tenant</th>
-                <th className="py-1.5">Unit</th>
-                <th className="py-1.5 text-right">Rent</th>
-                <th className="py-1.5 text-center">Paid</th>
-                <th className="py-1.5 text-center">Partly</th>
-                <th className="py-1.5">Not paid / owing months</th>
-                <th className="py-1.5 text-right">Paid in period</th>
-                <th className="py-1.5 text-right">Balance</th>
+      <table className="w-full text-[10px]">
+        <thead>
+          <tr className="border-y border-slate-900 text-left">
+            <th className={`${th} w-6`}>#</th>
+            <th className={th}>Tenant</th>
+            <th className={th}>Unit</th>
+            <th className={`${th} text-right`}>Rent</th>
+            <th className={`${th} text-center`}>Paid</th>
+            <th className={`${th} text-center`}>Partly</th>
+            <th className={th}>Months not paid</th>
+            <th className={`${th} text-right`}>Paid in period</th>
+            <th className={`${th} text-right`}>Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {printedRows.map((o, i) => {
+            const r = periodRows.get(o.tenant.key)!;
+            const cur = o.ledger.currency;
+            return (
+              <tr key={o.tenant.key} className="border-b border-slate-200 print-avoid-break">
+                <td className={`${td} text-slate-400`}>{i + 1}</td>
+                <td className={`${td} font-semibold`}>{o.tenant.name}</td>
+                <td className={td}>{o.tenant.unitNumber}</td>
+                <td className={`${td} text-right`}>{formatMoney(o.ledger.monthlyRent, cur)}</td>
+                <td className={`${td} text-center`}>{r.summary.paidCount}</td>
+                <td className={`${td} text-center`}>{r.summary.partialCount}</td>
+                <td className={td}>{r.owingMonths.length ? r.owingMonths.map(m => shortLabel(m)).join(', ') : '—'}</td>
+                <td className={`${td} text-right`}>{formatMoney(r.paid, cur)}</td>
+                <td className={`${td} text-right font-bold`}>{r.summary.outstanding > 0 ? formatMoney(r.summary.outstanding, cur) : 'Paid up'}</td>
               </tr>
-            </thead>
-            <tbody>
-              {printedRows.map((o, i) => {
-                const r = periodRows.get(o.tenant.key)!;
-                const cur = o.ledger.currency;
-                return (
-                  <tr key={o.tenant.key} className={`border-b border-slate-200 print-avoid-break ${i % 2 ? 'bg-slate-50' : ''}`}>
-                    <td className="py-1.5 text-slate-400">{i + 1}</td>
-                    <td className="py-1.5 font-bold">{o.tenant.name}</td>
-                    <td className="py-1.5">{o.tenant.unitNumber}</td>
-                    <td className="py-1.5 text-right font-mono">{formatMoney(o.ledger.monthlyRent, cur)}</td>
-                    <td className="py-1.5 text-center font-bold text-emerald-700">{r.summary.paidCount}</td>
-                    <td className="py-1.5 text-center font-bold text-amber-700">{r.summary.partialCount}</td>
-                    <td className="py-1.5 text-rose-700">{r.owingMonths.length ? r.owingMonths.map(m => shortLabel(m)).join(', ') : <span className="text-slate-400">—</span>}</td>
-                    <td className="py-1.5 text-right font-mono font-bold">{formatMoney(r.paid, cur)}</td>
-                    <td className={`py-1.5 text-right font-mono font-black ${r.summary.outstanding > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                      {r.summary.outstanding > 0 ? formatMoney(r.summary.outstanding, cur) : 'Paid up'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          {printTotals.map(t => (
+            <tr key={t.cur} className="border-t-2 border-slate-900 font-bold">
+              <td className={td} colSpan={7}>Total — {t.cur === 'USD' ? 'dollar' : 'SSP'} tenants ({t.count})</td>
+              <td className={`${td} text-right`}>{formatMoney(t.paid, t.cur)}</td>
+              <td className={`${td} text-right`}>{formatMoney(t.balance, t.cur)}</td>
+            </tr>
+          ))}
+        </tfoot>
+      </table>
 
-          <div className="grid grid-cols-2 gap-10 pt-6 print-avoid-break">
-            <div>
-              <div className="h-10 border-b border-slate-500" />
-              <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">Checked by</p>
-            </div>
-            <div className="text-right">
-              <div className="h-10 border-b border-slate-500" />
-              <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">Prepared by</p>
-              <p className="text-[10px] font-bold">{DEPOSIT_RECEIVED_BY}</p>
-            </div>
-          </div>
-        </main>
-      </div>
+      <PrintSignatures left="Checked by" />
     </div>
   );
 
