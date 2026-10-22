@@ -96,17 +96,18 @@ export const TenantAccountsPanel: React.FC<TenantAccountsPanelProps> = ({ accoun
       {/* Totals: collection rate, then one card per currency */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.6fr)_minmax(0,1.6fr)] gap-4">
         {/* Collection rate */}
-        <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs p-5 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Collection rate</span>
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 text-white p-5 flex flex-col justify-between">
+          <div className="absolute -right-8 -bottom-10 w-32 h-32 rounded-full bg-orange-500/20" />
+          <div className="relative flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Collection rate</span>
             <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-md shadow-orange-500/30"><TrendingUp className="w-4 h-4" /></span>
           </div>
-          <div>
-            <p className="text-4xl font-black text-slate-900 mt-2">{stats.rate}%</p>
-            <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+          <div className="relative">
+            <p className="text-4xl font-black mt-2">{stats.rate}%</p>
+            <div className="mt-2 h-2 rounded-full bg-white/15 overflow-hidden">
               <div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400" style={{ width: `${Math.min(100, stats.rate)}%` }} />
             </div>
-            <p className="text-[10px] text-slate-500 mt-1.5">Rent paid of rent due up to this month • {stats.overdueTenants} tenant(s) late</p>
+            <p className="text-[10px] text-slate-400 mt-1.5">Rent paid of rent due up to this month • {stats.overdueTenants} tenant(s) late</p>
           </div>
         </div>
 

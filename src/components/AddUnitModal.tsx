@@ -453,7 +453,7 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
             {/* 4. Lease — only when a tenant is entered */}
             {hasTenant ? (
               <Section step={4} title="Lease" icon={Calendar}>
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_1.4fr] gap-3">
+                <div className="space-y-3">
                   <div>
                     <label className={label}>Start date</label>
                     <input type="date" value={leaseStart} onChange={(e) => setLeaseStart(e.target.value)} className={field} />

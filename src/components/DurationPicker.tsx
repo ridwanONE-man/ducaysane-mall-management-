@@ -13,12 +13,12 @@ export function formatDuration(totalMonths: number): string {
 }
 
 const QUICK = [
-  { label: '1 month', months: 1 },
-  { label: '3 months', months: 3 },
-  { label: '6 months', months: 6 },
-  { label: '1 year', months: 12 },
-  { label: '2 years', months: 24 },
-  { label: '3 years', months: 36 },
+  { label: '1 mo', months: 1 },
+  { label: '3 mo', months: 3 },
+  { label: '6 mo', months: 6 },
+  { label: '1 yr', months: 12 },
+  { label: '2 yrs', months: 24 },
+  { label: '3 yrs', months: 36 },
 ];
 
 const MAX_MONTHS = 120;
@@ -77,26 +77,30 @@ export const DurationPicker: React.FC<DurationPickerProps> = ({ months, onChange
         {stepper('Years', years, 12, 10)}
         {stepper('Months', rest, 1, 11)}
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      {/* Quick picks: one even row */}
+      <div className="grid grid-cols-6 gap-1 p-1 bg-slate-100 rounded-xl">
         {QUICK.map(q => (
           <button
             key={q.months}
             type="button"
             onClick={() => set(q.months)}
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+            className={`py-1.5 rounded-lg text-[11px] font-bold text-center whitespace-nowrap transition-all cursor-pointer ${
               months === q.months
-                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white border-transparent shadow-xs'
-                : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300 hover:text-orange-700'
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-white hover:text-orange-700'
             }`}
           >
             {q.label}
           </button>
         ))}
       </div>
-      <p className="text-[11px] text-slate-600">
-        Lease length: <strong className="text-slate-900">{formatDuration(months)}</strong>
-        {months >= 12 && <span className="text-slate-400"> ({months} months)</span>}
-      </p>
+      <div className="flex items-center justify-between rounded-xl bg-orange-50 border border-orange-100 px-3 py-1.5 text-[11px]">
+        <span className="text-slate-600">Lease length</span>
+        <span className="font-black text-orange-700">
+          {formatDuration(months)}
+          {months >= 12 && <span className="font-semibold text-slate-400"> • {months} months</span>}
+        </span>
+      </div>
     </div>
   );
 };

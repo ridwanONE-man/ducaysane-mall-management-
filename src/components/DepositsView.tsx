@@ -34,7 +34,7 @@ interface DepositsViewProps {
 }
 
 type View = 'tenants' | 'records';
-type TenantFilter = 'all' | 'ready' | 'owing' | 'held';
+type TenantFilter = 'all' | 'ready' | 'owing' | 'held' | 'none';
 
 const usd = (n: number, currency: RentCurrency = 'USD') => formatMoney(n, currency);
 
@@ -64,12 +64,14 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
     ready: tenantAccounts.filter(a => a.canDeposit).length,
     owing: tenantAccounts.filter(a => !a.canDeposit).length,
     held: tenantAccounts.filter(a => a.depositHeld > 0).length,
+    none: tenantAccounts.filter(a => a.depositHeld <= 0).length,
   };
 
   const shownAccounts = tenantAccounts.filter(a => {
     if (filter === 'ready' && !a.canDeposit) return false;
     if (filter === 'owing' && a.canDeposit) return false;
     if (filter === 'held' && a.depositHeld <= 0) return false;
+    if (filter === 'none' && a.depositHeld > 0) return false;
     return matches(a.tenant.name, a.unit.unitNumber, a.tenant.phone, a.tenant.trade);
   });
 
@@ -98,48 +100,94 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
   return (
     <div id="deposits-view" className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-700">
-              <ShieldCheck className="w-5 h-5" />
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Security Deposits</h1>
+      <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs">
+        <div className="h-1.5 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
+        <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-orange-100/50" />
+        <div className="relative p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/30">
+              <ShieldCheck className="w-7 h-7" />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Security Deposits</h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Take a deposit once rent is paid up to date — by months or any amount.</p>
+            </div>
           </div>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Take a deposit once a tenant's rent is paid up to date, and choose the months it covers.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold shadow-2xs cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Export CSV</span>
-          </button>
-          {onClearAllDeposits && (
-            <ClearAllButton count={deposits.length} itemLabel="deposits" onClear={onClearAllDeposits} />
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold shadow-2xs cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-500" /> Export CSV
+            </button>
+            {onClearAllDeposits && (
+              <ClearAllButton count={deposits.length} itemLabel="deposits" onClear={onClearAllDeposits} />
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Totals */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { label: 'Deposits held', value: formatBoth(totalHeldUSD, totalHeldSSP), tone: 'text-blue-700', icon: ShieldCheck },
-          { label: 'Tenants with a deposit', value: String(counts.held), tone: 'text-blue-700', icon: Users },
-          { label: 'Ready for a deposit', value: String(counts.ready), tone: 'text-emerald-600', icon: CheckCircle2 },
-          { label: 'Must pay rent first', value: String(counts.owing), tone: 'text-rose-600', icon: AlertTriangle },
-        ].map(t => (
-          <div key={t.label} className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-4">
-            <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1.5">
-              <t.icon className={`w-3.5 h-3.5 ${t.tone}`} /> {t.label}
-            </span>
-            <span className={`block text-xl font-black mt-0.5 ${t.tone}`}>{t.value}</span>
+      {/* Totals: who can deposit, then one card per currency */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.6fr)_minmax(0,1.6fr)] gap-4">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 text-white p-5">
+          <div className="absolute -right-8 -bottom-10 w-32 h-32 rounded-full bg-orange-500/20" />
+          <div className="relative flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Tenants</span>
+            <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center"><Users className="w-4 h-4" /></span>
           </div>
-        ))}
+          <p className="relative text-4xl font-black mt-1">{tenantAccounts.length}</p>
+          <div className="relative grid grid-cols-2 gap-2 mt-3">
+            <div className="rounded-xl bg-white/10 px-2.5 py-1.5">
+              <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-300"><CheckCircle2 className="w-3 h-3" /> Ready</span>
+              <span className="text-base font-black">{counts.ready}</span>
+            </div>
+            <div className="rounded-xl bg-white/10 px-2.5 py-1.5">
+              <span className="flex items-center gap-1 text-[10px] font-bold text-rose-300"><AlertTriangle className="w-3 h-3" /> Pay first</span>
+              <span className="text-base font-black">{counts.owing}</span>
+            </div>
+          </div>
+        </div>
+
+        {(['USD', 'SSP'] as const).map(cur => {
+          const isUsd = cur === 'USD';
+          const list = tenantAccounts.filter(a => a.currency === cur);
+          const held = deposits.filter(d => d.status === 'Held in Escrow').reduce((s, d) => s + depositIn(d, cur), 0);
+          const refunded = deposits.filter(d => d.status === 'Refunded').reduce((s, d) => s + depositIn(d, cur), 0);
+          const boxes = [
+            { label: 'Deposits held', value: formatMoney(held, cur), icon: ShieldCheck },
+            { label: 'With a deposit', value: `${list.filter(a => a.depositHeld > 0).length} tenant(s)`, icon: Users },
+            { label: 'No deposit yet', value: `${list.filter(a => a.depositHeld <= 0).length} tenant(s)`, icon: AlertTriangle },
+            { label: 'Refunded', value: formatMoney(refunded, cur), icon: Undo2 },
+          ];
+          return (
+            <div
+              key={cur}
+              className={`relative overflow-hidden rounded-3xl p-5 text-white ${
+                isUsd ? 'bg-gradient-to-br from-slate-900 to-slate-800' : 'bg-gradient-to-br from-orange-500 to-amber-500'
+              }`}
+            >
+              <div className="absolute -right-8 -bottom-10 w-36 h-36 rounded-full bg-white/10" />
+              <div className="relative flex items-center gap-3">
+                <span className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${isUsd ? 'bg-orange-500' : 'bg-white/20'}`}>
+                  {isUsd ? <span className="text-lg">$</span> : <span className="text-[11px]">SSP</span>}
+                </span>
+                <div>
+                  <p className="text-sm font-extrabold">{isUsd ? 'Dollar ($)' : 'South Sudanese Pound'}</p>
+                  <p className="text-[11px] opacity-70">{list.length} tenant{list.length === 1 ? '' : 's'} renting in {isUsd ? 'dollars' : 'SSP'}</p>
+                </div>
+              </div>
+              <div className="relative grid grid-cols-2 gap-2 mt-4">
+                {boxes.map(b => (
+                  <div key={b.label} className="rounded-2xl bg-white/10 px-3 py-2 min-w-0">
+                    <span className="flex items-center gap-1 text-[10px] font-bold opacity-80"><b.icon className="w-3 h-3" /> {b.label}</span>
+                    <span className="block text-base font-black truncate" title={b.value}>{b.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* View switch + search */}
@@ -154,51 +202,52 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
               type="button"
               onClick={() => setView(v)}
               className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
-                view === v ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                view === v ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-sm shadow-orange-500/25' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
               {label}
             </button>
           ))}
         </div>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-          {view === 'tenants' && (
-            <div className="inline-flex items-center bg-slate-100 p-0.5 rounded-xl text-[11px] font-semibold">
-              {([
-                ['all', 'All'],
-                ['ready', `Ready (${counts.ready})`],
-                ['owing', `Pay first (${counts.owing})`],
-                ['held', `Has deposit (${counts.held})`],
-              ] as [TenantFilter, string][]).map(([f, label]) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setFilter(f)}
-                  className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    filter === f ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+        <div className="relative w-full lg:w-72">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={view === 'tenants' ? 'Search tenant, unit, phone...' : 'Search tenant name or voucher no...'}
+            className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+          />
+          {search && (
+            <button type="button" onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer">
+              <X className="w-3.5 h-3.5" />
+            </button>
           )}
-          <div className="relative w-full sm:w-72">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={view === 'tenants' ? 'Search tenant, unit, phone...' : 'Search tenant name or voucher no...'}
-              className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
-            />
-            {search && (
-              <button type="button" onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
         </div>
       </div>
+
+      {/* Tenant filters: who has a deposit and who doesn't */}
+      {view === 'tenants' && (
+        <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold w-fit max-w-full">
+          {([
+            ['all', 'All', tenantAccounts.length, 'bg-slate-900 text-white'],
+            ['held', 'With deposit', counts.held, 'bg-blue-600 text-white'],
+            ['none', 'No deposit', counts.none, 'bg-slate-600 text-white'],
+            ['ready', 'Ready to deposit', counts.ready, 'bg-emerald-600 text-white'],
+            ['owing', 'Pay rent first', counts.owing, 'bg-rose-600 text-white'],
+          ] as [TenantFilter, string, number, string][]).map(([f, label, n, tone]) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFilter(f)}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                filter === f ? `${tone} shadow-xs font-bold` : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+              }`}
+            >
+              {label} <span className="opacity-75">({n})</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {view === 'tenants' ? (
         shownAccounts.length === 0 ? (
