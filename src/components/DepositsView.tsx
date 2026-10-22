@@ -17,6 +17,7 @@ import { ClearAllButton } from './DeleteControls';
 import { formatMoney } from '../utils/printUtils';
 import { RentCurrency, depositIn, formatBoth } from '../utils/currency';
 import { DepositRecordsPanel } from './DepositRecordsPanel';
+import { unitCategoryOf } from './CategorySwitch';
 import { formatDepositAmount } from './DepositVoucher';
 import { TenantAccount, depositMonthLabels, isAmountDeposit } from '../utils/tenantAccount';
 
@@ -259,81 +260,106 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
             {shownAccounts.map(a => {
               const depositMonths = a.securityDeposits.flatMap(depositMonthLabels);
               const amountDeposits = a.securityDeposits.filter(isAmountDeposit).reduce((s, d) => s + depositIn(d, a.currency), 0);
+              const isShop = unitCategoryOf(a.unit.unitNumber, units) !== 'space';
+              const owed = a.dueNow.reduce((s, m) => s + m.remaining, 0);
+              const hasDeposit = a.depositHeld > 0;
+              const initials = a.tenant.name.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase();
               return (
-                <div key={a.key} className="bg-white rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all p-5 flex flex-col">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="font-extrabold text-slate-900 text-sm truncate">{a.tenant.name}</h3>
-                      <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-500">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 font-bold text-slate-700">
-                          <Store className="w-3 h-3" /> {a.unit.unitNumber}
-                        </span>
-                        <span>Rent {usd(a.monthlyRent, a.currency)}</span>
+                <div key={a.key} className="group bg-white rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-lg hover:-translate-y-0.5 transition-all overflow-hidden flex flex-col">
+                  {/* Header */}
+                  <div className={`relative px-4 pt-4 pb-3 text-white bg-gradient-to-br ${isShop ? 'from-orange-500 to-amber-500' : 'from-blue-600 to-indigo-600'}`}>
+                    <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-white/10" />
+                    <div className="relative flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-white/20 ring-1 ring-white/30 backdrop-blur-xs flex items-center justify-center font-black text-sm shrink-0">
+                        {initials}
                       </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-extrabold text-sm truncate">{a.tenant.name}</h3>
+                        <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-white/85">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/20 font-bold text-white">
+                            <Store className="w-3 h-3" /> {a.unit.unitNumber}
+                          </span>
+                          <span>{isShop ? 'Shop' : 'Space'} • {usd(a.monthlyRent, a.currency)}/mo</span>
+                        </div>
+                      </div>
+                      <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white text-[10px] font-black shadow-xs ${a.canDeposit ? 'text-emerald-700' : 'text-rose-600'}`}>
+                        {a.canDeposit ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                        {a.canDeposit ? 'Rent paid' : 'Owes rent'}
+                      </span>
                     </div>
-                    {a.canDeposit ? (
-                      <span className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800 text-[10px] font-black">
-                        <CheckCircle2 className="w-3 h-3" /> Rent paid
+                  </div>
+
+                  <div className="p-4 flex flex-col flex-1 gap-3">
+                    {/* Deposit held */}
+                    <div className={`rounded-2xl p-3 ${hasDeposit ? 'bg-slate-900 text-white' : 'bg-slate-50 border border-dashed border-slate-200'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider ${hasDeposit ? 'text-orange-300' : 'text-slate-400'}`}>
+                          <ShieldCheck className="w-3.5 h-3.5" /> Deposit held
+                        </span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${hasDeposit ? 'bg-white/10 text-white/80' : 'bg-white text-slate-400'}`}>{a.currency}</span>
+                      </div>
+                      <p className={`mt-1 text-xl font-black tracking-tight ${hasDeposit ? 'text-white' : 'text-slate-300'}`}>
+                        {hasDeposit ? usd(a.depositHeld, a.currency) : 'No deposit yet'}
+                      </p>
+                      {hasDeposit && (depositMonths.length > 0 || amountDeposits > 0) && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {depositMonths.map(m => (
+                            <span key={m} className="px-1.5 py-0.5 rounded-md bg-orange-500/20 text-orange-200 text-[10px] font-bold">{m}</span>
+                          ))}
+                          {amountDeposits > 0 && (
+                            <span className="px-1.5 py-0.5 rounded-md bg-white/10 text-white/80 text-[10px] font-bold">{usd(amountDeposits, a.currency)} any amount</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Rent status */}
+                    <div className={`flex items-start gap-2 rounded-xl px-3 py-2 text-[11px] ${a.canDeposit ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-700'}`}>
+                      <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${a.canDeposit ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                      <span>
+                        {a.canDeposit
+                          ? `All months up to ${new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })} are paid.`
+                          : <>Owes <strong>{usd(owed, a.currency)}</strong> for {a.dueNow.map(m => m.short).join(', ')}. Pay this before taking a deposit.</>}
                       </span>
-                    ) : (
-                      <span className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-100 text-rose-700 text-[10px] font-black">
-                        <AlertTriangle className="w-3 h-3" /> Owes rent
-                      </span>
+                    </div>
+
+                    {a.tenant.phone && (
+                      <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                        <Phone className="w-3 h-3 text-slate-400" /> {a.tenant.phone}
+                      </p>
                     )}
-                  </div>
 
-                  {/* Rent status */}
-                  <div className={`mt-3 rounded-xl px-3 py-2 text-[11px] ${a.canDeposit ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-700'}`}>
-                    {a.canDeposit
-                      ? `All months up to ${new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })} are paid.`
-                      : <>Owes <strong>{usd(a.dueNow.reduce((s, m) => s + m.remaining, 0), a.currency)}</strong> for {a.dueNow.map(m => m.short).join(', ')}. Pay this before taking a deposit.</>}
-                  </div>
-
-                  {/* Deposit held */}
-                  <div className="mt-2 rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-2 text-[11px] flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 text-blue-900 min-w-0">
-                      <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      <span className="truncate">{a.depositHeld > 0 ? [depositMonths.join(', '), amountDeposits > 0 ? `${usd(amountDeposits, a.currency)} any amount` : ''].filter(Boolean).join(' • ') || 'Deposit held' : 'No deposit yet'}</span>
-                    </span>
-                    <span className="font-black text-blue-700 shrink-0">{a.depositHeld > 0 ? usd(a.depositHeld, a.currency) : '—'}</span>
-                  </div>
-
-                  {a.tenant.phone && (
-                    <p className="mt-2 text-[11px] text-slate-500 flex items-center gap-1.5">
-                      <Phone className="w-3 h-3 text-emerald-600" /> {a.tenant.phone}
-                    </p>
-                  )}
-
-                  <div className="mt-auto pt-4 flex gap-2">
-                    {a.depositHeld > 0 && onManageDeposit && (
-                      <button
-                        type="button"
-                        onClick={() => onManageDeposit(a)}
-                        className="shrink-0 px-3 py-2.5 rounded-xl bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 text-slate-700 hover:text-orange-700 text-xs font-extrabold cursor-pointer"
-                        title="Unmark months or clear this deposit"
-                      >
-                        Manage
-                      </button>
-                    )}
-                    {a.canDeposit ? (
-                      <button
-                        type="button"
-                        onClick={() => onOpenDeposit?.(a)}
-                        className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm shadow-blue-500/25 cursor-pointer"
-                      >
-                        <ShieldCheck className="w-4 h-4" />
-                        {a.depositHeld > 0 ? 'Add More Deposit' : 'Add Deposit'}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onOpenTenantPayments?.(a)}
-                        className="w-full py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <CreditCard className="w-4 h-4" />
-                        Pay rent first
-                      </button>
-                    )}
+                    <div className="mt-auto pt-1 flex gap-2">
+                      {hasDeposit && onManageDeposit && (
+                        <button
+                          type="button"
+                          onClick={() => onManageDeposit(a)}
+                          className="shrink-0 px-3 py-2.5 rounded-xl bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 text-slate-700 hover:text-orange-700 text-xs font-extrabold cursor-pointer"
+                          title="Unmark months or clear this deposit"
+                        >
+                          Manage
+                        </button>
+                      )}
+                      {a.canDeposit ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenDeposit?.(a)}
+                          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm shadow-orange-500/25 cursor-pointer"
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                          {hasDeposit ? 'Add More Deposit' : 'Add Deposit'}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onOpenTenantPayments?.(a)}
+                          className="w-full py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <CreditCard className="w-4 h-4" />
+                          Pay rent first
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
