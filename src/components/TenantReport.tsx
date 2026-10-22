@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Eye,
   CalendarRange,
+  DollarSign,
 } from 'lucide-react';
 import { PropertyUnit, PaymentRecord, DepositRecord } from '../types';
 import { getTenantPaymentsFromSupabase } from '../lib/supabaseService';
@@ -607,21 +608,47 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
       <div className="space-y-5">
         <CategorySwitch value={category} onChange={setCategory} counts={categoryCounts} noun="tenants" />
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            { label: 'Tenants', value: String(periodOverview.length), icon: Users, tone: 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/30' },
-            { label: 'Rent collected', value: formatBoth(byCurrency('USD', paidOf), byCurrency('SSP', paidOf)), icon: Wallet, tone: 'bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-500/30' },
-            { label: 'Balance owed', value: formatBoth(byCurrency('USD', owedOf), byCurrency('SSP', owedOf)), icon: AlertTriangle, tone: 'bg-gradient-to-br from-rose-500 to-orange-500 text-white shadow-md shadow-rose-500/30' },
-            { label: 'Deposits held', value: formatBoth(heldOf('USD'), heldOf('SSP')), icon: ShieldCheck, tone: 'bg-gradient-to-br from-sky-500 to-blue-500 text-white shadow-md shadow-sky-500/30' },
-          ].map(s => (
-            <div key={s.label} className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-4 flex items-center gap-3">
-              <span className={`w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center ${s.tone}`}><s.icon className="w-5 h-5" /></span>
-              <div className="min-w-0">
-                <span className="block text-[11px] font-semibold text-slate-500">{s.label}</span>
-                <span className="block text-lg font-black text-slate-900 truncate">{s.value}</span>
+        {/* Dollar and SSP kept in separate cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {(['USD', 'SSP'] as const).map(cur => {
+            const usd = cur === 'USD';
+            const count = periodOverview.filter(o => o.ledger.currency === cur).length;
+            const rows = [
+              { label: 'Rent collected', value: byCurrency(cur, paidOf), icon: Wallet },
+              { label: 'Balance owed', value: byCurrency(cur, owedOf), icon: AlertTriangle },
+              { label: 'Deposits held', value: heldOf(cur), icon: ShieldCheck },
+            ];
+            return (
+              <div
+                key={cur}
+                className={`relative overflow-hidden rounded-3xl p-5 text-white ${
+                  usd ? 'bg-gradient-to-br from-slate-900 to-slate-800' : 'bg-gradient-to-br from-orange-500 to-amber-500'
+                }`}
+              >
+                <div className="absolute -right-8 -bottom-10 w-36 h-36 rounded-full bg-white/10" />
+                <div className="relative flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black ${usd ? 'bg-orange-500' : 'bg-white/20'}`}>
+                      {usd ? <DollarSign className="w-5 h-5" /> : <span className="text-[11px]">SSP</span>}
+                    </span>
+                    <div>
+                      <p className="text-sm font-extrabold">{usd ? 'Dollar ($)' : 'South Sudanese Pound'}</p>
+                      <p className="text-[11px] opacity-70">{count} tenant{count === 1 ? '' : 's'} paying in {usd ? 'dollars' : 'SSP'}</p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full bg-white/15 text-[10px] font-bold">{periodLabel}</span>
+                </div>
+                <div className="relative grid grid-cols-3 gap-2 mt-4">
+                  {rows.map(r => (
+                    <div key={r.label} className="rounded-2xl bg-white/10 px-3 py-2.5 min-w-0">
+                      <span className="flex items-center gap-1 text-[10px] font-bold opacity-80"><r.icon className="w-3 h-3" /> {r.label}</span>
+                      <span className="block text-base font-black truncate" title={formatMoney(r.value, cur)}>{formatMoney(r.value, cur)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
