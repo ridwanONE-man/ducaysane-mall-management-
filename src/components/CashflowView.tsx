@@ -298,37 +298,6 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         </div>
       </div>
 
-      {/* Period */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-3 flex flex-wrap items-center gap-2">
-        <span className="flex items-center gap-1.5 px-2 text-xs font-bold text-slate-700"><CalendarRange className="w-4 h-4 text-orange-500" /> Show</span>
-        <div className="inline-flex bg-slate-100 p-0.5 rounded-xl">
-          {([['all', 'All'], ['month', 'Month'], ['year', 'Year'], ['day', 'Day'], ['range', 'Custom']] as [PeriodMode, string][]).map(([m, label]) => (
-            <button key={m} type="button" onClick={() => setPeriodMode(m)} className={pill(periodMode === m)}>{label}</button>
-          ))}
-        </div>
-        {(periodMode === 'month' || periodMode === 'year') && (
-          <select value={year} onChange={e => setYear(Number(e.target.value))} className={selectCls}>
-            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        )}
-        {periodMode === 'month' && (
-          <select value={month} onChange={e => setMonth(Number(e.target.value))} className={selectCls}>
-            {MONTH_NAMES.map((n, i) => <option key={n} value={i}>{n}</option>)}
-          </select>
-        )}
-        {periodMode === 'day' && <input type="date" value={day} onChange={e => setDay(e.target.value)} className={selectCls} />}
-        {periodMode === 'range' && (
-          <span className="flex items-center gap-2">
-            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className={selectCls} />
-            <span className="text-xs font-bold text-slate-400">to</span>
-            <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className={selectCls} />
-          </span>
-        )}
-        <span className="ml-auto px-3 py-1 rounded-full bg-orange-50 text-orange-700 text-[11px] font-bold">
-          {periodLabel} • {periodTransactions.length} entr{periodTransactions.length === 1 ? 'y' : 'ies'}
-        </span>
-      </div>
-
       {/* Dollar and SSP cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {totals.map(t => {
@@ -375,6 +344,37 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             </button>
           );
         })}
+      </div>
+
+      {/* Period */}
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-3 flex flex-wrap items-center gap-2">
+        <span className="flex items-center gap-1.5 px-2 text-xs font-bold text-slate-700"><CalendarRange className="w-4 h-4 text-orange-500" /> Show</span>
+        <div className="inline-flex bg-slate-100 p-0.5 rounded-xl">
+          {([['all', 'All'], ['month', 'Month'], ['year', 'Year'], ['day', 'Day'], ['range', 'Custom']] as [PeriodMode, string][]).map(([m, label]) => (
+            <button key={m} type="button" onClick={() => setPeriodMode(m)} className={pill(periodMode === m)}>{label}</button>
+          ))}
+        </div>
+        {(periodMode === 'month' || periodMode === 'year') && (
+          <select value={year} onChange={e => setYear(Number(e.target.value))} className={selectCls}>
+            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        )}
+        {periodMode === 'month' && (
+          <select value={month} onChange={e => setMonth(Number(e.target.value))} className={selectCls}>
+            {MONTH_NAMES.map((n, i) => <option key={n} value={i}>{n}</option>)}
+          </select>
+        )}
+        {periodMode === 'day' && <input type="date" value={day} onChange={e => setDay(e.target.value)} className={selectCls} />}
+        {periodMode === 'range' && (
+          <span className="flex items-center gap-2">
+            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className={selectCls} />
+            <span className="text-xs font-bold text-slate-400">to</span>
+            <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className={selectCls} />
+          </span>
+        )}
+        <span className="ml-auto px-3 py-1 rounded-full bg-orange-50 text-orange-700 text-[11px] font-bold">
+          {periodLabel} • {periodTransactions.length} entr{periodTransactions.length === 1 ? 'y' : 'ies'}
+        </span>
       </div>
 
       {/* Ledger */}

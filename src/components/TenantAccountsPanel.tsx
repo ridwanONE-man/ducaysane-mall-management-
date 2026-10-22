@@ -1,22 +1,71 @@
 import React, { useMemo, useState } from 'react';
-import { Users, Search, Phone, Copy, Check, CalendarCheck, AlertTriangle, CheckCircle2, Store, ShieldCheck } from 'lucide-react';
+import { Users, Search, Phone, Copy, Check, CalendarCheck, AlertTriangle, CheckCircle2, Store, ShieldCheck, TrendingUp, Wallet } from 'lucide-react';
+import { PaymentRecord } from '../types';
 import { TenantAccount } from '../utils/tenantAccount';
 import { formatLongDate, formatMoney } from '../utils/printUtils';
 import { RentCurrency, formatBoth } from '../utils/currency';
 
 interface TenantAccountsPanelProps {
   accounts: TenantAccount[];
+  payments?: PaymentRecord[];
   onOpenAccount: (account: TenantAccount) => void;
 }
 
-type Filter = 'all' | 'owing' | 'paid';
+type Filter = 'all' | 'owing' | 'paid' | 'unpaid' | 'partial' | 'overdue';
+
+const todayIdx = () => new Date().getFullYear() * 12 + new Date().getMonth();
+// Owes at least one month with nothing paid
+const isUnpaid = (a: TenantAccount) => a.owing.some(m => m.status === 'due');
+// Owes at least one month that was only partly paid
+const isPartial = (a: TenantAccount) => a.owing.some(m => m.status === 'partial');
+// Still owes rent for a month that has already passed
+const isOverdue = (a: TenantAccount) => a.owing.some(m => m.idx < todayIdx());
+
+const FILTER_MATCH: Record<Filter, (a: TenantAccount) => boolean> = {
+  all: () => true,
+  owing: a => a.balance > 0,
+  paid: a => a.balance <= 0,
+  unpaid: isUnpaid,
+  partial: isPartial,
+  overdue: isOverdue,
+};
+
+// Active colour of each filter tab
+const FILTER_TONE: Record<Filter, string> = {
+  all: 'bg-slate-900 text-white',
+  owing: 'bg-rose-600 text-white',
+  paid: 'bg-emerald-600 text-white',
+  unpaid: 'bg-rose-600 text-white',
+  partial: 'bg-amber-500 text-white',
+  overdue: 'bg-gradient-to-r from-rose-600 to-orange-500 text-white',
+};
 
 const usd = (n: number, currency: RentCurrency = 'USD') => formatMoney(n, currency);
 
-export const TenantAccountsPanel: React.FC<TenantAccountsPanelProps> = ({ accounts, onOpenAccount }) => {
+export const TenantAccountsPanel: React.FC<TenantAccountsPanelProps> = ({ accounts, payments = [], onOpenAccount }) => {
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
+
+  // Rent due up to this month vs. what was paid of it, month by month (works across $ and SSP)
+  const stats = useMemo(() => {
+    const now = todayIdx();
+    const dueMonths = accounts.flatMap(a => a.months.filter(m => m.contracted && m.idx <= now && m.due > 0));
+    const rate = dueMonths.length
+      ? Math.round((dueMonths.reduce((s, m) => s + Math.min(1, m.paid / m.due), 0) / dueMonths.length) * 1000) / 10
+      : 100;
+    const overdueOf = (cur: 'USD' | 'SSP') => accounts
+      .filter(a => a.currency === cur)
+      .reduce((s, a) => s + a.owing.filter(m => m.idx < now).reduce((t, m) => t + m.remaining, 0), 0);
+    return {
+      rate,
+      collectedUSD: payments.filter(p => p.currency === 'USD').reduce((s, p) => s + p.amount, 0),
+      collectedSSP: payments.filter(p => p.currency === 'SSP').reduce((s, p) => s + p.amount, 0),
+      overdueUSD: overdueOf('USD'),
+      overdueSSP: overdueOf('SSP'),
+      overdueTenants: accounts.filter(isOverdue).length,
+    };
+  }, [accounts, payments]);
 
   const totals = useMemo(() => ({
     owedUSD: accounts.filter(a => a.currency === 'USD').reduce((s, a) => s + a.balance, 0),
@@ -29,8 +78,7 @@ export const TenantAccountsPanel: React.FC<TenantAccountsPanelProps> = ({ accoun
 
   const q = search.trim().toLowerCase();
   const shown = accounts.filter(a => {
-    if (filter === 'owing' && a.balance <= 0) return false;
-    if (filter === 'paid' && a.balance > 0) return false;
+    if (!FILTER_MATCH[filter](a)) return false;
     return !q || [a.tenant.name, a.unit.unitNumber, a.tenant.phone, a.tenant.trade, a.tenant.code]
       .some(v => (v || '').toLowerCase().includes(q));
   });
@@ -46,39 +94,57 @@ export const TenantAccountsPanel: React.FC<TenantAccountsPanelProps> = ({ accoun
   return (
     <div className="space-y-4">
       {/* Totals */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Collection rate */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 text-white p-5">
+          <div className="absolute -right-8 -bottom-10 w-32 h-32 rounded-full bg-orange-500/20" />
+          <div className="relative flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Collection rate</span>
+            <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center"><TrendingUp className="w-4 h-4" /></span>
+          </div>
+          <p className="relative text-3xl font-black mt-1">{stats.rate}%</p>
+          <div className="relative mt-2 h-1.5 rounded-full bg-white/15 overflow-hidden">
+            <div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400" style={{ width: `${Math.min(100, stats.rate)}%` }} />
+          </div>
+          <p className="relative text-[10px] text-slate-400 mt-1.5">Rent paid of rent due up to this month</p>
+        </div>
+
         {[
-          { label: 'Total balance owed', value: formatBoth(totals.owedUSD, totals.owedSSP), tone: 'text-rose-600', icon: AlertTriangle },
-          { label: 'Tenants with balance', value: String(totals.owing), tone: 'text-rose-600', icon: Users },
-          { label: 'Tenants paid up', value: String(totals.paid), tone: 'text-emerald-600', icon: CheckCircle2 },
-          { label: 'Deposits held', value: formatBoth(totals.depositsUSD, totals.depositsSSP), tone: 'text-blue-600', icon: ShieldCheck },
+          { label: 'Collected', value: formatBoth(stats.collectedUSD, stats.collectedSSP), sub: `${payments.length} payment${payments.length === 1 ? '' : 's'} received`, icon: Wallet, tone: 'from-emerald-500 to-teal-500 shadow-emerald-500/30', text: 'text-emerald-700' },
+          { label: 'Deposits held', value: formatBoth(totals.depositsUSD, totals.depositsSSP), sub: `${accounts.filter(a => a.depositHeld > 0).length} tenant(s) with a deposit`, icon: ShieldCheck, tone: 'from-sky-500 to-blue-500 shadow-sky-500/30', text: 'text-sky-700' },
+          { label: 'Overdue arrears', value: formatBoth(stats.overdueUSD, stats.overdueSSP), sub: `${stats.overdueTenants} tenant(s) late • total balance ${formatBoth(totals.owedUSD, totals.owedSSP)}`, icon: AlertTriangle, tone: 'from-rose-500 to-orange-500 shadow-rose-500/30', text: 'text-rose-600' },
         ].map(t => (
-          <div key={t.label} className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-4">
-            <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1.5">
-              <t.icon className={`w-3.5 h-3.5 ${t.tone}`} /> {t.label}
-            </span>
-            <span className={`block text-xl font-black mt-0.5 ${t.tone}`}>{t.value}</span>
+          <div key={t.label} className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{t.label}</span>
+              <span className={`w-9 h-9 rounded-xl bg-gradient-to-br ${t.tone} text-white flex items-center justify-center shadow-md`}><t.icon className="w-4 h-4" /></span>
+            </div>
+            <p className={`text-2xl font-black mt-1 truncate ${t.text}`}>{t.value}</p>
+            <p className="text-[10px] text-slate-500 mt-1.5 truncate">{t.sub}</p>
           </div>
         ))}
       </div>
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="inline-flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
+        <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
           {([
-            ['all', `All (${accounts.length})`],
-            ['owing', `Balance (${totals.owing})`],
-            ['paid', `Paid (${totals.paid})`],
+            ['all', 'All'],
+            ['owing', 'Balance'],
+            ['paid', 'Paid'],
+            ['unpaid', 'Unpaid'],
+            ['partial', 'Partially Paid'],
+            ['overdue', 'Overdue Arrears'],
           ] as [Filter, string][]).map(([f, label]) => (
             <button
               key={f}
               type="button"
               onClick={() => setFilter(f)}
               className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                filter === f ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                filter === f ? `${FILTER_TONE[f]} shadow-xs font-bold` : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
               }`}
             >
-              {label}
+              {label} <span className="opacity-75">({accounts.filter(FILTER_MATCH[f]).length})</span>
             </button>
           ))}
         </div>
