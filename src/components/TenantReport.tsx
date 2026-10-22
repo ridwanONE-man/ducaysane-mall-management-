@@ -58,7 +58,7 @@ interface TenantEntry {
 }
 
 type PeriodMode = 'all' | 'month' | 'year' | 'day' | 'range';
-type ListFilter = 'all' | 'owing' | 'paid';
+type ListFilter = 'all' | 'owing' | 'paid' | 'selected';
 
 const tenantKey = (name: string, unitNumber: string) => `${normalizeName(name)}|${normalizeUnitNumber(unitNumber)}`;
 const shortLabel = (m: { year: number; month: number }) => `${MONTH_NAMES[m.month].slice(0, 3)} ${m.year}`;
@@ -268,25 +268,36 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
     const own = payments.filter(p => tenantKey(p.tenantName, p.unitNumber) === o.tenant.key);
     const months = o.ledger.months.filter(m => isMonthInPeriod(m.year, m.month));
     const sum = summarizeLedger(months);
-    const paidInPeriod = own.filter(isPaymentInPeriod).filter(p => p.currency === o.ledger.currency).reduce((t, p) => t + p.amount, 0);
+    const periodPayments = own.filter(isPaymentInPeriod);
+    const paidInPeriod = periodPayments.filter(p => p.currency === o.ledger.currency).reduce((t, p) => t + p.amount, 0);
+    // A tenant belongs to the period when they had rent months, payments or deposits in it
+    const active = periodMode === 'all'
+      || months.length > 0
+      || periodPayments.length > 0
+      || deposits.some(d => tenantKey(d.tenantName, d.unitNumber) === o.tenant.key && isDepositInPeriod(d));
     return [o.tenant.key, {
+      active,
       months,
       summary: sum,
       paid: Math.round(paidInPeriod * 100) / 100,
       owingMonths: months.filter(m => m.status !== 'Paid'),
     }];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  })), [overview, payments, periodMode, year, month, day, fromDate, toDate]);
+  })), [overview, payments, deposits, periodMode, year, month, day, fromDate, toDate]);
 
   const q = search.trim().toLowerCase();
-  const shownOverview = overview.filter(o => {
+  // Only tenants that belong to the chosen period are listed
+  const periodOverview = overview.filter(o => periodRows.get(o.tenant.key)?.active);
+  const shownOverview = periodOverview.filter(o => {
     const outstanding = periodRows.get(o.tenant.key)?.summary.outstanding || 0;
     if (listFilter === 'owing' && outstanding <= 0) return false;
     if (listFilter === 'paid' && outstanding > 0) return false;
+    if (listFilter === 'selected' && !picked.has(o.tenant.key)) return false;
     return !q || [o.tenant.name, o.tenant.unitNumber, o.tenant.unit?.currentTenant?.phone, o.tenant.unit?.currentTenant?.code]
       .some(v => (v || '').toLowerCase().includes(q));
   });
-  const owingCount = overview.filter(o => (periodRows.get(o.tenant.key)?.summary.outstanding || 0) > 0).length;
+  const owingCount = periodOverview.filter(o => (periodRows.get(o.tenant.key)?.summary.outstanding || 0) > 0).length;
+  const pickedCount = periodOverview.filter(o => picked.has(o.tenant.key)).length;
 
   // ----- Selected tenant -----
   const tenantPayments = useMemo(() => {
@@ -597,7 +608,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="inline-flex bg-slate-100 p-0.5 rounded-xl text-xs font-bold self-start">
-            {([['all', `All (${overview.length})`], ['owing', `Owing (${owingCount})`], ['paid', `Paid up (${overview.length - owingCount})`]] as [ListFilter, string][]).map(([f, label]) => (
+            {([['all', `All (${periodOverview.length})`], ['owing', `Owing (${owingCount})`], ['paid', `Paid up (${periodOverview.length - owingCount})`], ['selected', `Selected (${pickedCount})`]] as [ListFilter, string][]).map(([f, label]) => (
               <button
                 key={f}
                 type="button"
@@ -642,11 +653,11 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                disabled={picked.size === 0}
-                onClick={() => printTenants(shownOverview.filter(o => picked.has(o.tenant.key)).map(o => o.tenant.key))}
+                disabled={pickedCount === 0}
+                onClick={() => printTenants(periodOverview.filter(o => picked.has(o.tenant.key)).map(o => o.tenant.key))}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-extrabold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <Printer className="w-4 h-4" /> Print selected ({picked.size})
+                <Printer className="w-4 h-4" /> Print selected ({pickedCount})
               </button>
               <button
                 type="button"
@@ -663,7 +674,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
 
         {shownOverview.length === 0 ? (
           <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 text-xs">
-            {tenants.length === 0 ? 'No tenants yet.' : 'No tenant matches your search.'}
+            {tenants.length === 0 ? 'No tenants yet.' : listFilter === 'selected' ? 'No tenants ticked yet — tick tenants in the list first.' : periodOverview.length === 0 ? `No tenants in ${periodLabel}.` : 'No tenant matches your search.'}
           </div>
         ) : (
           <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
@@ -777,7 +788,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
             </div>
             <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 text-[11px] text-slate-500">
               {printing === 'tenants' && <PrintPortal>{tenantsPrint}</PrintPortal>}
-              Showing <strong className="text-slate-900">{shownOverview.length}</strong> of {overview.length} tenants • {periodLabel} • click a row to open the report
+              Showing <strong className="text-slate-900">{shownOverview.length}</strong> of {periodOverview.length} tenants in {periodLabel} • click a row to open the report
             </div>
           </div>
         )}
