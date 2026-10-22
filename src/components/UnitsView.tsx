@@ -27,7 +27,9 @@ import { PropertyUnit, CurrencyMode } from '../types';
 import { exportUnitsToCSV } from '../utils/exportUtils';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
 import { useConfirm } from './ConfirmDialog';
-import { formatUnitRent } from '../utils/currency';
+import { formatUnitRent, unitCurrency, unitRent } from '../utils/currency';
+import { CurrencyCard, SummaryCard } from './CurrencyCard';
+import { formatMoney } from '../utils/printUtils';
 import { parsePaymentDate, formatLongDate } from '../utils/printUtils';
 
 // Colour per occupancy status: top bar, pill and dot
@@ -234,13 +236,6 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
   const hasFilters = Boolean(search.trim()) || floorFilter !== 'All' || occupancyFilter !== 'All' || activeCategoryTab !== 'All'
     || quickGroundFloor || quickExpiring30 || quickHighArrears || quickAnchor;
 
-  const metrics = [
-    { label: 'Total units', value: totalInventoryCount, sub: `${shopsCount} shops · ${spacesCount} spaces`, icon: Building2, tone: 'from-orange-500 to-amber-500 shadow-orange-500/30' },
-    { label: 'Occupied', value: occupiedCount, sub: `${occupancyPct}% occupancy`, icon: CheckCircle2, tone: 'from-emerald-500 to-teal-500 shadow-emerald-500/30' },
-    { label: 'Available', value: availableCount, sub: `${Math.round(availableSqM).toLocaleString()} m² vacant · ${vacancyPct}%`, icon: DoorOpen, tone: 'from-sky-500 to-blue-500 shadow-sky-500/30' },
-    { label: 'Hold & maintenance', value: reservedCount + maintenanceCount, sub: `${reservedCount} hold · ${maintenanceCount} maint`, icon: Wrench, tone: 'from-slate-600 to-slate-800 shadow-slate-500/30' },
-  ];
-
   const quickChips: { label: string; on: boolean; toggle: () => void; icon: React.ComponentType<{ className?: string }> }[] = [
     { label: 'Ground Floor', on: quickGroundFloor, toggle: () => setQuickGroundFloor(v => !v), icon: Layers },
     { label: 'Expiring in 30 days', on: quickExpiring30, toggle: () => setQuickExpiring30(v => !v), icon: Clock },
@@ -331,28 +326,37 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
         </div>
       </div>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {metrics.map((m, i) => (
-          <div key={m.label} className="relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{m.label}</span>
-                <span className="block text-3xl font-black text-slate-900 mt-1 leading-none">{m.value}</span>
-              </div>
-              <span className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${m.tone} text-white flex items-center justify-center shadow-md`}>
-                <m.icon className="w-5 h-5" />
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 mt-2">{m.sub}</p>
-            {i === 1 && (
-              <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400" style={{ width: `${occupancyPct}%` }} />
-              </div>
-            )}
-            {i === 0 && totalSqM > 0 && <p className="text-[10px] text-slate-400">{Math.round(totalSqM).toLocaleString()} m² total</p>}
-          </div>
-        ))}
+      {/* Summary: occupancy, then rent per currency */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.55fr)_minmax(0,1.55fr)] gap-4">
+        <SummaryCard
+          label="Occupancy"
+          value={`${occupancyPct}%`}
+          icon={Building2}
+          progress={occupancyPct}
+          chips={[
+            { label: 'Total', value: totalInventoryCount, tone: 'text-slate-300' },
+            { label: 'Occupied', value: occupiedCount, tone: 'text-emerald-300' },
+            { label: 'Available', value: availableCount, tone: 'text-amber-300' },
+          ]}
+        />
+        {(['USD', 'SSP'] as const).map(cur => {
+          const list = units.filter(u => unitCurrency(u) === cur);
+          const leased = list.filter(u => u.currentTenant && u.occupancyStatus !== 'Available');
+          const vacant = list.filter(u => u.occupancyStatus === 'Available' || !u.currentTenant);
+          return (
+            <CurrencyCard
+              key={cur}
+              currency={cur}
+              subtitle={`${list.length} unit${list.length === 1 ? '' : 's'} rented in ${cur === 'USD' ? 'dollars' : 'SSP'}`}
+              boxes={[
+                { label: 'Rent / month', value: formatMoney(leased.reduce((t, u) => t + unitRent(u), 0), cur), icon: CheckCircle2 },
+                { label: 'Vacant potential', value: formatMoney(vacant.reduce((t, u) => t + unitRent(u), 0), cur), icon: DoorOpen },
+                { label: 'Shops / spaces', value: `${list.filter(u => u.type === 'Shop' || u.categoryType === 'Shop').length} / ${list.filter(u => u.type === 'Space' || u.categoryType === 'Space').length}`, icon: Store },
+                { label: 'Vacant area', value: `${Math.round(vacant.reduce((t, u) => t + (u.sizeSqM || 0), 0)).toLocaleString()} m²`, icon: Layers },
+              ]}
+            />
+          );
+        })}
       </div>
 
       {/* Toolbar */}

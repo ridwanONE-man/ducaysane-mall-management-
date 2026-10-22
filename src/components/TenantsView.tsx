@@ -35,6 +35,7 @@ import { ModifyTenantPricingPayload, VacateUnitPayload } from '../lib/supabaseSe
 import { DeleteButton, ClearAllButton } from './DeleteControls';
 import { TenantAccount, accountKey } from '../utils/tenantAccount';
 import { formatUnitRent, rentFields, unitCurrency, unitRent } from '../utils/currency';
+import { CurrencyCard, SummaryCard } from './CurrencyCard';
 
 interface TenantsViewProps {
   units?: PropertyUnit[];
@@ -490,6 +491,36 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
             )}
           </div>
         </div>
+      </div>
+
+      {/* Summary: tenants, then money per currency */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.55fr)_minmax(0,1.55fr)] gap-4">
+        <SummaryCard
+          label="Tenants"
+          value={totalCount}
+          icon={Users}
+          chips={[
+            { label: 'Shops', value: shopsCount, tone: 'text-orange-300' },
+            { label: 'Spaces', value: spacesCount, tone: 'text-sky-300' },
+            { label: 'Paid up', value: tenantAccounts.filter(a => a.balance <= 0).length, tone: 'text-emerald-300' },
+          ]}
+        />
+        {(['USD', 'SSP'] as const).map(cur => {
+          const list = tenantAccounts.filter(a => a.currency === cur);
+          return (
+            <CurrencyCard
+              key={cur}
+              currency={cur}
+              subtitle={`${list.length} tenant${list.length === 1 ? '' : 's'} paying in ${cur === 'USD' ? 'dollars' : 'SSP'}`}
+              boxes={[
+                { label: 'Rent / month', value: formatMoney(list.reduce((t, a) => t + a.monthlyRent, 0), cur), icon: Store },
+                { label: 'Balance owed', value: formatMoney(list.reduce((t, a) => t + a.balance, 0), cur), icon: AlertTriangle },
+                { label: 'Deposits held', value: formatMoney(list.reduce((t, a) => t + a.depositHeld, 0), cur), icon: ShieldCheck },
+                { label: 'Owing tenants', value: String(list.filter(a => a.balance > 0).length), icon: Users },
+              ]}
+            />
+          );
+        })}
       </div>
 
       {/* Category tiles: tap to filter */}
