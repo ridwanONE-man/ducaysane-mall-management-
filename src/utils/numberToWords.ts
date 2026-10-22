@@ -1,6 +1,11 @@
 export function numberToWords(num: number, currency: 'USD' | 'SSP' = 'USD'): string {
+  const isSSP = currency === 'SSP';
+  const unitPlural = isSSP ? 'South Sudanese Pounds' : 'US Dollars';
+  const unitSingle = isSSP ? 'South Sudanese Pound' : 'US Dollar';
+  const subunit = isSSP ? 'Piasters' : 'Cents';
+
   if (isNaN(num) || num <= 0) {
-    return 'Zero US Dollars Only';
+    return `Zero ${unitPlural} Only`;
   }
 
   const ones = [
@@ -34,9 +39,9 @@ export function numberToWords(num: number, currency: 'USD' | 'SSP' = 'USD'): str
 
   if (wholeNumber === 0) {
     if (cents > 0) {
-      return `${cents}/100 Cents US Dollars Only`;
+      return `${cents}/100 ${subunit} ${unitPlural} Only`;
     }
-    return 'Zero US Dollars Only';
+    return `Zero ${unitPlural} Only`;
   }
 
   let words = '';
@@ -59,7 +64,7 @@ export function numberToWords(num: number, currency: 'USD' | 'SSP' = 'USD'): str
   }
 
   words = words.trim();
-  const currencyUnit = wholeNumber === 1 ? 'US Dollar' : 'US Dollars';
+  const currencyUnit = wholeNumber === 1 ? unitSingle : unitPlural;
 
   if (cents > 0) {
     return `${words} ${currencyUnit} and ${cents}/100 Only`;
