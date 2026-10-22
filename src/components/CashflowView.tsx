@@ -24,7 +24,8 @@ import {
   Calendar,
   CalendarRange,
 } from 'lucide-react';
-import { CashflowTransaction, CurrencyMode, CashflowCategory } from '../types';
+import { CashflowTransaction, CurrencyMode, CashflowCategory, PropertyUnit } from '../types';
+import { CategorySwitch, UnitCategory, unitCategoryOf } from './CategorySwitch';
 import { formatMoney, parsePaymentDate, formatLongDate } from '../utils/printUtils';
 import { MONTH_NAMES } from '../utils/rentLedger';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
@@ -59,6 +60,7 @@ const toDisplayDate = (iso: string) => {
 interface CashflowViewProps {
   currencyMode: CurrencyMode;
   transactions?: CashflowTransaction[];
+  units?: PropertyUnit[];
   onSaveTransaction?: (tx: CashflowTransaction) => void;
   onDeleteTransaction?: (tx: CashflowTransaction) => void;
   onClearAllTransactions?: () => void;
@@ -66,6 +68,7 @@ interface CashflowViewProps {
 
 export const CashflowView: React.FC<CashflowViewProps> = ({
   transactions: propTransactions,
+  units = [],
   onSaveTransaction,
   onDeleteTransaction,
   onClearAllTransactions
@@ -154,7 +157,17 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     : periodMode === 'month' ? `${MONTH_NAMES[month]} ${year}`
     : periodMode === 'day' ? formatLongDate(day)
     : `${formatLongDate(fromDate)} – ${formatLongDate(toDate)}`;
-  const periodTransactions = transactions.filter(inPeriod);
+  // Shop / space: taken from the unit number in the entry's title, e.g. "Rent: Ali (G001)"
+  const [category, setCategory] = useState<UnitCategory>('all');
+  const categoryOf = (t: CashflowTransaction) => unitCategoryOf(/\(([^()]+)\)\s*$/.exec(t.title)?.[1], units);
+  const datedTransactions = transactions.filter(inPeriod);
+  const categoryCounts = {
+    all: datedTransactions.length,
+    shop: datedTransactions.filter(t => categoryOf(t) === 'shop').length,
+    space: datedTransactions.filter(t => categoryOf(t) === 'space').length,
+  };
+  const periodTransactions = category === 'all' ? datedTransactions : datedTransactions.filter(t => categoryOf(t) === category);
+  const categoryLabel = category === 'all' ? 'All units' : category === 'shop' ? 'Shops' : 'Spaces';
   const availableYears = [...new Set([today.getFullYear(), ...transactions.map(t => parsePaymentDate(t.date)?.getFullYear()).filter((y): y is number => Boolean(y))])]
     .sort((a, b) => b - a);
 
@@ -298,6 +311,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         </div>
       </div>
 
+      {/* Shops / spaces */}
+      <CategorySwitch value={category} onChange={setCategory} counts={categoryCounts} noun="entries" />
+
       {/* Dollar and SSP cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {totals.map(t => {
@@ -373,7 +389,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
           </span>
         )}
         <span className="ml-auto px-3 py-1 rounded-full bg-orange-50 text-orange-700 text-[11px] font-bold">
-          {periodLabel} • {periodTransactions.length} entr{periodTransactions.length === 1 ? 'y' : 'ies'}
+          {categoryLabel} • {periodLabel} • {periodTransactions.length} entr{periodTransactions.length === 1 ? 'y' : 'ies'}
         </span>
       </div>
 
@@ -507,7 +523,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         </div>
         {filteredTransactions.length > 0 && (
           <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 text-[11px] text-slate-500">
-            Showing <strong className="text-slate-900">{filteredTransactions.length}</strong> of {periodTransactions.length} entries in {periodLabel}
+            Showing <strong className="text-slate-900">{filteredTransactions.length}</strong> of {periodTransactions.length} {categoryLabel.toLowerCase()} entries in {periodLabel}
           </div>
         )}
       </div>
@@ -694,6 +710,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             <CashflowStatement
               transactions={filteredTransactions}
               filterLabel={[
+                categoryLabel,
                 periodLabel,
                 currencyFilter === 'ALL' ? 'All money' : currencyFilter === 'USD' ? 'Dollar only' : 'SSP only',
                 typeFilter === 'ALL' ? 'in & out' : typeFilter === 'Inflow' ? 'money in' : 'money out',

@@ -40,6 +40,8 @@ import {
   parseDepositDate,
 } from './DepositVoucher';
 import logoImg from '../assets/logo.png';
+import { CategorySwitch, UnitCategory, unitCategoryOf } from './CategorySwitch';
+import { formatBoth } from '../utils/currency';
 
 interface TenantReportProps {
   units: PropertyUnit[];
@@ -287,7 +289,16 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
 
   const q = search.trim().toLowerCase();
   // Only tenants that belong to the chosen period are listed
-  const periodOverview = overview.filter(o => periodRows.get(o.tenant.key)?.active);
+  // Shops / spaces switch, then only tenants that belong to the chosen period
+  const [category, setCategory] = useState<UnitCategory>('all');
+  const categoryOf = (o: { tenant: TenantEntry }) => unitCategoryOf(o.tenant.unitNumber, units);
+  const datedOverview = overview.filter(o => periodRows.get(o.tenant.key)?.active);
+  const categoryCounts = {
+    all: datedOverview.length,
+    shop: datedOverview.filter(o => categoryOf(o) === 'shop').length,
+    space: datedOverview.filter(o => categoryOf(o) === 'space').length,
+  };
+  const periodOverview = category === 'all' ? datedOverview : datedOverview.filter(o => categoryOf(o) === category);
   const shownOverview = periodOverview.filter(o => {
     const outstanding = periodRows.get(o.tenant.key)?.summary.outstanding || 0;
     if (listFilter === 'owing' && outstanding <= 0) return false;
@@ -528,7 +539,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
     <div className="bg-white text-slate-900 font-sans px-8 py-6 space-y-5">
       <PrintHeader
         title="Tenants Rent Report"
-        lines={[`Period: ${periodLabel}`, `${printedRows.length} tenant${printedRows.length === 1 ? '' : 's'}`, `Printed ${formatLongDate(now)}`]}
+        lines={[`Period: ${periodLabel}`, `${category === 'all' ? 'Shops & spaces' : category === 'shop' ? 'Shops only' : 'Spaces only'}`, `${printedRows.length} tenant${printedRows.length === 1 ? '' : 's'}`, `Printed ${formatLongDate(now)}`]}
       />
 
       <table className="w-full text-[10px]">
@@ -583,18 +594,25 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
   // Tenant list
   // ================================================================
   if (!selected) {
-    const totalOwed = overview.reduce((s, o) => s + (o.ledger.currency === 'USD' ? o.summary.outstanding : 0), 0);
-    const totalPaid = payments.filter(p => p.currency === 'USD').reduce((s, p) => s + p.amount, 0);
-    const totalHeld = deposits.filter(d => d.status === 'Held in Escrow' && depositMoney(d).currency === 'USD').reduce((s, d) => s + d.amountUSD, 0);
+    // Totals follow the shops/spaces switch and the period
+    const byCurrency = (cur: 'USD' | 'SSP', pick: (o: typeof periodOverview[number]) => number) =>
+      periodOverview.filter(o => o.ledger.currency === cur).reduce((t, o) => t + pick(o), 0);
+    const paidOf = (o: typeof periodOverview[number]) => periodRows.get(o.tenant.key)?.paid || 0;
+    const owedOf = (o: typeof periodOverview[number]) => periodRows.get(o.tenant.key)?.summary.outstanding || 0;
+    const heldOf = (cur: 'USD' | 'SSP') => periodOverview
+      .flatMap(o => o.held)
+      .reduce((t, d) => { const m = depositMoney(d); return m.currency === cur ? t + m.value : t; }, 0);
 
     return (
       <div className="space-y-5">
+        <CategorySwitch value={category} onChange={setCategory} counts={categoryCounts} noun="tenants" />
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            { label: 'Tenants', value: String(tenants.length), icon: Users, tone: 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/30' },
-            { label: 'Rent collected', value: formatMoney(totalPaid, 'USD'), icon: Wallet, tone: 'bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-500/30' },
-            { label: 'Balance owed', value: formatMoney(totalOwed, 'USD'), icon: AlertTriangle, tone: 'bg-gradient-to-br from-rose-500 to-orange-500 text-white shadow-md shadow-rose-500/30' },
-            { label: 'Deposits held', value: formatMoney(totalHeld, 'USD'), icon: ShieldCheck, tone: 'bg-gradient-to-br from-sky-500 to-blue-500 text-white shadow-md shadow-sky-500/30' },
+            { label: 'Tenants', value: String(periodOverview.length), icon: Users, tone: 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/30' },
+            { label: 'Rent collected', value: formatBoth(byCurrency('USD', paidOf), byCurrency('SSP', paidOf)), icon: Wallet, tone: 'bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-500/30' },
+            { label: 'Balance owed', value: formatBoth(byCurrency('USD', owedOf), byCurrency('SSP', owedOf)), icon: AlertTriangle, tone: 'bg-gradient-to-br from-rose-500 to-orange-500 text-white shadow-md shadow-rose-500/30' },
+            { label: 'Deposits held', value: formatBoth(heldOf('USD'), heldOf('SSP')), icon: ShieldCheck, tone: 'bg-gradient-to-br from-sky-500 to-blue-500 text-white shadow-md shadow-sky-500/30' },
           ].map(s => (
             <div key={s.label} className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-4 flex items-center gap-3">
               <span className={`w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center ${s.tone}`}><s.icon className="w-5 h-5" /></span>

@@ -27,7 +27,8 @@ import {
   AlertCircle,
   UserX,
   UserPlus,
-  Plus
+  Plus,
+  LayoutGrid
 } from 'lucide-react';
 import { TenantInfo, PropertyUnit, PaymentRecord, DepositRecord, BillingStatus } from '../types';
 import { ModifyTenantPricingPayload, VacateUnitPayload } from '../lib/supabaseService';
@@ -438,90 +439,89 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
 
   return (
     <div className="p-6 sm:p-8 space-y-6 max-w-7xl mx-auto">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-1.5 text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">
-            <span>Ducaysane Mall</span>
-            <span>›</span>
-            <span className="text-blue-600">Tenants</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            Commercial Tenant Directory
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Active shop and space leases, contact profiles, lease terms, and security deposit standings.
-          </p>
-        </div>
-
-        {/* Actions & Search */}
-        <div className="flex items-center gap-3">
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search tenant, trade, unit #..."
-              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
-            />
+      {/* Header */}
+      <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs">
+        <div className="h-1.5 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
+        <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-orange-100/50" />
+        <div className="relative p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/30">
+              <Users className="w-7 h-7" />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Tenants</h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Everyone renting a shop or space — contacts, leases and balances.</p>
+            </div>
           </div>
 
-          {onClearAllTenants && (
-            <ClearAllButton
-              count={listItems.length}
-              itemLabel="tenants"
-              onClear={onClearAllTenants}
-              message={<>All tenants are removed and their units become <strong>Available</strong>. Units, payments, deposits, cashflow, receipts, reports and analytics are <strong>kept</strong>.</>}
-            />
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search tenant, trade, unit #..."
+                className="w-full pl-9 pr-8 py-2 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+              />
+              {searchTerm && (
+                <button type="button" onClick={() => setSearchTerm('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer" aria-label="Clear search">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
 
-          {availableUnits.length > 0 && onOpenAssignUnit && (
-            <button
-              onClick={() => onOpenAssignUnit(availableUnits[0])}
-              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-blue-500/25 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>+ Lease Available Unit</span>
-            </button>
-          )}
+            {onClearAllTenants && (
+              <ClearAllButton
+                count={listItems.length}
+                itemLabel="tenants"
+                onClear={onClearAllTenants}
+                message={<>All tenants are removed and their units become <strong>Available</strong>. Units, payments, deposits, cashflow, receipts, reports and analytics are <strong>kept</strong>.</>}
+              />
+            )}
+
+            {availableUnits.length > 0 && onOpenAssignUnit && (
+              <button
+                onClick={() => onOpenAssignUnit(availableUnits[0])}
+                className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-extrabold shadow-md shadow-orange-500/25 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
+              >
+                <UserPlus className="w-4 h-4" /> Lease a Unit
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Category Tabs Strip */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/80 pb-3">
-        {(['All', 'Shops', 'Spaces', 'Overdue', 'Expiring Soon', 'Available Units'] as const).map(tab => {
-          const count = 
-            tab === 'All' ? totalCount :
-            tab === 'Shops' ? shopsCount :
-            tab === 'Spaces' ? spacesCount :
-            tab === 'Overdue' ? overdueCount :
-            tab === 'Expiring Soon' ? expiringSoonCount : availableCount;
-
+      {/* Category tiles: tap to filter */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {([
+          { tab: 'All', count: totalCount, icon: Users, tone: 'from-slate-700 to-slate-900', text: 'text-slate-900' },
+          { tab: 'Shops', count: shopsCount, icon: Store, tone: 'from-orange-500 to-amber-500', text: 'text-orange-600' },
+          { tab: 'Spaces', count: spacesCount, icon: LayoutGrid, tone: 'from-sky-500 to-blue-500', text: 'text-sky-600' },
+          { tab: 'Overdue', count: overdueCount, icon: AlertTriangle, tone: 'from-rose-500 to-orange-500', text: 'text-rose-600' },
+          { tab: 'Expiring Soon', count: expiringSoonCount, icon: Clock, tone: 'from-amber-500 to-yellow-500', text: 'text-amber-600' },
+          { tab: 'Available Units', count: availableCount, icon: DoorOpen, tone: 'from-emerald-500 to-teal-500', text: 'text-emerald-600' },
+        ] as const).map(({ tab, count, icon: Icon, tone, text }) => {
+          const active = activeCategoryTab === tab;
           return (
             <button
               key={tab}
+              type="button"
               onClick={() => setActiveCategoryTab(tab)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeCategoryTab === tab
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              className={`group relative text-left rounded-2xl p-3.5 border transition-all cursor-pointer ${
+                active
+                  ? 'bg-white border-orange-400 ring-2 ring-orange-200 shadow-md'
+                  : 'bg-white border-slate-200/80 hover:border-orange-200 hover:shadow-sm'
               }`}
             >
-              <span>{tab}</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
-                activeCategoryTab === tab 
-                  ? 'bg-white/20 text-white' 
-                  : tab === 'Overdue' && overdueCount > 0 
-                  ? 'bg-rose-100 text-rose-700' 
-                  : tab === 'Expiring Soon' && expiringSoonCount > 0
-                  ? 'bg-amber-100 text-amber-700'
-                  : tab === 'Available Units'
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-slate-100 text-slate-600'
-              }`}>
-                {count}
-              </span>
+              <div className="flex items-center justify-between">
+                <span className={`w-9 h-9 rounded-xl bg-gradient-to-br ${tone} text-white flex items-center justify-center shadow-sm`}>
+                  <Icon className="w-4 h-4" />
+                </span>
+                <span className={`text-2xl font-black ${active ? text : 'text-slate-900'}`}>{count}</span>
+              </div>
+              <span className={`block mt-2 text-xs font-bold ${active ? 'text-slate-900' : 'text-slate-500 group-hover:text-slate-800'}`}>{tab}</span>
+              {active && <span className="absolute left-3.5 right-3.5 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-500" />}
             </button>
           );
         })}

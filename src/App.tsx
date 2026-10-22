@@ -1392,6 +1392,7 @@ export default function App() {
             <CashflowView
               currencyMode={currencyMode}
               transactions={cashflow}
+              units={units}
               onSaveTransaction={handleSaveCashflow}
               onDeleteTransaction={handleDeleteCashflow}
               onClearAllTransactions={handleClearAllCashflow}
