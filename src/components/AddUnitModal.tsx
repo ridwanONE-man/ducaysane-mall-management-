@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Store, Check, Layers, Calendar, DollarSign, Phone, UserCheck, AlertCircle, Trash2 } from 'lucide-react';
 import { PropertyUnit, UnitType, OccupancyStatus } from '../types';
 import { leaseMonthCount } from '../utils/rentLedger';
+import { DurationPicker, formatDuration } from './DurationPicker';
 import { RentCurrency, rentFields, unitCurrency, unitRent } from '../utils/currency';
 import { formatMoney } from '../utils/printUtils';
 
@@ -499,7 +500,7 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
               <span className="text-xs font-bold text-orange-950">Lease Agreement & Dynamic Calculation</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_1.4fr] gap-3">
               <div>
                 <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Lease Start Date</label>
                 <input
@@ -510,15 +511,8 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Duration (Months)</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="120"
-                  value={leaseDurationMonths}
-                  onChange={(e) => setLeaseDurationMonths(parseInt(e.target.value) || 1)}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500"
-                />
+                <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Duration</label>
+                <DurationPicker months={leaseDurationMonths} onChange={setLeaseDurationMonths} />
               </div>
             </div>
 
@@ -529,7 +523,7 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
                   <span className="text-[10px] text-slate-500 font-bold uppercase block">Calculated Lease End Date</span>
                   <span className="font-extrabold text-slate-900">{lease.endLabel}</span>
                   <span className="text-[10px] text-slate-400 block">
-                    {leaseDurationMonths} month{leaseDurationMonths === 1 ? '' : 's'} • {lease.totalDays} days total
+                    {formatDuration(leaseDurationMonths)} • {lease.totalDays} days total
                   </span>
                 </div>
                 <div className="text-right">

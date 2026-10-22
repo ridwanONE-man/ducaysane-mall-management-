@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, UserPlus, Store, Calendar, ShieldCheck, DollarSign, Phone, Mail, Briefcase } from 'lucide-react';
 import { PropertyUnit, DepositRecord } from '../types';
 import { leaseMonthCount } from '../utils/rentLedger';
+import { DurationPicker } from './DurationPicker';
 import { RentCurrency, depositFields, rentFields, unitCurrency, unitRent } from '../utils/currency';
 import { formatMoney } from '../utils/printUtils';
 
@@ -358,17 +359,7 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
 
             <div>
               <label className="block text-slate-600 font-semibold mb-1">Lease Duration</label>
-              <select
-                value={leaseDurationMonths}
-                onChange={(e) => setLeaseDurationMonths(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-600"
-              >
-                <option value={1}>1 Month (Monthly Roll)</option>
-                <option value={3}>3 Months (Quarterly)</option>
-                <option value={6}>6 Months (Semi-Annual)</option>
-                <option value={12}>1 Year (12 Months Standard)</option>
-                <option value={24}>2 Years (24 Months Commercial)</option>
-              </select>
+              <DurationPicker months={leaseDurationMonths} onChange={setLeaseDurationMonths} />
             </div>
           </div>
           {tenantLeaseTotal(leaseMonthCount(leaseStart, computeEndDate()), monthlyRentUSD, rentCurrency)}
