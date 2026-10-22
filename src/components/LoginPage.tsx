@@ -162,9 +162,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       </div>
 
       {/* Right: sign-in panel */}
-      <div className="w-full lg:w-1/2 bg-gradient-to-b from-white to-orange-50/40 lg:rounded-l-[48px] shadow-2xl flex flex-col min-h-screen relative z-10">
+      <div className="w-full lg:w-1/2 bg-[#fffaf5] lg:rounded-l-[48px] shadow-2xl flex flex-col min-h-screen relative z-10 overflow-hidden">
+        {/* Soft decoration behind the card */}
+        <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-orange-200/50 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-32 -left-20 w-96 h-96 rounded-full bg-amber-100/80 blur-3xl pointer-events-none" />
+        <div
+          className="absolute inset-0 opacity-[0.35] pointer-events-none"
+          style={{ backgroundImage: 'radial-gradient(circle, #fdba74 1px, transparent 1px)', backgroundSize: '26px 26px' }}
+        />
 
-        <div className="flex justify-between items-center px-8 sm:px-12 pt-8 sm:pt-10">
+        <div className="relative flex justify-between items-center px-8 sm:px-12 pt-8 sm:pt-10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full p-0.5 ring-2 ring-orange-500/60 bg-white overflow-hidden shadow-sm">
               <img src={logoImg} alt="NBC" className="w-full h-full object-contain rounded-full" />
@@ -174,14 +181,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           <button
             type="button"
             onClick={() => setShowContactModal(true)}
-            className="text-sm font-bold text-orange-600 hover:text-orange-700 px-3 py-2 rounded-xl hover:bg-orange-50 cursor-pointer transition-colors"
+            className="text-sm font-bold text-orange-600 hover:text-white px-4 py-2 rounded-xl bg-white hover:bg-orange-500 border border-orange-200 shadow-xs cursor-pointer transition-colors"
           >
             Need help?
           </button>
         </div>
 
-        <div className="w-full max-w-lg mx-auto px-6 sm:px-10 py-10 my-auto">
-          <div className="bg-white rounded-[32px] border border-slate-200/80 shadow-xl shadow-slate-900/5 p-7 sm:p-10">
+        <div className="relative w-full max-w-lg mx-auto px-6 sm:px-10 py-10 my-auto">
+          <div className="bg-white rounded-[32px] border border-orange-100 shadow-2xl shadow-orange-900/10 p-7 sm:p-10 relative overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
             <div className="mb-8 text-center">
               <div className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/30">
                 <Lock className="w-7 h-7" />
@@ -285,9 +293,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           </div>
         </div>
 
-        <div className="px-8 sm:px-12 py-6 border-t border-slate-100 text-sm text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>© 2026 Nyakuron Business Centre</span>
-          <span>Nyakuron East, Juba, South Sudan</span>
+        <div className="relative px-6 sm:px-12 pb-6">
+          <div className="rounded-2xl bg-[#082142] text-white px-5 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm shadow-lg">
+            <span className="font-semibold">© 2026 <span className="text-orange-400">Nyakuron Business Centre</span></span>
+            <span className="flex items-center gap-1.5 text-slate-300">
+              <MapPin className="w-4 h-4 text-orange-400" /> Nyakuron East, Juba, South Sudan
+            </span>
+          </div>
         </div>
       </div>
 
