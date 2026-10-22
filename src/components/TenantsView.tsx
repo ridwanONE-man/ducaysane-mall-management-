@@ -495,34 +495,35 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
       {/* Category tiles: tap to filter */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
         {([
-          { tab: 'All', count: totalCount, sub: `${tenantAccounts.filter(a => a.balance <= 0).length} paid up`, icon: Users, tone: 'from-slate-700 to-slate-900' },
-          { tab: 'Shops', count: shopsCount, sub: 'G… units', icon: Store, tone: 'from-orange-500 to-amber-500' },
-          { tab: 'Spaces', count: spacesCount, sub: 'BW… units', icon: LayoutGrid, tone: 'from-sky-500 to-blue-500' },
-          { tab: 'Overdue', count: overdueCount, sub: overdueCount ? 'owe rent' : 'nobody late', icon: AlertTriangle, tone: 'from-rose-500 to-orange-500' },
-          { tab: 'Expiring Soon', count: expiringSoonCount, sub: 'within 15 days', icon: Clock, tone: 'from-amber-500 to-yellow-500' },
-          { tab: 'Available Units', count: availableCount, sub: 'ready to lease', icon: DoorOpen, tone: 'from-emerald-500 to-teal-500' },
-        ] as const).map(({ tab, count, sub, icon: Icon, tone }) => {
+          { tab: 'All', soft: 'bg-slate-50 border-slate-200', ink: 'text-slate-900', ring: 'bg-slate-200/60', count: totalCount, sub: `${tenantAccounts.filter(a => a.balance <= 0).length} paid up`, icon: Users, tone: 'from-slate-700 to-slate-900' },
+          { tab: 'Shops', soft: 'bg-orange-50 border-orange-200', ink: 'text-orange-600', ring: 'bg-orange-200/50', count: shopsCount, sub: 'G… units', icon: Store, tone: 'from-orange-500 to-amber-500' },
+          { tab: 'Spaces', soft: 'bg-sky-50 border-sky-200', ink: 'text-sky-600', ring: 'bg-sky-200/50', count: spacesCount, sub: 'BW… units', icon: LayoutGrid, tone: 'from-sky-500 to-blue-500' },
+          { tab: 'Overdue', soft: 'bg-rose-50 border-rose-200', ink: 'text-rose-600', ring: 'bg-rose-200/50', count: overdueCount, sub: overdueCount ? 'owe rent' : 'nobody late', icon: AlertTriangle, tone: 'from-rose-500 to-orange-500' },
+          { tab: 'Expiring Soon', soft: 'bg-amber-50 border-amber-200', ink: 'text-amber-600', ring: 'bg-amber-200/50', count: expiringSoonCount, sub: 'within 15 days', icon: Clock, tone: 'from-amber-500 to-yellow-500' },
+          { tab: 'Available Units', soft: 'bg-emerald-50 border-emerald-200', ink: 'text-emerald-600', ring: 'bg-emerald-200/50', count: availableCount, sub: 'ready to lease', icon: DoorOpen, tone: 'from-emerald-500 to-teal-500' },
+        ] as const).map(({ tab, count, sub, icon: Icon, tone, soft, ink, ring }) => {
           const active = activeCategoryTab === tab;
           return (
             <button
               key={tab}
               type="button"
               onClick={() => setActiveCategoryTab(tab)}
-              className={`group relative overflow-hidden text-left rounded-3xl p-4 border transition-all cursor-pointer ${
+              className={`group relative overflow-hidden text-left rounded-3xl p-4 border transition-all duration-200 cursor-pointer hover:-translate-y-0.5 ${
                 active
                   ? `bg-gradient-to-br ${tone} text-white border-transparent shadow-lg`
-                  : 'bg-white border-slate-200/80 hover:border-orange-200 hover:shadow-md'
+                  : `${soft} hover:shadow-md`
               }`}
             >
-              {active && <div className="absolute -right-6 -bottom-8 w-24 h-24 rounded-full bg-white/10" />}
+              <div className={`absolute -right-6 -bottom-8 w-24 h-24 rounded-full ${active ? 'bg-white/15' : ring}`} />
+              <div className={`absolute right-10 -top-6 w-12 h-12 rounded-full ${active ? 'bg-white/10' : ring} opacity-60`} />
               <div className="relative flex items-center justify-between">
                 <span className={`w-10 h-10 rounded-2xl flex items-center justify-center ${active ? 'bg-white/20' : `bg-gradient-to-br ${tone} text-white shadow-md`}`}>
                   <Icon className="w-5 h-5" />
                 </span>
-                <span className={`text-3xl font-black leading-none ${active ? 'text-white' : 'text-slate-900'}`}>{count}</span>
+                <span className={`text-3xl font-black leading-none ${active ? 'text-white' : ink}`}>{count}</span>
               </div>
               <p className={`relative mt-3 text-xs font-extrabold ${active ? 'text-white' : 'text-slate-900'}`}>{tab}</p>
-              <p className={`relative text-[10px] ${active ? 'text-white/80' : 'text-slate-500'}`}>{sub}</p>
+              <p className={`relative text-[10px] font-semibold ${active ? 'text-white/80' : 'text-slate-500'}`}>{sub}</p>
             </button>
           );
         })}

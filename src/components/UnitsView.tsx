@@ -240,10 +240,10 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
   const shopUnits = units.filter(isShopUnit);
   const spaceUnits = units.filter(u => !isShopUnit(u));
   const categoryTiles = [
-    { tab: 'All' as const, label: 'All units', count: totalInventoryCount, total: totalInventoryCount, occupied: occupiedCount, sub: `${occupiedCount} occupied • ${occupancyPct}% full`, icon: Building2, tone: 'from-slate-700 to-slate-900' },
-    { tab: 'Shops' as const, label: 'Shops', count: shopsCount, total: shopUnits.length, occupied: occupiedOf(shopUnits), sub: `${occupiedOf(shopUnits)} occupied • ${shopUnits.length - occupiedOf(shopUnits)} free`, icon: Store, tone: 'from-orange-500 to-amber-500' },
-    { tab: 'Spaces' as const, label: 'Spaces', count: spacesCount, total: spaceUnits.length, occupied: occupiedOf(spaceUnits), sub: `${occupiedOf(spaceUnits)} occupied • ${spaceUnits.length - occupiedOf(spaceUnits)} free`, icon: LayoutGrid, tone: 'from-sky-500 to-blue-500' },
-    { tab: 'Available' as const, label: 'Available', count: availableCount, total: availableCount, occupied: 0, sub: `${vacancyPct}% of all units are vacant`, icon: DoorOpen, tone: 'from-emerald-500 to-teal-500' },
+    { tab: 'All' as const, soft: 'bg-slate-50 border-slate-200', ink: 'text-slate-900', ring: 'bg-slate-200/60',  label: 'All units', count: totalInventoryCount, total: totalInventoryCount, occupied: occupiedCount, sub: `${occupiedCount} occupied • ${occupancyPct}% full`, icon: Building2, tone: 'from-slate-700 to-slate-900' },
+    { tab: 'Shops' as const, soft: 'bg-orange-50 border-orange-200', ink: 'text-orange-600', ring: 'bg-orange-200/50',  label: 'Shops', count: shopsCount, total: shopUnits.length, occupied: occupiedOf(shopUnits), sub: `${occupiedOf(shopUnits)} occupied • ${shopUnits.length - occupiedOf(shopUnits)} free`, icon: Store, tone: 'from-orange-500 to-amber-500' },
+    { tab: 'Spaces' as const, soft: 'bg-sky-50 border-sky-200', ink: 'text-sky-600', ring: 'bg-sky-200/50',  label: 'Spaces', count: spacesCount, total: spaceUnits.length, occupied: occupiedOf(spaceUnits), sub: `${occupiedOf(spaceUnits)} occupied • ${spaceUnits.length - occupiedOf(spaceUnits)} free`, icon: LayoutGrid, tone: 'from-sky-500 to-blue-500' },
+    { tab: 'Available' as const, soft: 'bg-emerald-50 border-emerald-200', ink: 'text-emerald-600', ring: 'bg-emerald-200/50',  label: 'Available', count: availableCount, total: availableCount, occupied: 0, sub: `${vacancyPct}% of all units are vacant`, icon: DoorOpen, tone: 'from-emerald-500 to-teal-500' },
   ];
 
   const expiringSoon = units.filter(u => {
@@ -255,11 +255,11 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
     return d !== null && d < 0;
   }).length;
   const withArrears = units.filter(u => (u.arrearsUSD || 0) > 0 || (u.arrearsSSP || 0) > 0).length;
-  const insights: { label: string; value: string; icon: React.ComponentType<{ className?: string }>; tone: string; on?: boolean; onClick?: () => void }[] = [
-    { label: 'Total floor area', value: `${Math.round(totalSqM).toLocaleString()} m²`, icon: Ruler, tone: 'bg-slate-100 text-slate-700' },
-    { label: 'Leases ending ≤ 30 days', value: String(expiringSoon), icon: Clock, tone: 'bg-amber-50 text-amber-600', on: quickExpiring30, onClick: () => setQuickExpiring30(v => !v) },
-    { label: expiredLeases ? `With arrears • ${expiredLeases} lease(s) expired` : 'Units with arrears', value: String(withArrears), icon: AlertTriangle, tone: 'bg-rose-50 text-rose-600', on: quickHighArrears, onClick: () => setQuickHighArrears(v => !v) },
-    { label: 'On hold / maintenance', value: String(reservedCount + maintenanceCount), icon: Wrench, tone: 'bg-sky-50 text-sky-600', on: occupancyFilter === 'Maintenance', onClick: () => setOccupancyFilter(f => (f === 'Maintenance' ? 'All' : 'Maintenance')) },
+  const insights: { label: string; value: string; icon: React.ComponentType<{ className?: string }>; tone: string; card: string; on?: boolean; onClick?: () => void }[] = [
+    { label: 'Total floor area', value: `${Math.round(totalSqM).toLocaleString()} m²`, icon: Ruler, tone: 'bg-gradient-to-br from-slate-600 to-slate-800 text-white', card: 'bg-slate-50 border-slate-200' },
+    { label: 'Leases ending ≤ 30 days', value: String(expiringSoon), icon: Clock, tone: 'bg-gradient-to-br from-amber-500 to-yellow-500 text-white', card: 'bg-amber-50 border-amber-200', on: quickExpiring30, onClick: () => setQuickExpiring30(v => !v) },
+    { label: expiredLeases ? `With arrears • ${expiredLeases} lease(s) expired` : 'Units with arrears', value: String(withArrears), icon: AlertTriangle, tone: 'bg-gradient-to-br from-rose-500 to-orange-500 text-white', card: 'bg-rose-50 border-rose-200', on: quickHighArrears, onClick: () => setQuickHighArrears(v => !v) },
+    { label: 'On hold / maintenance', value: String(reservedCount + maintenanceCount), icon: Wrench, tone: 'bg-gradient-to-br from-sky-500 to-blue-500 text-white', card: 'bg-sky-50 border-sky-200', on: occupancyFilter === 'Maintenance', onClick: () => setOccupancyFilter(f => (f === 'Maintenance' ? 'All' : 'Maintenance')) },
   ];
 
   const quickChips: { label: string; on: boolean; toggle: () => void; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -362,23 +362,24 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
               key={t.tab}
               type="button"
               onClick={() => setActiveCategoryTab(t.tab)}
-              className={`group relative overflow-hidden text-left rounded-3xl p-5 border transition-all cursor-pointer ${
+              className={`group relative overflow-hidden text-left rounded-3xl p-5 border transition-all duration-200 cursor-pointer hover:-translate-y-0.5 ${
                 active
                   ? `bg-gradient-to-br ${t.tone} text-white border-transparent shadow-lg`
-                  : 'bg-white border-slate-200/80 hover:border-orange-200 hover:shadow-md'
+                  : `${t.soft} hover:shadow-md`
               }`}
             >
-              {active && <div className="absolute -right-8 -bottom-10 w-32 h-32 rounded-full bg-white/10" />}
+              <div className={`absolute -right-8 -bottom-10 w-32 h-32 rounded-full ${active ? 'bg-white/15' : t.ring}`} />
+              <div className={`absolute right-14 -top-8 w-16 h-16 rounded-full ${active ? 'bg-white/10' : t.ring} opacity-60`} />
               <div className="relative flex items-center justify-between">
                 <span className={`w-11 h-11 rounded-2xl flex items-center justify-center ${active ? 'bg-white/20' : `bg-gradient-to-br ${t.tone} text-white shadow-md`}`}>
                   <t.icon className="w-5 h-5" />
                 </span>
-                <span className={`text-4xl font-black leading-none ${active ? 'text-white' : 'text-slate-900'}`}>{t.count}</span>
+                <span className={`text-4xl font-black leading-none ${active ? 'text-white' : t.ink}`}>{t.count}</span>
               </div>
               <p className={`relative mt-3 text-sm font-extrabold ${active ? 'text-white' : 'text-slate-900'}`}>{t.label}</p>
               <p className={`relative text-[11px] ${active ? 'text-white/80' : 'text-slate-500'}`}>{t.sub}</p>
               {t.tab !== 'Available' && (
-                <div className={`relative mt-3 h-1.5 rounded-full overflow-hidden ${active ? 'bg-white/20' : 'bg-slate-100'}`}>
+                <div className={`relative mt-3 h-1.5 rounded-full overflow-hidden ${active ? 'bg-white/20' : 'bg-white'}`}>
                   <div className={`h-full rounded-full ${active ? 'bg-white' : `bg-gradient-to-r ${t.tone}`}`} style={{ width: `${pct}%` }} />
                 </div>
               )}
@@ -400,11 +401,11 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
             type="button"
             onClick={i.onClick}
             disabled={!i.onClick}
-            className={`flex items-center gap-3 rounded-2xl bg-white border p-3.5 text-left transition-all ${
-              i.on ? 'border-orange-400 ring-2 ring-orange-100' : 'border-slate-200/80'
-            } ${i.onClick ? 'hover:border-orange-200 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}
+            className={`flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-all duration-200 ${i.card} ${
+              i.on ? 'ring-2 ring-orange-400 shadow-md' : ''
+            } ${i.onClick ? 'hover:-translate-y-0.5 hover:shadow-md cursor-pointer' : 'cursor-default'}`}
           >
-            <span className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center ${i.tone}`}>
+            <span className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center shadow-sm ${i.tone}`}>
               <i.icon className="w-5 h-5" />
             </span>
             <span className="min-w-0">
