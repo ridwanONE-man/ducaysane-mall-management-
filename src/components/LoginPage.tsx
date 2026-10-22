@@ -5,12 +5,11 @@ import {
   Check, 
   X,
   ShieldCheck,
-  Building2,
   Phone,
   MapPin,
   Lock,
-  ArrowRight,
-  Sparkles
+  Mail,
+  ArrowRight
 } from 'lucide-react';
 import { AdminUser } from '../types';
 import { getAdminCredentials } from '../lib/supabaseService';
@@ -106,200 +105,190 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
   return (
     <div id="nbc-login-container" className="min-h-screen w-full bg-[#082142] flex flex-col lg:flex-row relative overflow-hidden font-sans">
-      
-      {/* Dynamic Ambient Background Elements */}
-      <div className="absolute top-0 left-0 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
-      
-      {/* Left Column: Brand Showcase Panel */}
-      <div className="w-full lg:w-[50%] text-white flex flex-col justify-between p-8 sm:p-12 lg:p-16 relative z-10 shrink-0">
-        
-        {/* Top Tagline */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse ring-4 ring-orange-500/20" />
-          <p className="text-xs sm:text-sm font-bold tracking-widest text-orange-400 uppercase">
-            Official Management Portal
-          </p>
+
+      {/* Ambient background */}
+      <div className="absolute -top-32 -left-32 w-[480px] h-[480px] bg-orange-500/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-0 left-1/4 w-[420px] h-[420px] bg-blue-500/15 rounded-full blur-3xl pointer-events-none" />
+      <div
+        className="absolute inset-0 opacity-[0.06] pointer-events-none"
+        style={{ backgroundImage: 'radial-gradient(circle, #ffffff 1px, transparent 1px)', backgroundSize: '28px 28px' }}
+      />
+
+      {/* Left: brand panel */}
+      <div className="w-full lg:w-1/2 text-white flex flex-col p-8 sm:p-12 lg:p-14 relative z-10 shrink-0">
+
+        <div className="flex items-center justify-center lg:justify-start gap-2.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse ring-4 ring-orange-500/20" />
+          <p className="text-sm font-bold tracking-[0.2em] text-orange-400 uppercase">Official Management Portal</p>
         </div>
 
-        {/* Central Logo & Headline Area */}
-        <div className="my-auto py-10 flex flex-col items-center lg:items-start text-center lg:text-left">
-          
-          {/* Logo Showcase with Elevated Glowing Orange Ring */}
-          <div className="relative mb-8 group">
-            <div className="absolute -inset-4 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 rounded-full blur-2xl opacity-40 group-hover:opacity-70 transition duration-700 animate-pulse" />
-            <div className="relative w-44 h-44 sm:w-56 sm:h-56 bg-white rounded-full p-2.5 shadow-2xl ring-4 ring-orange-500 flex items-center justify-center overflow-hidden transition-transform duration-500 hover:scale-105">
-              <img
-                src={logoImg}
-                alt="Nyakuron Business Centre"
-                className="w-full h-full object-contain rounded-full"
-              />
+        <div className="my-auto py-10 flex flex-col items-center text-center">
+          {/* Logo */}
+          <div className="relative mb-10">
+            <div className="absolute -inset-6 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600 rounded-full blur-3xl opacity-40 animate-pulse" />
+            <div className="absolute -inset-3 rounded-full border border-white/15" />
+            <div className="absolute -inset-6 rounded-full border border-white/5" />
+            <div className="relative w-48 h-48 sm:w-60 sm:h-60 bg-white rounded-full p-3 shadow-2xl ring-[6px] ring-orange-500 flex items-center justify-center overflow-hidden transition-transform duration-500 hover:scale-105">
+              <img src={logoImg} alt="Nyakuron Business Centre" className="w-full h-full object-contain rounded-full" />
             </div>
           </div>
 
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-[1.12] mb-3">
-            NYAKURON<br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-300 to-orange-500">
+          <h1 className="font-black tracking-tight leading-[1.05]">
+            <span className="block text-4xl sm:text-5xl lg:text-6xl text-white">NYAKURON</span>
+            <span className="block mt-1 text-2xl sm:text-3xl lg:text-4xl text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-300 to-orange-500">
               BUSINESS CENTRE
             </span>
           </h1>
 
-          <p className="text-sm sm:text-base text-slate-300 max-w-md leading-relaxed font-normal mb-8">
-            Complete commercial property management system with real-time shop & space leasing, multi-user payments, and official receipt vouchers.
+          <div className="mt-5 h-1 w-20 rounded-full bg-gradient-to-r from-orange-500 to-amber-400" />
+
+          <p className="mt-5 text-base sm:text-lg text-slate-300 max-w-lg leading-relaxed">
+            Manage shops, spaces, tenants, payments and receipts, all in one place.
           </p>
 
-          {/* Location & Telephone Info Badges */}
-          <div className="flex flex-col sm:flex-row gap-3 text-xs text-slate-200">
-            <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md">
-              <MapPin className="w-4 h-4 text-orange-400 shrink-0" />
-              <span className="font-medium">Nyakuron East, Juba - South Sudan</span>
+          <div className="mt-8 flex flex-wrap justify-center gap-3 text-sm text-slate-100">
+            <div className="flex items-center gap-2.5 px-5 py-3 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md">
+              <MapPin className="w-5 h-5 text-orange-400 shrink-0" />
+              <span className="font-semibold">Nyakuron East, Juba</span>
             </div>
-            <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md">
-              <Phone className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div className="flex items-center gap-2.5 px-5 py-3 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md">
+              <Phone className="w-5 h-5 text-emerald-400 shrink-0" />
               <span className="font-semibold">+211 928 223 154</span>
             </div>
           </div>
-
         </div>
 
-        {/* Bottom Tagline */}
-        <div className="text-xs text-slate-400 hidden lg:block">
-          <p>Powered by Nyakuron Business Centre Enterprise Operations</p>
-        </div>
-
+        <p className="text-sm text-slate-400 text-center hidden lg:block">South Sudan • Commercial property management</p>
       </div>
 
-      {/* Right Column: Authentication Card Panel */}
-      <div className="w-full lg:w-[50%] bg-white lg:rounded-l-[44px] shadow-2xl flex flex-col justify-between min-h-screen relative z-10">
-        
-        {/* Top Header */}
+      {/* Right: sign-in panel */}
+      <div className="w-full lg:w-1/2 bg-gradient-to-b from-white to-orange-50/40 lg:rounded-l-[48px] shadow-2xl flex flex-col min-h-screen relative z-10">
+
         <div className="flex justify-between items-center px-8 sm:px-12 pt-8 sm:pt-10">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full p-0.5 ring-2 ring-orange-500/50 bg-white overflow-hidden shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full p-0.5 ring-2 ring-orange-500/60 bg-white overflow-hidden shadow-sm">
               <img src={logoImg} alt="NBC" className="w-full h-full object-contain rounded-full" />
             </div>
-            <span className="font-extrabold text-sm text-slate-900 tracking-tight">Nyakuron Business Centre</span>
+            <span className="font-extrabold text-base text-slate-900 tracking-tight">Nyakuron Business Centre</span>
           </div>
-
           <button
             type="button"
             onClick={() => setShowContactModal(true)}
-            className="text-xs font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
+            className="text-sm font-bold text-orange-600 hover:text-orange-700 px-3 py-2 rounded-xl hover:bg-orange-50 cursor-pointer transition-colors"
           >
-            Management Support
+            Need help?
           </button>
         </div>
 
-        {/* Sign In Form Area */}
-        <div className="w-full max-w-md mx-auto px-6 sm:px-10 py-10 my-auto">
-          
-          <div className="mb-8">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-orange-50 text-orange-700 border border-orange-200/80 rounded-full text-[11px] font-bold uppercase tracking-wider mb-2.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-orange-600" />
-              <span>Admin Access Only</span>
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              Sign In to Your Console
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Enter your credentials to access the central property, shop, and space management dashboard.
-            </p>
-          </div>
-
-          {errorMessage && (
-            <div className="mb-5 p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs font-semibold text-rose-700 flex items-center gap-2.5 animate-in fade-in duration-200">
-              <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0" />
-              <span>{errorMessage}</span>
-            </div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5 ml-1">
-                Administrator Email / Username
-              </label>
-              <input
-                type="text"
-                required
-                value={emailOrUsername}
-                onChange={(e) => {
-                  setEmailOrUsername(e.target.value);
-                  if (errorMessage) setErrorMessage('');
-                }}
-                placeholder="Enter administrator email"
-                className="w-full px-5 py-3.5 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-100 transition-all font-medium"
-              />
+        <div className="w-full max-w-lg mx-auto px-6 sm:px-10 py-10 my-auto">
+          <div className="bg-white rounded-[32px] border border-slate-200/80 shadow-xl shadow-slate-900/5 p-7 sm:p-10">
+            <div className="mb-8 text-center">
+              <div className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/30">
+                <Lock className="w-7 h-7" />
+              </div>
+              <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Welcome back</h2>
+              <p className="text-base text-slate-500 mt-2">Sign in to manage the business centre.</p>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5 ml-1">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (errorMessage) setErrorMessage('');
-                  }}
-                  placeholder="Enter your password"
-                  className="w-full px-5 py-3.5 pr-12 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500 focus:ring-3 focus:ring-orange-100 transition-all font-medium"
-                />
+            {errorMessage && (
+              <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl text-sm font-semibold text-rose-700 flex items-center gap-3 animate-in fade-in duration-200">
+                <X className="w-5 h-5 shrink-0 p-0.5 rounded-full bg-rose-600 text-white" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleLogin} className="space-y-5">
+              <div>
+                <label htmlFor="login-email" className="block text-sm font-bold text-slate-700 mb-2 ml-1">
+                  Email or username
+                </label>
+                <div className="relative">
+                  <Mail className="w-5 h-5 text-slate-400 absolute left-5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    id="login-email"
+                    type="text"
+                    required
+                    autoComplete="username"
+                    value={emailOrUsername}
+                    onChange={(e) => {
+                      setEmailOrUsername(e.target.value);
+                      if (errorMessage) setErrorMessage('');
+                    }}
+                    placeholder="Enter your email"
+                    className="w-full h-16 pl-14 pr-5 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border-2 border-slate-200 rounded-2xl text-base sm:text-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100 transition-all font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="login-password" className="block text-sm font-bold text-slate-700 mb-2 ml-1">
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock className="w-5 h-5 text-slate-400 absolute left-5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (errorMessage) setErrorMessage('');
+                    }}
+                    placeholder="Enter your password"
+                    className="w-full h-16 pl-14 pr-14 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border-2 border-slate-200 rounded-2xl text-base sm:text-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100 transition-all font-semibold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-orange-600 hover:bg-orange-50 p-2 rounded-xl cursor-pointer transition-colors"
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer transition-colors"
-                  title={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={() => setShowForgotModal(true)}
+                  className="text-sm text-slate-500 hover:text-orange-600 font-semibold cursor-pointer transition-colors"
                 >
-                  {showPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                  Forgot password?
                 </button>
               </div>
-            </div>
 
-            {/* Forgot Password Link */}
-            <div className="pt-1 flex items-center justify-between text-xs">
-              <button
-                type="button"
-                onClick={() => setShowForgotModal(true)}
-                className="text-slate-500 hover:text-orange-600 font-medium cursor-pointer transition-colors"
-              >
-                Forgot password?
-              </button>
-            </div>
-
-            {/* Submit Button */}
-            <div className="pt-3">
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-sm font-bold shadow-md shadow-orange-500/25 hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-80"
+                className="w-full h-16 px-6 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-lg font-extrabold shadow-lg shadow-orange-500/30 hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-80 disabled:hover:translate-y-0"
               >
                 {isLoading ? (
-                  <span className="inline-flex items-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <>
+                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     <span>Signing in...</span>
-                  </span>
+                  </>
                 ) : (
                   <>
-                    <span>Sign In to Dashboard</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <span>Sign In</span>
+                    <ArrowRight className="w-5 h-5" />
                   </>
                 )}
               </button>
-            </div>
-          </form>
+            </form>
 
+            <p className="mt-6 flex items-center justify-center gap-2 text-sm text-slate-400">
+              <ShieldCheck className="w-4 h-4 text-emerald-500" /> Admin access only
+            </p>
+          </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-8 sm:px-12 py-6 border-t border-slate-100 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>© 2026 Nyakuron Business Centre. All rights reserved.</span>
+        <div className="px-8 sm:px-12 py-6 border-t border-slate-100 text-sm text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <span>© 2026 Nyakuron Business Centre</span>
           <span>Nyakuron East, Juba, South Sudan</span>
         </div>
-
       </div>
 
       {/* Forgot Password Modal */}
@@ -319,7 +308,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
               </div>
             ) : (
               <form onSubmit={handleResetPassword} className="space-y-4">
-                <p className="text-xs text-slate-500">
+                <p className="text-sm text-slate-500">
                   Enter your administrative email to receive a password reset link.
                 </p>
                 <input
@@ -328,11 +317,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
                   placeholder="admin@nyakuron.com"
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-orange-500"
+                  className="w-full h-14 px-4 bg-slate-50 border-2 border-slate-200 rounded-2xl text-base text-slate-800 focus:outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100"
                 />
                 <button
                   type="submit"
-                  className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold"
+                  className="w-full h-12 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-2xl text-sm font-bold cursor-pointer"
                 >
                   Send Reset Link
                 </button>
@@ -352,7 +341,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="space-y-3 text-xs text-slate-600">
+            <div className="space-y-3 text-sm text-slate-600">
               <p className="font-medium text-slate-800">Office Administration Desk:</p>
               <div className="p-3.5 bg-slate-50 rounded-2xl space-y-2 border border-slate-200/80">
                 <p>📍 <strong>Location:</strong> Nyakuron East, Juba, South Sudan</p>
