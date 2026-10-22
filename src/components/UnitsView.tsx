@@ -17,6 +17,7 @@ import {
   Trash2,
   Search,
   LayoutGrid,
+  AlertTriangle,
   List,
   Layers,
   Ruler,
@@ -27,9 +28,7 @@ import { PropertyUnit, CurrencyMode } from '../types';
 import { exportUnitsToCSV } from '../utils/exportUtils';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
 import { useConfirm } from './ConfirmDialog';
-import { formatUnitRent, unitCurrency, unitRent } from '../utils/currency';
-import { CurrencyCard, SummaryCard } from './CurrencyCard';
-import { formatMoney } from '../utils/printUtils';
+import { formatUnitRent } from '../utils/currency';
 import { parsePaymentDate, formatLongDate } from '../utils/printUtils';
 
 // Colour per occupancy status: top bar, pill and dot
@@ -236,6 +235,33 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
   const hasFilters = Boolean(search.trim()) || floorFilter !== 'All' || occupancyFilter !== 'All' || activeCategoryTab !== 'All'
     || quickGroundFloor || quickExpiring30 || quickHighArrears || quickAnchor;
 
+  const isShopUnit = (u: PropertyUnit) => u.type === 'Shop' || u.categoryType === 'Shop' || u.unitNumber.startsWith('G');
+  const occupiedOf = (list: PropertyUnit[]) => list.filter(u => u.occupancyStatus === 'Occupied').length;
+  const shopUnits = units.filter(isShopUnit);
+  const spaceUnits = units.filter(u => !isShopUnit(u));
+  const categoryTiles = [
+    { tab: 'All' as const, label: 'All units', count: totalInventoryCount, total: totalInventoryCount, occupied: occupiedCount, sub: `${occupiedCount} occupied • ${occupancyPct}% full`, icon: Building2, tone: 'from-slate-700 to-slate-900' },
+    { tab: 'Shops' as const, label: 'Shops', count: shopsCount, total: shopUnits.length, occupied: occupiedOf(shopUnits), sub: `${occupiedOf(shopUnits)} occupied • ${shopUnits.length - occupiedOf(shopUnits)} free`, icon: Store, tone: 'from-orange-500 to-amber-500' },
+    { tab: 'Spaces' as const, label: 'Spaces', count: spacesCount, total: spaceUnits.length, occupied: occupiedOf(spaceUnits), sub: `${occupiedOf(spaceUnits)} occupied • ${spaceUnits.length - occupiedOf(spaceUnits)} free`, icon: LayoutGrid, tone: 'from-sky-500 to-blue-500' },
+    { tab: 'Available' as const, label: 'Available', count: availableCount, total: availableCount, occupied: 0, sub: `${vacancyPct}% of all units are vacant`, icon: DoorOpen, tone: 'from-emerald-500 to-teal-500' },
+  ];
+
+  const expiringSoon = units.filter(u => {
+    const d = u.currentTenant ? daysLeftOf(u) : null;
+    return d !== null && d >= 0 && d <= 30;
+  }).length;
+  const expiredLeases = units.filter(u => {
+    const d = u.currentTenant ? daysLeftOf(u) : null;
+    return d !== null && d < 0;
+  }).length;
+  const withArrears = units.filter(u => (u.arrearsUSD || 0) > 0 || (u.arrearsSSP || 0) > 0).length;
+  const insights: { label: string; value: string; icon: React.ComponentType<{ className?: string }>; tone: string; on?: boolean; onClick?: () => void }[] = [
+    { label: 'Total floor area', value: `${Math.round(totalSqM).toLocaleString()} m²`, icon: Ruler, tone: 'bg-slate-100 text-slate-700' },
+    { label: 'Leases ending ≤ 30 days', value: String(expiringSoon), icon: Clock, tone: 'bg-amber-50 text-amber-600', on: quickExpiring30, onClick: () => setQuickExpiring30(v => !v) },
+    { label: expiredLeases ? `With arrears • ${expiredLeases} lease(s) expired` : 'Units with arrears', value: String(withArrears), icon: AlertTriangle, tone: 'bg-rose-50 text-rose-600', on: quickHighArrears, onClick: () => setQuickHighArrears(v => !v) },
+    { label: 'On hold / maintenance', value: String(reservedCount + maintenanceCount), icon: Wrench, tone: 'bg-sky-50 text-sky-600', on: occupancyFilter === 'Maintenance', onClick: () => setOccupancyFilter(f => (f === 'Maintenance' ? 'All' : 'Maintenance')) },
+  ];
+
   const quickChips: { label: string; on: boolean; toggle: () => void; icon: React.ComponentType<{ className?: string }> }[] = [
     { label: 'Ground Floor', on: quickGroundFloor, toggle: () => setQuickGroundFloor(v => !v), icon: Layers },
     { label: 'Expiring in 30 days', on: quickExpiring30, toggle: () => setQuickExpiring30(v => !v), icon: Clock },
@@ -326,60 +352,73 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
         </div>
       </div>
 
-      {/* Summary: occupancy, then rent per currency */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.55fr)_minmax(0,1.55fr)] gap-4">
-        <SummaryCard
-          label="Occupancy"
-          value={`${occupancyPct}%`}
-          icon={Building2}
-          progress={occupancyPct}
-          chips={[
-            { label: 'Total', value: totalInventoryCount, tone: 'text-slate-300' },
-            { label: 'Occupied', value: occupiedCount, tone: 'text-emerald-300' },
-            { label: 'Available', value: availableCount, tone: 'text-amber-300' },
-          ]}
-        />
-        {(['USD', 'SSP'] as const).map(cur => {
-          const list = units.filter(u => unitCurrency(u) === cur);
-          const leased = list.filter(u => u.currentTenant && u.occupancyStatus !== 'Available');
-          const vacant = list.filter(u => u.occupancyStatus === 'Available' || !u.currentTenant);
+      {/* Category tiles: tap to filter */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {categoryTiles.map(t => {
+          const active = activeCategoryTab === t.tab;
+          const pct = t.total > 0 ? Math.round((t.occupied / t.total) * 100) : 0;
           return (
-            <CurrencyCard
-              key={cur}
-              currency={cur}
-              subtitle={`${list.length} unit${list.length === 1 ? '' : 's'} rented in ${cur === 'USD' ? 'dollars' : 'SSP'}`}
-              boxes={[
-                { label: 'Rent / month', value: formatMoney(leased.reduce((t, u) => t + unitRent(u), 0), cur), icon: CheckCircle2 },
-                { label: 'Vacant potential', value: formatMoney(vacant.reduce((t, u) => t + unitRent(u), 0), cur), icon: DoorOpen },
-                { label: 'Shops / spaces', value: `${list.filter(u => u.type === 'Shop' || u.categoryType === 'Shop').length} / ${list.filter(u => u.type === 'Space' || u.categoryType === 'Space').length}`, icon: Store },
-                { label: 'Vacant area', value: `${Math.round(vacant.reduce((t, u) => t + (u.sizeSqM || 0), 0)).toLocaleString()} m²`, icon: Layers },
-              ]}
-            />
+            <button
+              key={t.tab}
+              type="button"
+              onClick={() => setActiveCategoryTab(t.tab)}
+              className={`group relative overflow-hidden text-left rounded-3xl p-5 border transition-all cursor-pointer ${
+                active
+                  ? `bg-gradient-to-br ${t.tone} text-white border-transparent shadow-lg`
+                  : 'bg-white border-slate-200/80 hover:border-orange-200 hover:shadow-md'
+              }`}
+            >
+              {active && <div className="absolute -right-8 -bottom-10 w-32 h-32 rounded-full bg-white/10" />}
+              <div className="relative flex items-center justify-between">
+                <span className={`w-11 h-11 rounded-2xl flex items-center justify-center ${active ? 'bg-white/20' : `bg-gradient-to-br ${t.tone} text-white shadow-md`}`}>
+                  <t.icon className="w-5 h-5" />
+                </span>
+                <span className={`text-4xl font-black leading-none ${active ? 'text-white' : 'text-slate-900'}`}>{t.count}</span>
+              </div>
+              <p className={`relative mt-3 text-sm font-extrabold ${active ? 'text-white' : 'text-slate-900'}`}>{t.label}</p>
+              <p className={`relative text-[11px] ${active ? 'text-white/80' : 'text-slate-500'}`}>{t.sub}</p>
+              {t.tab !== 'Available' && (
+                <div className={`relative mt-3 h-1.5 rounded-full overflow-hidden ${active ? 'bg-white/20' : 'bg-slate-100'}`}>
+                  <div className={`h-full rounded-full ${active ? 'bg-white' : `bg-gradient-to-r ${t.tone}`}`} style={{ width: `${pct}%` }} />
+                </div>
+              )}
+              {t.tab === 'Available' && (
+                <p className={`relative mt-2.5 text-[10px] font-bold ${active ? 'text-white' : 'text-emerald-600'}`}>
+                  {Math.round(availableSqM).toLocaleString()} m² ready to lease
+                </p>
+              )}
+            </button>
           );
         })}
+      </div>
+
+      {/* Property insights */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {insights.map(i => (
+          <button
+            key={i.label}
+            type="button"
+            onClick={i.onClick}
+            disabled={!i.onClick}
+            className={`flex items-center gap-3 rounded-2xl bg-white border p-3.5 text-left transition-all ${
+              i.on ? 'border-orange-400 ring-2 ring-orange-100' : 'border-slate-200/80'
+            } ${i.onClick ? 'hover:border-orange-200 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}
+          >
+            <span className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center ${i.tone}`}>
+              <i.icon className="w-5 h-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-lg font-black text-slate-900 leading-tight">{i.value}</span>
+              <span className="block text-[11px] font-semibold text-slate-500 truncate">{i.label}</span>
+            </span>
+          </button>
+        ))}
       </div>
 
       {/* Toolbar */}
       <div className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-xs space-y-3">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-          <div className="inline-flex items-center bg-slate-100 p-1 rounded-2xl text-xs font-bold overflow-x-auto max-w-full self-start">
-            {(['All', 'Shops', 'Spaces', 'Available'] as const).map(tab => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveCategoryTab(tab)}
-                className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-                  activeCategoryTab === tab
-                    ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-sm shadow-orange-500/25'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {tab} <span className="opacity-80">({tab === 'All' ? totalInventoryCount : tab === 'Shops' ? shopsCount : tab === 'Spaces' ? spacesCount : availableCount})</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+          <div className="flex flex-wrap items-center gap-2 w-full">
             <div className="relative w-full sm:w-72">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input

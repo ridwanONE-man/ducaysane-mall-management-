@@ -35,7 +35,6 @@ import { ModifyTenantPricingPayload, VacateUnitPayload } from '../lib/supabaseSe
 import { DeleteButton, ClearAllButton } from './DeleteControls';
 import { TenantAccount, accountKey } from '../utils/tenantAccount';
 import { formatUnitRent, rentFields, unitCurrency, unitRent } from '../utils/currency';
-import { CurrencyCard, SummaryCard } from './CurrencyCard';
 
 interface TenantsViewProps {
   units?: PropertyUnit[];
@@ -493,66 +492,37 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
         </div>
       </div>
 
-      {/* Summary: tenants, then money per currency */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.55fr)_minmax(0,1.55fr)] gap-4">
-        <SummaryCard
-          label="Tenants"
-          value={totalCount}
-          icon={Users}
-          chips={[
-            { label: 'Shops', value: shopsCount, tone: 'text-orange-300' },
-            { label: 'Spaces', value: spacesCount, tone: 'text-sky-300' },
-            { label: 'Paid up', value: tenantAccounts.filter(a => a.balance <= 0).length, tone: 'text-emerald-300' },
-          ]}
-        />
-        {(['USD', 'SSP'] as const).map(cur => {
-          const list = tenantAccounts.filter(a => a.currency === cur);
-          return (
-            <CurrencyCard
-              key={cur}
-              currency={cur}
-              subtitle={`${list.length} tenant${list.length === 1 ? '' : 's'} paying in ${cur === 'USD' ? 'dollars' : 'SSP'}`}
-              boxes={[
-                { label: 'Rent / month', value: formatMoney(list.reduce((t, a) => t + a.monthlyRent, 0), cur), icon: Store },
-                { label: 'Balance owed', value: formatMoney(list.reduce((t, a) => t + a.balance, 0), cur), icon: AlertTriangle },
-                { label: 'Deposits held', value: formatMoney(list.reduce((t, a) => t + a.depositHeld, 0), cur), icon: ShieldCheck },
-                { label: 'Owing tenants', value: String(list.filter(a => a.balance > 0).length), icon: Users },
-              ]}
-            />
-          );
-        })}
-      </div>
-
       {/* Category tiles: tap to filter */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
         {([
-          { tab: 'All', count: totalCount, icon: Users, tone: 'from-slate-700 to-slate-900', text: 'text-slate-900' },
-          { tab: 'Shops', count: shopsCount, icon: Store, tone: 'from-orange-500 to-amber-500', text: 'text-orange-600' },
-          { tab: 'Spaces', count: spacesCount, icon: LayoutGrid, tone: 'from-sky-500 to-blue-500', text: 'text-sky-600' },
-          { tab: 'Overdue', count: overdueCount, icon: AlertTriangle, tone: 'from-rose-500 to-orange-500', text: 'text-rose-600' },
-          { tab: 'Expiring Soon', count: expiringSoonCount, icon: Clock, tone: 'from-amber-500 to-yellow-500', text: 'text-amber-600' },
-          { tab: 'Available Units', count: availableCount, icon: DoorOpen, tone: 'from-emerald-500 to-teal-500', text: 'text-emerald-600' },
-        ] as const).map(({ tab, count, icon: Icon, tone, text }) => {
+          { tab: 'All', count: totalCount, sub: `${tenantAccounts.filter(a => a.balance <= 0).length} paid up`, icon: Users, tone: 'from-slate-700 to-slate-900' },
+          { tab: 'Shops', count: shopsCount, sub: 'G… units', icon: Store, tone: 'from-orange-500 to-amber-500' },
+          { tab: 'Spaces', count: spacesCount, sub: 'BW… units', icon: LayoutGrid, tone: 'from-sky-500 to-blue-500' },
+          { tab: 'Overdue', count: overdueCount, sub: overdueCount ? 'owe rent' : 'nobody late', icon: AlertTriangle, tone: 'from-rose-500 to-orange-500' },
+          { tab: 'Expiring Soon', count: expiringSoonCount, sub: 'within 15 days', icon: Clock, tone: 'from-amber-500 to-yellow-500' },
+          { tab: 'Available Units', count: availableCount, sub: 'ready to lease', icon: DoorOpen, tone: 'from-emerald-500 to-teal-500' },
+        ] as const).map(({ tab, count, sub, icon: Icon, tone }) => {
           const active = activeCategoryTab === tab;
           return (
             <button
               key={tab}
               type="button"
               onClick={() => setActiveCategoryTab(tab)}
-              className={`group relative text-left rounded-2xl p-3.5 border transition-all cursor-pointer ${
+              className={`group relative overflow-hidden text-left rounded-3xl p-4 border transition-all cursor-pointer ${
                 active
-                  ? 'bg-white border-orange-400 ring-2 ring-orange-200 shadow-md'
-                  : 'bg-white border-slate-200/80 hover:border-orange-200 hover:shadow-sm'
+                  ? `bg-gradient-to-br ${tone} text-white border-transparent shadow-lg`
+                  : 'bg-white border-slate-200/80 hover:border-orange-200 hover:shadow-md'
               }`}
             >
-              <div className="flex items-center justify-between">
-                <span className={`w-9 h-9 rounded-xl bg-gradient-to-br ${tone} text-white flex items-center justify-center shadow-sm`}>
-                  <Icon className="w-4 h-4" />
+              {active && <div className="absolute -right-6 -bottom-8 w-24 h-24 rounded-full bg-white/10" />}
+              <div className="relative flex items-center justify-between">
+                <span className={`w-10 h-10 rounded-2xl flex items-center justify-center ${active ? 'bg-white/20' : `bg-gradient-to-br ${tone} text-white shadow-md`}`}>
+                  <Icon className="w-5 h-5" />
                 </span>
-                <span className={`text-2xl font-black ${active ? text : 'text-slate-900'}`}>{count}</span>
+                <span className={`text-3xl font-black leading-none ${active ? 'text-white' : 'text-slate-900'}`}>{count}</span>
               </div>
-              <span className={`block mt-2 text-xs font-bold ${active ? 'text-slate-900' : 'text-slate-500 group-hover:text-slate-800'}`}>{tab}</span>
-              {active && <span className="absolute left-3.5 right-3.5 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-500" />}
+              <p className={`relative mt-3 text-xs font-extrabold ${active ? 'text-white' : 'text-slate-900'}`}>{tab}</p>
+              <p className={`relative text-[10px] ${active ? 'text-white/80' : 'text-slate-500'}`}>{sub}</p>
             </button>
           );
         })}
