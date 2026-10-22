@@ -20,6 +20,7 @@ import { NotificationsView } from './components/NotificationsView';
 import { SmartPayModal, SmartPayRequest } from './components/SmartPayModal';
 import { TenantDepositModal, TenantDepositRequest } from './components/TenantDepositModal';
 import { DepositManageModal } from './components/DepositManageModal';
+import { WaitingListView } from './components/WaitingListView';
 import { depositFields, depositIn, RentCurrency } from './utils/currency';
 import { formatMoney } from './utils/printUtils';
 import { buildTenantAccount, buildTenantAccounts, isLegacyCreditDeposit, DEPOSIT_MONTHS_PREFIX, AMOUNT_DEPOSIT_TAG, depositMonthLabels, withDepositMonths, planDepositApplications, accountKey } from './utils/tenantAccount';
@@ -33,7 +34,8 @@ import {
   DepositRecord,
   CashflowTransaction,
   CurrencyMode,
-  CommercialNotification
+  CommercialNotification,
+  WaitingEntry
 } from './types';
 
 import { initialCommercialNotifications, initialPayments } from './data/commercialData';
@@ -66,6 +68,9 @@ import {
   clearTableInSupabase,
   clearAllSupabaseData,
   subscribeToRealtimeChanges,
+  getWaitingListFromSupabase,
+  saveWaitingEntryToSupabase,
+  deleteWaitingEntryFromSupabase,
   RealtimeStatus
 } from './lib/supabaseService';
 
@@ -112,6 +117,30 @@ function setPending(table: SyncTable, id: string, pending: boolean) {
 
 function clearPending(table: SyncTable) {
   writeCache(PENDING_KEY, { ...getPending(), [table]: [] });
+}
+
+// Waiting list entries the database hasn't accepted yet (e.g. before the table exists).
+const WAITING_CACHE = 'nbc_waiting_list';
+const WAITING_PENDING = 'nbc_waiting_pending';
+
+function setWaitingPending(id: string, pending: boolean) {
+  const ids = new Set(readCache<string[]>(WAITING_PENDING, []));
+  if (pending) ids.add(id); else ids.delete(id);
+  writeCache(WAITING_PENDING, [...ids]);
+}
+
+// Database rows, plus local entries still waiting to be saved (retried here).
+async function loadWaitingList(): Promise<WaitingEntry[] | null> {
+  const dbRows = await getWaitingListFromSupabase();
+  if (dbRows === null) return null;
+  const pending = new Set(readCache<string[]>(WAITING_PENDING, []));
+  const local = readCache<WaitingEntry[]>(WAITING_CACHE, []).filter(e => pending.has(e.id));
+  for (const e of local) {
+    if (await saveWaitingEntryToSupabase(e)) setWaitingPending(e.id, false);
+  }
+  const byId = new Map(local.map(e => [e.id, e]));
+  const dbIds = new Set(dbRows.map(e => e.id));
+  return [...local.filter(e => !dbIds.has(e.id)), ...dbRows.map(e => byId.get(e.id) || e)];
 }
 
 // Payments recorded before the unit_id fix were all rejected by the database and only
@@ -271,6 +300,11 @@ export default function App() {
   useEffect(() => writeCache('nbc_cashflow', cashflow), [cashflow]);
   useEffect(() => writeCache('nbc_notifications', notifications), [notifications]);
 
+  // Waiting list: first come, first served
+  const [waitingList, setWaitingList] = useState<WaitingEntry[]>(() => readCache(WAITING_CACHE, []));
+  const [waitingDbReady, setWaitingDbReady] = useState(true);
+  useEffect(() => writeCache(WAITING_CACHE, waitingList), [waitingList]);
+
   // Modal States
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentSelectedUnitId, setPaymentSelectedUnitId] = useState<string | undefined>(undefined);
@@ -332,6 +366,10 @@ export default function App() {
       if (data.deposits) setDeposits(data.deposits);
       if (data.cashflow) setCashflow(data.cashflow);
       if (data.payments && data.deposits) setDbReady(true);
+      const waiting = await loadWaitingList();
+      if (!isMounted) return;
+      setWaitingDbReady(waiting !== null);
+      if (waiting) setWaitingList(waiting);
     }
 
     setRealtimeStatus('connecting');
@@ -1137,6 +1175,31 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbReady, tenantAccounts]);
 
+  // Add or change a waiting list entry; kept on this device until the database accepts it
+  const handleSaveWaitingEntry = async (entry: WaitingEntry) => {
+    const isNew = !waitingList.some(e => e.id === entry.id);
+    setWaitingList(prev => (isNew ? [entry, ...prev] : prev.map(e => (e.id === entry.id ? entry : e))));
+    const ok = await saveWaitingEntryToSupabase(entry);
+    setWaitingPending(entry.id, !ok);
+    if (ok) setWaitingDbReady(true);
+    showToast(
+      isNew
+        ? `${entry.name} added to the ${entry.unitType.toLowerCase()} waiting list.`
+        : entry.status === 'Leased'
+          ? `${entry.name} leased ${entry.leasedUnit} and left the waiting list.`
+          : entry.status === 'Removed'
+            ? `${entry.name} taken off the waiting list.`
+            : `${entry.name} is back on the waiting list.`
+    );
+  };
+
+  const handleDeleteWaitingEntry = async (entry: WaitingEntry) => {
+    setWaitingList(prev => prev.filter(e => e.id !== entry.id));
+    setWaitingPending(entry.id, false);
+    const ok = await deleteWaitingEntryFromSupabase(entry.id);
+    showToast(ok ? `${entry.name} deleted from the waiting list.` : `${entry.name} deleted on this device.`);
+  };
+
   // Return a held deposit to the tenant
   const handleReleaseDeposit = async (dep: DepositRecord) => {
     const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -1244,6 +1307,7 @@ export default function App() {
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
         unreadAlertsCount={unreadAlertsCount}
+        waitingCount={waitingList.filter(e => e.status === 'Waiting').length}
         adminUser={adminUser}
         onLogout={handleLogout}
         activeBuilding={activeBuilding}
@@ -1436,6 +1500,20 @@ export default function App() {
               onClearAllPayments={handleClearAllPayments}
               onDeleteDeposit={handleDeleteDeposit}
               onClearAllDeposits={handleClearAllDeposits}
+            />
+          )}
+
+          {/* WAITING LIST */}
+          {activeTab === 'waiting' && (
+            <WaitingListView
+              entries={waitingList}
+              units={units}
+              dbReady={waitingDbReady}
+              onAdd={handleSaveWaitingEntry}
+              onUpdate={handleSaveWaitingEntry}
+              onDelete={handleDeleteWaitingEntry}
+              onSaveUnit={handleSaveUnit}
+              onSaveDeposit={handleSaveDeposit}
             />
           )}
 

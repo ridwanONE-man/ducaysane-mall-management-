@@ -4,14 +4,13 @@ import {
   PaymentRecord, 
   DepositRecord, 
   CashflowTransaction, 
-  TenantInfo 
-} from '../types';
+  TenantInfo, WaitingEntry } from '../types';
 
 // ==========================================
 // 0. VERIFIED DELETES
 // ==========================================
 
-type DeletableTable = 'units' | 'payments' | 'deposits' | 'cashflow_transactions' | 'tenants';
+type DeletableTable = 'units' | 'payments' | 'deposits' | 'cashflow_transactions' | 'tenants' | 'waiting_list';
 
 // Supabase reports success even when a row-level-security policy silently blocks a
 // delete, so check that the row is really gone before reporting success.
@@ -1085,4 +1084,71 @@ export async function updateAdminPassword(newPassword: string): Promise<boolean>
     console.warn('Network error updating password in Supabase:', err);
     return true;
   }
+}
+
+// ==========================================
+// WAITING LIST
+// ==========================================
+
+function mapRowToWaitingEntry(row: any): WaitingEntry {
+  return {
+    id: row.id,
+    name: row.name || '',
+    phone: row.phone || '',
+    unitType: row.unit_type === 'Space' ? 'Space' : 'Shop',
+    trade: row.trade || undefined,
+    requestedDate: String(row.requested_date || row.created_at || '').slice(0, 10),
+    notes: row.notes || undefined,
+    status: row.status === 'Leased' || row.status === 'Removed' ? row.status : 'Waiting',
+    leasedUnit: row.leased_unit || undefined,
+    createdAt: row.created_at || new Date().toISOString(),
+  };
+}
+
+function mapWaitingEntryToRow(e: WaitingEntry) {
+  return {
+    id: e.id,
+    name: e.name,
+    phone: e.phone || null,
+    unit_type: e.unitType,
+    trade: e.trade || null,
+    requested_date: e.requestedDate,
+    notes: e.notes || null,
+    status: e.status,
+    leased_unit: e.leasedUnit || null,
+    created_at: e.createdAt,
+  };
+}
+
+// null = the table can't be read (not created yet, or offline)
+export async function getWaitingListFromSupabase(): Promise<WaitingEntry[] | null> {
+  try {
+    const { data, error } = await supabase.from('waiting_list').select('*');
+    if (error) {
+      console.warn('Could not load the waiting list:', error.message);
+      return null;
+    }
+    return (data || []).map(mapRowToWaitingEntry);
+  } catch (err) {
+    console.warn('Network error loading the waiting list:', err);
+    return null;
+  }
+}
+
+export async function saveWaitingEntryToSupabase(entry: WaitingEntry): Promise<boolean> {
+  try {
+    const { error } = await supabase.from('waiting_list').upsert(mapWaitingEntryToRow(entry));
+    if (error) {
+      console.warn('Could not save waiting list entry:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Network error saving waiting list entry:', err);
+    return false;
+  }
+}
+
+export async function deleteWaitingEntryFromSupabase(id: string): Promise<boolean> {
+  return deleteRowById('waiting_list', id);
 }

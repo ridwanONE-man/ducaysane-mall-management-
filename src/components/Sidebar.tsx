@@ -14,7 +14,8 @@ import {
   Building2, 
   ChevronDown,
   Mail,
-  LogOut
+  LogOut,
+  Hourglass,
 } from 'lucide-react';
 import { NavigationTab, AdminUser } from '../types';
 import logoImg from '../assets/logo.png';
@@ -23,6 +24,7 @@ interface SidebarProps {
   activeTab: NavigationTab;
   onTabChange: (tab: NavigationTab) => void;
   unreadAlertsCount: number;
+  waitingCount?: number;
   adminUser: AdminUser;
   onLogout: () => void;
   activeBuilding: string;
@@ -32,6 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onTabChange,
   unreadAlertsCount,
+  waitingCount = 0,
   adminUser,
   onLogout,
   activeBuilding
@@ -52,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'receipts', label: 'Receipts', icon: Printer },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+    { id: 'waiting', label: 'Waiting List', icon: Hourglass, badge: waitingCount ? waitingCount : undefined, badgeColor: 'bg-orange-100 text-orange-700' },
     { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadAlertsCount > 0 ? unreadAlertsCount : undefined, badgeColor: 'bg-red-600 text-white' },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];

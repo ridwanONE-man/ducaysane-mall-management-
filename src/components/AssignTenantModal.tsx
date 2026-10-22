@@ -28,13 +28,16 @@ interface AssignTenantModalProps {
   onClose: () => void;
   unit: PropertyUnit | null;
   onConfirmLease: (updatedUnit: PropertyUnit, newDeposit?: DepositRecord) => void;
+  // Fills the tenant fields, e.g. when leasing to someone from the waiting list
+  prefill?: { name: string; phone?: string; trade?: string };
 }
 
 export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
   isOpen,
   onClose,
   unit,
-  onConfirmLease
+  onConfirmLease,
+  prefill
 }) => {
   const [tenantName, setTenantName] = useState('');
   const [trade, setTrade] = useState('');
@@ -53,9 +56,9 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
 
   useEffect(() => {
     if (unit) {
-      setTenantName('');
-      setTrade(unit.type === 'Shop' || unit.categoryType === 'Shop' ? 'Retail Store' : 'Commercial Space');
-      setPhone('');
+      setTenantName(prefill?.name || '');
+      setTrade(prefill?.trade || (unit.type === 'Shop' || unit.categoryType === 'Shop' ? 'Retail Store' : 'Commercial Space'));
+      setPhone(prefill?.phone || '');
       setEmail('');
       const baseRent = unitRent(unit) || 500;
       setRentCurrency(unitCurrency(unit));

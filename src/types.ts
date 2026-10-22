@@ -9,6 +9,7 @@ export type NavigationTab =
   | 'receipts' 
   | 'reports' 
   | 'analytics' 
+  | 'waiting'
   | 'notifications' 
   | 'settings';
 
@@ -189,4 +190,18 @@ export interface MallSettings {
   contactPhone?: string;
   contactEmail?: string;
   managerName?: string;
+}
+
+// Someone waiting to rent a shop or space; served first come, first served.
+export interface WaitingEntry {
+  id: string;
+  name: string;
+  phone: string;
+  unitType: 'Shop' | 'Space';
+  trade?: string;
+  requestedDate: string; // "YYYY-MM-DD", the day they asked
+  notes?: string;
+  status: 'Waiting' | 'Leased' | 'Removed';
+  leasedUnit?: string;
+  createdAt: string; // ISO timestamp, breaks ties on the same day
 }
