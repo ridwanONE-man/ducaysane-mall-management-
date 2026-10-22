@@ -18,6 +18,7 @@ import {
   Search,
   LayoutGrid,
   AlertTriangle,
+  Phone,
   List,
   Layers,
   Ruler,
@@ -262,12 +263,6 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
     { label: 'On hold / maintenance', value: String(reservedCount + maintenanceCount), icon: Wrench, tone: 'bg-gradient-to-br from-sky-500 to-blue-500 text-white', card: 'bg-sky-50 border-sky-200', on: occupancyFilter === 'Maintenance', onClick: () => setOccupancyFilter(f => (f === 'Maintenance' ? 'All' : 'Maintenance')) },
   ];
 
-  const quickChips: { label: string; on: boolean; toggle: () => void; icon: React.ComponentType<{ className?: string }> }[] = [
-    { label: 'Ground Floor', on: quickGroundFloor, toggle: () => setQuickGroundFloor(v => !v), icon: Layers },
-    { label: 'Expiring in 30 days', on: quickExpiring30, toggle: () => setQuickExpiring30(v => !v), icon: Clock },
-    { label: 'With arrears', on: quickHighArrears, toggle: () => setQuickHighArrears(v => !v), icon: Filter },
-    { label: 'Anchor tenants', on: quickAnchor, toggle: () => setQuickAnchor(v => !v), icon: Star },
-  ];
 
   const selectCls = 'px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 font-semibold focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 cursor-pointer';
 
@@ -472,18 +467,6 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
           <div className="flex flex-wrap items-center gap-1.5">
-            {quickChips.map(c => (
-              <button
-                key={c.label}
-                type="button"
-                onClick={c.toggle}
-                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${
-                  c.on ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-white text-slate-600 border-slate-200 hover:border-orange-200 hover:text-orange-700'
-                }`}
-              >
-                <c.icon className="w-3 h-3" /> {c.label}
-              </button>
-            ))}
             {hasFilters && (
               <button type="button" onClick={handleResetFilters} className="px-2.5 py-1.5 text-[11px] font-bold text-orange-600 hover:text-orange-800 cursor-pointer">
                 Reset all
@@ -624,35 +607,45 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
 
                     {/* Tenant */}
                     {unit.currentTenant ? (
-                      <div className="mt-4 rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white p-3">
-                        <div className="flex items-center gap-2.5">
-                          <span className="w-9 h-9 rounded-xl bg-slate-900 text-white text-[11px] font-black flex items-center justify-center shrink-0">
+                      <div className="mt-4 rounded-2xl overflow-hidden border border-orange-100">
+                        <div className="flex items-center gap-2.5 px-3 py-2.5 bg-gradient-to-r from-orange-50 to-amber-50">
+                          <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white text-xs font-black flex items-center justify-center shrink-0 shadow-sm">
                             {unit.currentTenant.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                           </span>
                           <div className="min-w-0 flex-1">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-orange-600">Tenant</p>
                             <p className="text-xs font-extrabold text-slate-900 truncate">{unit.currentTenant.name}</p>
-                            <p className="text-[10px] text-slate-500 truncate">
-                              {unit.currentTenant.trade}{unit.currentTenant.phone ? ` • ${unit.currentTenant.phone}` : ''}
-                            </p>
                           </div>
                           {billingChip(unit)}
                         </div>
-                        {lease && (
-                          <div className="mt-3">
-                            <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500">
-                              <span>{formatLongDate(lease.start || undefined)} → {formatLongDate(lease.end)}</span>
-                              <span className={`font-black ${lease.days < 0 ? 'text-rose-600' : lease.days <= 10 ? 'text-rose-600' : lease.days <= 30 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                                {lease.days < 0 ? `Expired ${-lease.days}d ago` : lease.days === 0 ? 'Ends today' : `${lease.days} days left`}
-                              </span>
-                            </div>
-                            <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${lease.days <= 10 ? 'bg-rose-500' : lease.days <= 30 ? 'bg-amber-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`}
-                                style={{ width: `${lease.pct}%` }}
-                              />
-                            </div>
+                        <div className="px-3 py-2.5 bg-white space-y-2">
+                          <div className="grid grid-cols-2 gap-2 text-[10px]">
+                            <span className="flex items-center gap-1 text-slate-500 min-w-0">
+                              <Store className="w-3 h-3 text-orange-500 shrink-0" />
+                              <span className="truncate font-semibold text-slate-700">{unit.currentTenant.trade || '—'}</span>
+                            </span>
+                            <span className="flex items-center gap-1 text-slate-500 min-w-0">
+                              <Phone className="w-3 h-3 text-orange-500 shrink-0" />
+                              <span className="truncate font-semibold text-slate-700">{unit.currentTenant.phone || 'No phone'}</span>
+                            </span>
                           </div>
-                        )}
+                          {lease && (
+                            <div>
+                              <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500">
+                                <span>{formatLongDate(lease.start || undefined)} → {formatLongDate(lease.end)}</span>
+                                <span className={`font-black ${lease.days <= 10 ? 'text-rose-600' : lease.days <= 30 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                  {lease.days < 0 ? `Expired ${-lease.days}d ago` : lease.days === 0 ? 'Ends today' : `${lease.days} days left`}
+                                </span>
+                              </div>
+                              <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${lease.days <= 10 ? 'bg-rose-500' : lease.days <= 30 ? 'bg-amber-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`}
+                                  style={{ width: `${lease.pct}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <div className="mt-4 rounded-2xl border border-dashed border-emerald-300 bg-emerald-50/50 p-3 flex items-center justify-between gap-2">
