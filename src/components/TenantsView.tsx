@@ -1,4 +1,4 @@
-import { formatMoney, formatLongDate, parsePaymentDate } from '../utils/printUtils';
+import { formatMoney } from '../utils/printUtils';
 import React, { useState } from 'react';
 import { 
   Users, 
@@ -613,139 +613,152 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filtered.map(({ tenant, unit }) => {
             const isShop = unit?.type === 'Shop' || unit?.categoryType === 'Shop' || (tenant.unitNumber && tenant.unitNumber.startsWith('G'));
-            const account = accountFor(tenant, unit);
-            const cur = account?.currency || 'USD';
-            const balance = account ? account.balance : tenant.balanceUSD || 0;
-            const deposit = account ? account.depositHeld : tenant.depositUSD || unit?.escrowDepositUSD || 0;
-            const start = parsePaymentDate(unit?.leaseStart || tenant.leaseStart);
-            const end = parsePaymentDate(unit?.leaseEnd || tenant.leaseEnd);
-            const today = new Date(new Date().setHours(0, 0, 0, 0));
-            const daysLeft = end ? Math.round((end.getTime() - today.getTime()) / 86_400_000) : null;
-            const leasePct = start && end && end > start
-              ? Math.min(100, Math.max(0, ((today.getTime() - start.getTime()) / (end.getTime() - start.getTime())) * 100))
-              : 0;
-            const leaseTone = daysLeft === null ? 'text-slate-500' : daysLeft < 0 ? 'text-rose-600' : daysLeft <= 15 ? 'text-amber-600' : 'text-emerald-600';
-            const band = isShop ? 'from-orange-500 to-amber-500' : 'from-sky-500 to-blue-500';
+            const isOverdue = tenant.balanceUSD > 0 || tenant.balanceStatus === 'Overdue';
+            const daysRem = tenant.daysRemaining ?? 30;
+            const depositAmt = tenant.depositUSD || unit?.escrowDepositUSD || 0;
+            const depositMos = tenant.depositMonths || (depositAmt > 0 && unit?.monthlyRateUSD ? Math.max(1, Math.round(depositAmt / unit.monthlyRateUSD)) : 0);
 
             return (
               <div
                 key={tenant.id}
-                className="group bg-white rounded-3xl border border-slate-200/80 shadow-xs hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden flex flex-col"
+                className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
               >
-                {/* Coloured header: who and where */}
-                <div className={`relative overflow-hidden bg-gradient-to-br ${band} text-white px-5 pt-4 pb-5`}>
-                  <div className="absolute -right-6 -top-8 w-24 h-24 rounded-full bg-white/10" />
-                  <div className="relative flex items-start justify-between gap-3">
+                <div>
+                  {/* Top Bar: Avatar, Name, Unit Badge */}
+                  <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <span className="w-12 h-12 shrink-0 rounded-2xl bg-white/20 backdrop-blur-xs text-white font-black text-base flex items-center justify-center ring-2 ring-white/30">
-                        {tenant.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                      </span>
+                      <div className={`w-11 h-11 rounded-2xl font-black text-sm flex items-center justify-center shadow-xs shrink-0 ${
+                        isShop
+                          ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-blue-500/20'
+                          : 'bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-emerald-500/20'
+                      }`}>
+                        {tenant.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                      </div>
                       <div className="min-w-0">
-                        <h3 className="font-extrabold text-base leading-tight truncate">{tenant.name}</h3>
-                        <p className="text-[11px] text-white/80 truncate">{tenant.trade || (isShop ? 'Shop' : 'Space')}</p>
+                        <h3 className="font-bold text-slate-900 text-sm leading-tight truncate">
+                          {tenant.name}
+                        </h3>
+                        <p className="text-xs text-slate-500 truncate mt-0.5">{tenant.trade}</p>
                       </div>
                     </div>
-                    <span className="shrink-0 px-2.5 py-1 rounded-lg bg-white text-slate-900 text-xs font-black font-mono shadow-sm">{tenant.unitNumber}</span>
+                    <span className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold shrink-0 ${
+                      isShop
+                        ? 'bg-blue-50 text-blue-700 border border-blue-200/80'
+                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
+                    }`}>
+                      {tenant.unitNumber}
+                    </span>
                   </div>
-                  <div className="relative mt-3 flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
-                    <span className="px-2 py-0.5 rounded-md bg-white/20">{isShop ? 'Shop' : 'Space'} • {unit?.floor || 'Ground Floor'}</span>
-                    {balance > 0
-                      ? <span className="px-2 py-0.5 rounded-md bg-rose-600/90">Owes {formatMoney(balance, cur)}</span>
-                      : <span className="px-2 py-0.5 rounded-md bg-emerald-600/90">✓ Paid up</span>}
+
+                  {/* Lease Expiry & Standing Row */}
+                  <div className="flex items-center justify-between gap-2 py-2 px-3 bg-slate-50 rounded-xl border border-slate-100 text-xs mb-3">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Lease Status</span>
+                      <span className={`font-bold inline-block px-1.5 py-0.2 rounded-md text-[11px] ${
+                        daysRem > 15
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : daysRem > 0
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-rose-100 text-rose-800'
+                      }`}>
+                        {daysRem > 0 ? `${daysRem}d remaining` : `Expired (${Math.abs(daysRem)}d)`}
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Deposit Standing</span>
+                      <span className={`font-bold text-xs ${depositAmt > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                        {depositAmt > 0 ? `$${depositAmt.toLocaleString()} (${depositMos} mo)` : 'No Deposit'}
+                      </span>
+                    </div>
                   </div>
+
+                  {/* Details List */}
+                  <div className="space-y-2 py-2 border-y border-slate-100 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 flex items-center gap-1.5">
+                        <Store className="w-3.5 h-3.5 text-blue-500" />
+                        Space / Category:
+                      </span>
+                      <span className="font-semibold text-slate-800">
+                        {isShop ? 'Retail Shop' : 'Commercial Space'} ({unit?.floor || 'Ground Floor'})
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-slate-400" />
+                        Phone Contact:
+                      </span>
+                      <span className="font-semibold text-slate-800">{tenant.phone}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 flex items-center gap-1.5">
+                        <CreditCard className="w-3.5 h-3.5 text-slate-400" />
+                        Monthly Base Rent:
+                      </span>
+                      <span className="font-extrabold text-slate-900">
+                        {formatUnitRent(unit)}
+                      </span>
+                    </div>
+
+                    {!accountFor(tenant, unit) && isOverdue && (
+                      <div className="flex items-center justify-between text-rose-600 font-bold">
+                        <span className="flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          Outstanding Arrears:
+                        </span>
+                        <span>${tenant.balanceUSD.toLocaleString()} USD</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {renderAccountStatus(tenant, unit)}
                 </div>
 
-                <div className="p-5 space-y-4 flex-1 flex flex-col">
-                  {/* Key numbers */}
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { label: 'Rent / month', value: formatUnitRent(unit), tone: 'text-slate-900' },
-                      { label: 'Balance', value: balance > 0 ? formatMoney(balance, cur) : 'Paid up', tone: balance > 0 ? 'text-rose-600' : 'text-emerald-600' },
-                      { label: 'Deposit', value: deposit > 0 ? formatMoney(deposit, cur) : 'None', tone: deposit > 0 ? 'text-sky-700' : 'text-slate-400' },
-                      { label: 'Months owed', value: account ? String(account.owing.length) : '—', tone: account && account.owing.length ? 'text-rose-600' : 'text-slate-900' },
-                    ].map(k => (
-                      <div key={k.label} className="rounded-2xl bg-slate-50 border border-slate-100 px-3 py-2">
-                        <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">{k.label}</span>
-                        <span className={`block text-sm font-black truncate ${k.tone}`}>{k.value}</span>
-                      </div>
-                    ))}
-                  </div>
+                {/* Actions Bar */}
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1.5">
+                  <button
+                    onClick={() => setSelectedTenant({ tenant, unit })}
+                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                    title="View full tenant ledger and profile"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Profile</span>
+                  </button>
 
-                  {/* Lease */}
-                  <div>
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="flex items-center gap-1 font-semibold text-slate-500">
-                        <Calendar className="w-3.5 h-3.5 text-orange-500" />
-                        {start && end ? `${formatLongDate(start)} → ${formatLongDate(end)}` : 'No lease dates'}
-                      </span>
-                      <span className={`font-black ${leaseTone}`}>
-                        {daysLeft === null ? '' : daysLeft < 0 ? `Expired ${-daysLeft}d ago` : daysLeft === 0 ? 'Ends today' : `${daysLeft} days left`}
-                      </span>
-                    </div>
-                    <div className="mt-1.5 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${daysLeft !== null && daysLeft <= 15 ? 'bg-gradient-to-r from-rose-500 to-amber-500' : `bg-gradient-to-r ${band}`}`}
-                        style={{ width: `${leasePct}%` }}
-                      />
-                    </div>
-                  </div>
+                  <button
+                    onClick={() => unit && openModifyModal(unit, tenant)}
+                    className="flex-1 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/60 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                    title="Modify tenant details and lease price in database"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Modify</span>
+                  </button>
 
-                  {/* Contact */}
-                  <div className="flex items-center justify-between gap-2 text-[11px]">
-                    <span className="flex items-center gap-1.5 text-slate-600 min-w-0">
-                      <Phone className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-                      <span className="truncate font-semibold">{tenant.phone || 'No phone'}</span>
-                    </span>
-                    {account && onOpenTenantPayments && (
-                      <button
-                        type="button"
-                        onClick={() => onOpenTenantPayments(account)}
-                        className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold cursor-pointer"
-                        title="Open this tenant's months and vouchers on the Payments page"
-                      >
-                        <CreditCard className="w-3 h-3" /> Payments
-                      </button>
-                    )}
-                  </div>
+                  <button
+                    onClick={() => unit && openVacateModal(unit, tenant)}
+                    className="px-2.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/60 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                    title="Vacate this unit and mark as available"
+                  >
+                    <DoorOpen className="w-3.5 h-3.5 text-rose-600" />
+                    <span className="hidden sm:inline">Vacate</span>
+                  </button>
 
-                  {/* Actions */}
-                  <div className="mt-auto pt-3 border-t border-slate-100 flex items-center gap-1.5">
-                    <button
-                      onClick={() => setSelectedTenant({ tenant, unit })}
-                      className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
-                      title="View full tenant profile"
-                    >
-                      <FileText className="w-3.5 h-3.5" /> Profile
-                    </button>
-                    <button
-                      onClick={() => unit && openModifyModal(unit, tenant)}
-                      className="flex-1 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
-                      title="Change tenant details and rent"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" /> Modify
-                    </button>
-                    <button
-                      onClick={() => unit && openVacateModal(unit, tenant)}
-                      className="px-2.5 py-2 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
-                      title="Vacate this unit and mark it as available"
-                    >
-                      <DoorOpen className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Vacate</span>
-                    </button>
-                    {onDeleteTenant && unit && (
-                      <DeleteButton
-                        className="py-2 px-2"
-                        title="Delete tenant"
-                        onDelete={() => onDeleteTenant(unit.id)}
-                        confirm={{
-                          title: 'Delete this tenant?',
-                          subject: `${tenant.name} • ${unit.unitNumber}`,
-                          message: `The tenant is removed from the database and ${unit.unitNumber} becomes Available. Payments, deposits, cashflow and reports are kept.`,
-                          confirmLabel: 'Delete tenant',
-                        }}
-                      />
-                    )}
-                  </div>
+                  {onDeleteTenant && unit && (
+                    <DeleteButton
+                      className="py-2 px-2 border border-transparent hover:border-rose-200"
+                      title="Delete tenant"
+                      onDelete={() => onDeleteTenant(unit.id)}
+                      confirm={{
+                        title: 'Delete this tenant?',
+                        subject: `${tenant.name} • ${unit.unitNumber}`,
+                        message: `The tenant is removed from the database and ${unit.unitNumber} becomes Available. Payments, deposits, cashflow and reports are kept.`,
+                        confirmLabel: 'Delete tenant',
+                      }}
+                    />
+                  )}
                 </div>
               </div>
             );
