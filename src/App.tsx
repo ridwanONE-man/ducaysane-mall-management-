@@ -147,6 +147,7 @@ async function loadWaitingList(): Promise<WaitingEntry[] | null> {
 // exist in this browser's cache. Queue them once for upload.
 const LEGACY_PAYMENTS_FLAG = 'nbc_payments_recovered_v1';
 const SAMPLE_PAYMENT_IDS = new Set(initialPayments.map(p => p.id));
+const SAMPLE_NOTIFICATION_IDS = new Set(initialCommercialNotifications.map(n => n.id));
 
 function queueLegacyPayments(dbPayments: PaymentRecord[]) {
   try {
@@ -280,8 +281,9 @@ export default function App() {
   const [payments, setPayments] = useState<PaymentRecord[]>(() => readCache('nbc_payments', []));
   const [deposits, setDeposits] = useState<DepositRecord[]>(() => readCache('nbc_deposits', []));
   const [cashflow, setCashflow] = useState<CashflowTransaction[]>(() => readCache('nbc_cashflow', []));
+  // Sample alerts from the test period are dropped from any saved copy
   const [notifications, setNotifications] = useState<CommercialNotification[]>(
-    () => readCache('nbc_notifications', initialCommercialNotifications)
+    () => readCache<CommercialNotification[]>('nbc_notifications', []).filter(n => !SAMPLE_NOTIFICATION_IDS.has(n.id))
   );
   const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
