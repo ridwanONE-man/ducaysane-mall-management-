@@ -22,9 +22,11 @@ import {
   Store,
   ShieldCheck,
   Calendar,
+  CalendarRange,
 } from 'lucide-react';
 import { CashflowTransaction, CurrencyMode, CashflowCategory } from '../types';
-import { formatMoney, parsePaymentDate } from '../utils/printUtils';
+import { formatMoney, parsePaymentDate, formatLongDate } from '../utils/printUtils';
+import { MONTH_NAMES } from '../utils/rentLedger';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
 import { PrintPortal } from './PrintPortal';
 import { CashflowVoucher, CashflowStatement } from './CashflowVoucher';
@@ -47,6 +49,8 @@ const CATEGORY_ICON: Partial<Record<CashflowCategory, React.ComponentType<{ clas
 };
 
 const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+type PeriodMode = 'all' | 'month' | 'year' | 'day' | 'range';
+
 const toDisplayDate = (iso: string) => {
   const d = parsePaymentDate(iso) || new Date();
   return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
@@ -71,6 +75,15 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'Inflow' | 'Outflow'>('ALL');
   const [currencyFilter, setCurrencyFilter] = useState<'ALL' | 'USD' | 'SSP'>('ALL');
+
+  // Period: only entries dated inside it are counted and listed
+  const today = new Date();
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('all');
+  const [year, setYear] = useState(today.getFullYear());
+  const [month, setMonth] = useState(today.getMonth());
+  const [day, setDay] = useState(toISO(today));
+  const [fromDate, setFromDate] = useState(toISO(new Date(today.getFullYear(), today.getMonth(), 1)));
+  const [toDate, setToDate] = useState(toISO(today));
 
   // Entry form
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
@@ -125,17 +138,37 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     setEditingTx(null);
   };
 
+  const inPeriod = (t: CashflowTransaction) => {
+    if (periodMode === 'all') return true;
+    const d = parsePaymentDate(t.date);
+    if (!d) return false;
+    if (periodMode === 'year') return d.getFullYear() === year;
+    if (periodMode === 'month') return d.getFullYear() === year && d.getMonth() === month;
+    if (periodMode === 'day') return d.toDateString() === (parsePaymentDate(day) || today).toDateString();
+    const from = parsePaymentDate(fromDate);
+    const to = parsePaymentDate(toDate);
+    return !(from && d < from) && !(to && d > to);
+  };
+  const periodLabel = periodMode === 'all' ? 'All time'
+    : periodMode === 'year' ? `Year ${year}`
+    : periodMode === 'month' ? `${MONTH_NAMES[month]} ${year}`
+    : periodMode === 'day' ? formatLongDate(day)
+    : `${formatLongDate(fromDate)} – ${formatLongDate(toDate)}`;
+  const periodTransactions = transactions.filter(inPeriod);
+  const availableYears = [...new Set([today.getFullYear(), ...transactions.map(t => parsePaymentDate(t.date)?.getFullYear()).filter((y): y is number => Boolean(y))])]
+    .sort((a, b) => b - a);
+
   // Dollars and SSP are never added together
   const sumOf = (currency: 'USD' | 'SSP', type: 'Inflow' | 'Outflow') =>
-    transactions.filter(t => (t.currency || 'USD') === currency && t.type === type).reduce((sum, t) => sum + t.amount, 0);
+    periodTransactions.filter(t => (t.currency || 'USD') === currency && t.type === type).reduce((sum, t) => sum + t.amount, 0);
   const totals = (['USD', 'SSP'] as const).map(currency => {
     const inflow = sumOf(currency, 'Inflow');
     const outflow = sumOf(currency, 'Outflow');
-    return { currency, inflow, outflow, net: inflow - outflow, count: transactions.filter(t => (t.currency || 'USD') === currency).length };
+    return { currency, inflow, outflow, net: inflow - outflow, count: periodTransactions.filter(t => (t.currency || 'USD') === currency).length };
   });
 
   const q = searchTerm.toLowerCase();
-  const filteredTransactions = transactions.filter(t => {
+  const filteredTransactions = periodTransactions.filter(t => {
     const matchesSearch = [t.title, t.category, t.referenceNumber, t.account].some(v => (v || '').toLowerCase().includes(q));
     const matchesType = typeFilter === 'ALL' || t.type === typeFilter;
     const matchesCurrency = currencyFilter === 'ALL' || (t.currency || 'USD') === currencyFilter;
@@ -206,6 +239,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     `px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
       active ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
     }`;
+  const selectCls = 'px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500';
   const isOut = newType === 'Outflow';
   const categories = isOut ? OUT_CATEGORIES : IN_CATEGORIES;
 
@@ -262,6 +296,37 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Period */}
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-3 flex flex-wrap items-center gap-2">
+        <span className="flex items-center gap-1.5 px-2 text-xs font-bold text-slate-700"><CalendarRange className="w-4 h-4 text-orange-500" /> Show</span>
+        <div className="inline-flex bg-slate-100 p-0.5 rounded-xl">
+          {([['all', 'All'], ['month', 'Month'], ['year', 'Year'], ['day', 'Day'], ['range', 'Custom']] as [PeriodMode, string][]).map(([m, label]) => (
+            <button key={m} type="button" onClick={() => setPeriodMode(m)} className={pill(periodMode === m)}>{label}</button>
+          ))}
+        </div>
+        {(periodMode === 'month' || periodMode === 'year') && (
+          <select value={year} onChange={e => setYear(Number(e.target.value))} className={selectCls}>
+            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        )}
+        {periodMode === 'month' && (
+          <select value={month} onChange={e => setMonth(Number(e.target.value))} className={selectCls}>
+            {MONTH_NAMES.map((n, i) => <option key={n} value={i}>{n}</option>)}
+          </select>
+        )}
+        {periodMode === 'day' && <input type="date" value={day} onChange={e => setDay(e.target.value)} className={selectCls} />}
+        {periodMode === 'range' && (
+          <span className="flex items-center gap-2">
+            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className={selectCls} />
+            <span className="text-xs font-bold text-slate-400">to</span>
+            <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className={selectCls} />
+          </span>
+        )}
+        <span className="ml-auto px-3 py-1 rounded-full bg-orange-50 text-orange-700 text-[11px] font-bold">
+          {periodLabel} • {periodTransactions.length} entr{periodTransactions.length === 1 ? 'y' : 'ies'}
+        </span>
       </div>
 
       {/* Dollar and SSP cards */}
@@ -363,7 +428,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                     <div className="w-14 h-14 rounded-3xl bg-orange-50 text-orange-500 flex items-center justify-center mx-auto mb-3">
                       <Wallet className="w-7 h-7" />
                     </div>
-                    <p className="font-extrabold text-slate-900 text-sm">No cashflow entries</p>
+                    <p className="font-extrabold text-slate-900 text-sm">{transactions.length && periodMode !== 'all' ? `No cashflow entries in ${periodLabel}` : 'No cashflow entries'}</p>
                     <p className="text-xs text-slate-500 mt-1 mb-4">Record money coming in or going out.</p>
                     <div className="inline-flex gap-2">
                       <button type="button" onClick={() => openNewEntry('Inflow')} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5">
@@ -442,7 +507,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         </div>
         {filteredTransactions.length > 0 && (
           <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 text-[11px] text-slate-500">
-            Showing <strong className="text-slate-900">{filteredTransactions.length}</strong> of {transactions.length} entries
+            Showing <strong className="text-slate-900">{filteredTransactions.length}</strong> of {periodTransactions.length} entries in {periodLabel}
           </div>
         )}
       </div>
@@ -629,6 +694,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             <CashflowStatement
               transactions={filteredTransactions}
               filterLabel={[
+                periodLabel,
                 currencyFilter === 'ALL' ? 'All money' : currencyFilter === 'USD' ? 'Dollar only' : 'SSP only',
                 typeFilter === 'ALL' ? 'in & out' : typeFilter === 'Inflow' ? 'money in' : 'money out',
                 searchTerm.trim() ? `search "${searchTerm.trim()}"` : '',
