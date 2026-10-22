@@ -93,36 +93,60 @@ export const TenantAccountsPanel: React.FC<TenantAccountsPanelProps> = ({ accoun
 
   return (
     <div className="space-y-4">
-      {/* Totals */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Totals: collection rate, then one card per currency */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.6fr)_minmax(0,1.6fr)] gap-4">
         {/* Collection rate */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 text-white p-5">
-          <div className="absolute -right-8 -bottom-10 w-32 h-32 rounded-full bg-orange-500/20" />
-          <div className="relative flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Collection rate</span>
-            <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center"><TrendingUp className="w-4 h-4" /></span>
+        <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs p-5 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Collection rate</span>
+            <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-md shadow-orange-500/30"><TrendingUp className="w-4 h-4" /></span>
           </div>
-          <p className="relative text-3xl font-black mt-1">{stats.rate}%</p>
-          <div className="relative mt-2 h-1.5 rounded-full bg-white/15 overflow-hidden">
-            <div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400" style={{ width: `${Math.min(100, stats.rate)}%` }} />
+          <div>
+            <p className="text-4xl font-black text-slate-900 mt-2">{stats.rate}%</p>
+            <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400" style={{ width: `${Math.min(100, stats.rate)}%` }} />
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1.5">Rent paid of rent due up to this month • {stats.overdueTenants} tenant(s) late</p>
           </div>
-          <p className="relative text-[10px] text-slate-400 mt-1.5">Rent paid of rent due up to this month</p>
         </div>
 
-        {[
-          { label: 'Collected', value: formatBoth(stats.collectedUSD, stats.collectedSSP), sub: `${payments.length} payment${payments.length === 1 ? '' : 's'} received`, icon: Wallet, tone: 'from-emerald-500 to-teal-500 shadow-emerald-500/30', text: 'text-emerald-700' },
-          { label: 'Deposits held', value: formatBoth(totals.depositsUSD, totals.depositsSSP), sub: `${accounts.filter(a => a.depositHeld > 0).length} tenant(s) with a deposit`, icon: ShieldCheck, tone: 'from-sky-500 to-blue-500 shadow-sky-500/30', text: 'text-sky-700' },
-          { label: 'Overdue arrears', value: formatBoth(stats.overdueUSD, stats.overdueSSP), sub: `${stats.overdueTenants} tenant(s) late • total balance ${formatBoth(totals.owedUSD, totals.owedSSP)}`, icon: AlertTriangle, tone: 'from-rose-500 to-orange-500 shadow-rose-500/30', text: 'text-rose-600' },
-        ].map(t => (
-          <div key={t.label} className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{t.label}</span>
-              <span className={`w-9 h-9 rounded-xl bg-gradient-to-br ${t.tone} text-white flex items-center justify-center shadow-md`}><t.icon className="w-4 h-4" /></span>
+        {(['USD', 'SSP'] as const).map(cur => {
+          const usd = cur === 'USD';
+          const list = accounts.filter(a => a.currency === cur);
+          const boxes = [
+            { label: 'Collected', value: usd ? stats.collectedUSD : stats.collectedSSP, icon: Wallet },
+            { label: 'Balance owed', value: usd ? totals.owedUSD : totals.owedSSP, icon: CalendarCheck },
+            { label: 'Overdue', value: usd ? stats.overdueUSD : stats.overdueSSP, icon: AlertTriangle },
+            { label: 'Deposits held', value: usd ? totals.depositsUSD : totals.depositsSSP, icon: ShieldCheck },
+          ];
+          return (
+            <div
+              key={cur}
+              className={`relative overflow-hidden rounded-3xl p-5 text-white ${
+                usd ? 'bg-gradient-to-br from-slate-900 to-slate-800' : 'bg-gradient-to-br from-orange-500 to-amber-500'
+              }`}
+            >
+              <div className="absolute -right-8 -bottom-10 w-36 h-36 rounded-full bg-white/10" />
+              <div className="relative flex items-center gap-3">
+                <span className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${usd ? 'bg-orange-500' : 'bg-white/20'}`}>
+                  {usd ? <span className="text-lg">$</span> : <span className="text-[11px]">SSP</span>}
+                </span>
+                <div>
+                  <p className="text-sm font-extrabold">{usd ? 'Dollar ($)' : 'South Sudanese Pound'}</p>
+                  <p className="text-[11px] opacity-70">{list.length} tenant{list.length === 1 ? '' : 's'}</p>
+                </div>
+              </div>
+              <div className="relative grid grid-cols-2 gap-2 mt-4">
+                {boxes.map(b => (
+                  <div key={b.label} className="rounded-2xl bg-white/10 px-3 py-2 min-w-0">
+                    <span className="flex items-center gap-1 text-[10px] font-bold opacity-80"><b.icon className="w-3 h-3" /> {b.label}</span>
+                    <span className="block text-base font-black truncate" title={formatMoney(b.value, cur)}>{formatMoney(b.value, cur)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <p className={`text-2xl font-black mt-1 truncate ${t.text}`}>{t.value}</p>
-            <p className="text-[10px] text-slate-500 mt-1.5 truncate">{t.sub}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Filters */}

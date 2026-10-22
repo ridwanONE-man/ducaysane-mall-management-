@@ -70,6 +70,21 @@ function monthsBetween(startStr?: string, endStr?: string) {
   return null;
 }
 
+// One numbered block of the form (Unit, Rent, Tenant, Lease)
+const Section: React.FC<{ step: number; title: string; icon: React.ComponentType<{ className?: string }>; right?: React.ReactNode; children: React.ReactNode }> = ({ step, title, icon: Icon, right, children }) => (
+  <section className="rounded-2xl border border-slate-200/80 bg-white p-4 space-y-3">
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2.5">
+        <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white text-[11px] font-black flex items-center justify-center shadow-sm">{step}</span>
+        <Icon className="w-4 h-4 text-orange-500" />
+        <h4 className="text-xs font-extrabold text-slate-900">{title}</h4>
+      </div>
+      {right}
+    </div>
+    {children}
+  </section>
+);
+
 interface AddUnitModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -231,6 +246,7 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
       subType: trade.trim() || (selectedCategory === 'Shop' ? 'Retail Shop' : 'Open Space'),
       sizeSqM: numSize,
       sizeSqFt: Math.round(numSize * 10.764 * 10) / 10,
+      // Meter is no longer asked for; keep what the unit already has
       meterNumber: meterNumber.trim() || (selectedCategory === 'Shop' ? `MTR-${finalUnitNumber}` : '2 meter'),
       ...rentFields(numRent, rentCurrency),
       escrowDepositUSD: numDeposit,
@@ -254,151 +270,118 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
     onClose();
   };
 
+  const isShop = selectedCategory === 'Shop';
+  const hasTenant = tenantName.trim().length > 0;
+  const previewNumber = unitCodeInput.trim()
+    ? (isShop ? `G${unitCodeInput.trim().replace(/^G-?/i, '').toUpperCase()}` : `BW-${unitCodeInput.trim().replace(/^BW-?/i, '').toUpperCase()}`)
+    : isShop ? 'G___' : 'BW-___';
+  const field = 'w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white focus:ring-2 focus:ring-orange-100';
+  const label = 'block text-[11px] font-bold text-slate-600 mb-1';
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 my-8 max-h-[92vh] flex flex-col font-sans">
-        
-        {/* Modal Header */}
-        <div className="flex items-center justify-between p-6 pb-4 border-b border-slate-100 shrink-0 bg-slate-50/50">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-orange-500 text-white flex items-center justify-center shadow-md shadow-orange-500/20">
-              <Store className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-extrabold text-slate-900">
-                {isEditing ? `Edit Unit: ${editingUnit?.unitNumber}` : 'Register New Unit / Space'}
-              </h3>
-              <p className="text-xs text-slate-500">
-                Nyakuron Business Centre • Inventory & Commercial Lease
-              </p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+      <div className="bg-slate-50 rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 my-8 max-h-[92vh] flex flex-col font-sans">
 
-        {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
-          
-          {/* STEP 1: Unit Category Selector */}
-          <div>
-            <label className="block text-xs font-bold text-slate-800 mb-2">
-              Select Unit Type / Category:
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => handleCategoryChange('Shop')}
-                className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-center gap-3 ${
-                  selectedCategory === 'Shop'
-                    ? 'border-orange-500 bg-orange-50/70 text-orange-950 shadow-xs'
-                    : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
-                }`}
-              >
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm ${
-                  selectedCategory === 'Shop' ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-600'
-                }`}>
-                  G
-                </div>
-                <div>
-                  <p className="font-extrabold text-xs">Option A: Shop</p>
-                  <p className="text-[11px] text-slate-500">Prefix: G (e.g. G001, G015) • USD</p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleCategoryChange('Space')}
-                className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-center gap-3 ${
-                  selectedCategory === 'Space'
-                    ? 'border-blue-600 bg-blue-50/70 text-blue-950 shadow-xs'
-                    : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
-                }`}
-              >
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs ${
-                  selectedCategory === 'Space' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
-                }`}>
-                  BW
-                </div>
-                <div>
-                  <p className="font-extrabold text-xs">Option B: Space</p>
-                  <p className="text-[11px] text-slate-500">Prefix: BW- (e.g. BW-1-A) • SSP/USD</p>
-                </div>
-              </button>
-            </div>
-          </div>
-
-          {/* Unit Number & Floor Level */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                {selectedCategory === 'Shop' ? 'Shop Number (auto-prefixed G)' : 'Space Number (auto-prefixed BW-)'}
-              </label>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-extrabold text-slate-500">
-                  {selectedCategory === 'Shop' ? 'G' : 'BW-'}
-                </span>
-                <input
-                  type="text"
-                  required
-                  value={unitCodeInput}
-                  onChange={(e) => setUnitCodeInput(e.target.value)}
-                  placeholder={selectedCategory === 'Shop' ? '001 or 015' : '1-A or 4-B'}
-                  className="w-full pl-12 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white"
-                />
+        {/* Header */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 to-slate-800 text-white px-6 py-5 shrink-0">
+          <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-orange-500/20" />
+          <div className="relative flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
+                <Store className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold">{isEditing ? `Edit ${editingUnit?.unitNumber}` : 'Create Unit'}</h3>
+                <p className="text-[11px] text-slate-300">Add a shop or space, and lease it now or later.</p>
               </div>
             </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Floor Level</label>
-              <select
-                value={floor}
-                onChange={(e) => setFloor(e.target.value as any)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white"
-              >
-                <option value="Ground Floor">Ground Floor</option>
-                <option value="Floor 1">Floor 1</option>
-                <option value="Floor 2">Floor 2</option>
-                <option value="Floor 3">Floor 3</option>
-              </select>
-            </div>
+            <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 cursor-pointer" aria-label="Close">
+              <X className="w-4 h-4" />
+            </button>
           </div>
-
-          {/* Gross Area & Meter Number */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Gross Area (sq.m)</label>
-              <input
-                type="number"
-                step="any"
-                required
-                value={sizeSqM}
-                onChange={(e) => setSizeSqM(e.target.value)}
-                placeholder="e.g. 30"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Electric Meter No / Size</label>
-              <input
-                type="text"
-                value={meterNumber}
-                onChange={(e) => setMeterNumber(e.target.value)}
-                placeholder={selectedCategory === 'Shop' ? 'e.g. MTR-G001' : 'e.g. 2 meter'}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white"
-              />
-            </div>
+          {/* Live preview */}
+          <div className="relative mt-4 flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="px-2.5 py-1 rounded-lg bg-white/10 font-mono font-black text-amber-300">{previewNumber}</span>
+            <span className="px-2.5 py-1 rounded-lg bg-white/10">{selectedCategory} • {floor}</span>
+            <span className="px-2.5 py-1 rounded-lg bg-white/10">{formatMoney(parseFloat(monthlyRent) || 0, rentCurrency)}/month</span>
+            <span className={`px-2.5 py-1 rounded-lg font-bold ${hasTenant ? 'bg-emerald-500/90' : 'bg-white/10'}`}>
+              {hasTenant ? 'Occupied' : 'Available'}
+            </span>
           </div>
+        </div>
 
-          {/* Monthly Rent */}
-          <div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700">
-                  Monthly Rent ({rentCurrency === 'USD' ? 'USD $' : 'SSP'})
-                </label>
-                {/* Rent currency: everything for this tenant (payments, balance, deposits) uses it */}
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
+          <div className="p-5 space-y-4 overflow-y-auto flex-1">
+
+            {/* 1. Unit */}
+            <Section step={1} title="Unit" icon={Layers}>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { cat: 'Shop' as const, badge: 'G', title: 'Shop', sub: 'G001, G015…' },
+                  { cat: 'Space' as const, badge: 'BW', title: 'Space', sub: 'BW-1-A, BW-4-B…' },
+                ]).map(o => {
+                  const on = selectedCategory === o.cat;
+                  return (
+                    <button
+                      key={o.cat}
+                      type="button"
+                      onClick={() => handleCategoryChange(o.cat)}
+                      className={`flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                        on ? 'border-orange-500 bg-orange-50' : 'border-slate-200 bg-white hover:border-orange-200'
+                      }`}
+                    >
+                      <span className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black ${
+                        on ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {o.badge}
+                      </span>
+                      <span>
+                        <span className="block text-xs font-extrabold text-slate-900">{o.title}</span>
+                        <span className="block text-[10px] text-slate-500">{o.sub}</span>
+                      </span>
+                      {on && <Check className="w-4 h-4 text-orange-600 ml-auto" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className={label}>{isShop ? 'Shop number' : 'Space number'}</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-orange-600">{isShop ? 'G' : 'BW-'}</span>
+                    <input
+                      type="text"
+                      required
+                      value={unitCodeInput}
+                      onChange={(e) => setUnitCodeInput(e.target.value)}
+                      placeholder={isShop ? '001' : '1-A'}
+                      className={`${field} ${isShop ? 'pl-7' : 'pl-10'} font-bold`}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className={label}>Floor</label>
+                  <select value={floor} onChange={(e) => setFloor(e.target.value as typeof floor)} className={field}>
+                    <option value="Ground Floor">Ground Floor</option>
+                    <option value="Floor 1">Floor 1</option>
+                    <option value="Floor 2">Floor 2</option>
+                    <option value="Floor 3">Floor 3</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={label}>Size (m²)</label>
+                  <input type="number" step="any" required value={sizeSqM} onChange={(e) => setSizeSqM(e.target.value)} placeholder="30" className={field} />
+                </div>
+              </div>
+            </Section>
+
+            {/* 2. Rent */}
+            <Section
+              step={2}
+              title="Monthly rent"
+              icon={DollarSign}
+              right={
                 <div className="inline-flex bg-slate-100 p-0.5 rounded-lg">
                   {(['USD', 'SSP'] as RentCurrency[]).map(c => (
                     <button
@@ -413,9 +396,10 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
                     </button>
                   ))}
                 </div>
-              </div>
+              }
+            >
               <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">{rentCurrency === 'USD' ? '$' : 'SSP'}</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{rentCurrency === 'USD' ? '$' : 'SSP'}</span>
                 <input
                   type="number"
                   step="any"
@@ -423,176 +407,117 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
                   value={monthlyRent}
                   onChange={(e) => setMonthlyRent(e.target.value)}
                   placeholder={rentCurrency === 'USD' ? '500' : '650000'}
-                  className="w-full pl-11 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white"
+                  className="w-full pl-14 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xl font-black text-slate-900 focus:outline-none focus:border-orange-500 focus:bg-white focus:ring-2 focus:ring-orange-100"
                 />
               </div>
-            </div>
-          </div>
+              <p className="text-[10px] text-slate-500">Payments, balance and deposits for this unit use {rentCurrency === 'USD' ? 'dollars' : 'SSP'}.</p>
+            </Section>
 
-          {/* Tenant Information Section */}
-          <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <UserCheck className="w-4 h-4 text-orange-600" />
-                <span className="text-xs font-bold text-slate-900">Tenant & Business Profile</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  tenantName.trim() ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
-                }`}>
-                  {tenantName.trim() ? 'Will be Occupied' : 'Leave empty for Available'}
-                </span>
-              </div>
-              {tenantName.trim().length > 0 && (
+            {/* 3. Tenant */}
+            <Section
+              step={3}
+              title="Tenant"
+              icon={UserCheck}
+              right={hasTenant ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setTenantName('');
-                    setTenantPhone('');
-                    setStatus('Available');
-                  }}
-                  className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 flex items-center gap-1 cursor-pointer hover:bg-rose-50 px-2 py-0.5 rounded-md transition-colors"
+                  onClick={() => { setTenantName(''); setTenantPhone(''); setStatus('Available'); }}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold text-rose-600 hover:bg-rose-50 cursor-pointer"
                   title="Remove tenant from this unit"
                 >
-                  <Trash2 className="w-3 h-3 text-rose-500" />
-                  <span>Remove Tenant</span>
+                  <Trash2 className="w-3 h-3" /> Remove
                 </button>
+              ) : (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Optional</span>
               )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Tenant Name</label>
-                <input
-                  type="text"
-                  value={tenantName}
-                  onChange={(e) => setTenantName(e.target.value)}
-                  placeholder="e.g. Khaalid Adam Abdale"
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-orange-500"
-                />
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={label}>Tenant name</label>
+                  <input type="text" value={tenantName} onChange={(e) => setTenantName(e.target.value)} placeholder="Leave empty to keep it available" className={field} />
+                </div>
+                <div>
+                  <label className={label}>Phone</label>
+                  <div className="relative">
+                    <Phone className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input type="tel" value={tenantPhone} onChange={(e) => setTenantPhone(e.target.value)} placeholder="+211 920 000 001" className={`${field} pl-8`} />
+                  </div>
+                </div>
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Phone Number</label>
-                <input
-                  type="tel"
-                  value={tenantPhone}
-                  onChange={(e) => setTenantPhone(e.target.value)}
-                  placeholder="e.g. +211 920 000 001"
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-orange-500"
-                />
+                <label className={label}>Business / trade</label>
+                <input type="text" value={trade} onChange={(e) => setTrade(e.target.value)} placeholder="e.g. Electronics, Wholesale, Clothing" className={field} />
               </div>
-            </div>
+            </Section>
 
+            {/* 4. Lease — only when a tenant is entered */}
+            {hasTenant ? (
+              <Section step={4} title="Lease" icon={Calendar}>
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_1.4fr] gap-3">
+                  <div>
+                    <label className={label}>Start date</label>
+                    <input type="date" value={leaseStart} onChange={(e) => setLeaseStart(e.target.value)} className={field} />
+                  </div>
+                  <div>
+                    <label className={label}>Duration</label>
+                    <DurationPicker months={leaseDurationMonths} onChange={setLeaseDurationMonths} />
+                  </div>
+                </div>
+
+                {lease && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-xl bg-slate-900 text-white px-3 py-2.5">
+                      <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Ends on</span>
+                      <span className="block text-sm font-extrabold">{lease.endLabel}</span>
+                      <span className="block text-[10px] text-slate-400">{formatDuration(leaseDurationMonths)} • {lease.totalDays} days</span>
+                    </div>
+                    <div className={`rounded-xl px-3 py-2.5 ${
+                      lease.daysRemaining > 7 ? 'bg-emerald-50 text-emerald-800' : lease.daysRemaining > 0 ? 'bg-amber-50 text-amber-800' : 'bg-rose-50 text-rose-800'
+                    }`}>
+                      <span className="block text-[9px] font-bold uppercase tracking-wider opacity-70">Days left</span>
+                      <span className="block text-sm font-extrabold">
+                        {lease.daysRemaining > 0 ? `${lease.daysRemaining} days` : lease.daysRemaining === 0 ? 'Ends today' : `Expired ${Math.abs(lease.daysRemaining)}d ago`}
+                      </span>
+                      {lease.daysUntilStart > 0 && <span className="block text-[10px] font-semibold">Starts in {lease.daysUntilStart} day{lease.daysUntilStart === 1 ? '' : 's'}</span>}
+                    </div>
+                  </div>
+                )}
+                {lease && tenantLeaseTotal(leaseMonthCount(leaseStart, lease.endStr), parseFloat(monthlyRent) || 0, rentCurrency)}
+              </Section>
+            ) : (
+              <div className="flex items-center gap-2 rounded-2xl border border-dashed border-slate-300 px-4 py-3 text-[11px] text-slate-500">
+                <AlertCircle className="w-4 h-4 text-slate-400 shrink-0" />
+                No tenant — the unit will be saved as <strong className="text-emerald-700">Available</strong>. Add a tenant name to set up the lease.
+              </div>
+            )}
+
+            {/* Notes */}
             <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Trade / Industry Category</label>
-              <input
-                type="text"
-                value={trade}
-                onChange={(e) => setTrade(e.target.value)}
-                placeholder="e.g. General Merchandise, Electronics, Wholesale"
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-orange-500"
+              <label className={label}>Notes <span className="font-normal text-slate-400">(optional)</span></label>
+              <textarea
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. Glass storefront, corner unit"
+                className={`${field} resize-none`}
               />
             </div>
           </div>
 
-          {/* Lease Dates & Duration (Dynamic Calculation) */}
-          <div className="p-4 bg-orange-50/50 border border-orange-200/70 rounded-2xl space-y-3">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-orange-600" />
-              <span className="text-xs font-bold text-orange-950">Lease Agreement & Dynamic Calculation</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-[1fr_1.4fr] gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Lease Start Date</label>
-                <input
-                  type="date"
-                  value={leaseStart}
-                  onChange={(e) => setLeaseStart(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-orange-500"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Duration</label>
-                <DurationPicker months={leaseDurationMonths} onChange={setLeaseDurationMonths} />
-              </div>
-            </div>
-
-            {/* Auto-calculated results */}
-            {lease ? (
-              <div className="p-3 bg-white rounded-xl border border-orange-200/80 flex items-center justify-between text-xs">
-                <div>
-                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Calculated Lease End Date</span>
-                  <span className="font-extrabold text-slate-900">{lease.endLabel}</span>
-                  <span className="text-[10px] text-slate-400 block">
-                    {formatDuration(leaseDurationMonths)} • {lease.totalDays} days total
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Days Remaining</span>
-                  <span className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-xs ${
-                    lease.daysRemaining > 7
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : lease.daysRemaining > 0
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-rose-100 text-rose-800'
-                  }`}>
-                    {lease.daysRemaining > 0
-                      ? `${lease.daysRemaining} day${lease.daysRemaining === 1 ? '' : 's'} remaining`
-                      : lease.daysRemaining === 0
-                      ? 'Ends today'
-                      : `Expired (${Math.abs(lease.daysRemaining)}d ago)`}
-                  </span>
-                  {lease.daysUntilStart > 0 && (
-                    <span className="text-[10px] text-blue-600 font-semibold block mt-0.5">
-                      Starts in {lease.daysUntilStart} day{lease.daysUntilStart === 1 ? '' : 's'}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="p-3 bg-white rounded-xl border border-orange-200/80 text-xs text-slate-400">
-                Pick a lease start date to calculate the end date and days remaining.
-              </div>
-            )}
-            {tenantName.trim() && lease && tenantLeaseTotal(leaseMonthCount(leaseStart, lease.endStr), parseFloat(monthlyRent) || 0, rentCurrency)}
-          </div>
-
-          {/* Additional Notes */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Internal Notes</label>
-            <textarea
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Fitted with glass storefront and dedicated sub-meter."
-              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-orange-500 focus:bg-white resize-none"
-            />
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl cursor-pointer"
-            >
+          {/* Footer */}
+          <div className="shrink-0 flex items-center justify-between gap-3 px-5 py-4 bg-white border-t border-slate-200">
+            <button type="button" onClick={onClose} className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl cursor-pointer">
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-bold rounded-xl shadow-md shadow-orange-500/20 flex items-center gap-1.5 cursor-pointer"
+              className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-extrabold rounded-xl shadow-md shadow-orange-500/25 flex items-center gap-1.5 cursor-pointer"
             >
               <Check className="w-4 h-4" />
-              <span>
-                {isEditing
-                  ? 'Save Changes'
-                  : tenantName.trim()
-                    ? `Create ${selectedCategory} & Lease to Tenant`
-                    : `Create Available ${selectedCategory}`}
-              </span>
+              {isEditing ? 'Save Changes' : hasTenant ? `Create ${selectedCategory} & Lease` : `Create Available ${selectedCategory}`}
             </button>
           </div>
         </form>
-
       </div>
     </div>
   );

@@ -20,6 +20,7 @@ import { TenantAccountsPanel } from './TenantAccountsPanel';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
 import { formatMoney, formatLongDate, parsePaymentDate } from '../utils/printUtils';
 import { MONTH_NAMES } from '../utils/rentLedger';
+import { CategorySwitch, UnitCategory, unitCategoryOf } from './CategorySwitch';
 
 interface PaymentsViewProps {
   payments: PaymentRecord[];
@@ -40,7 +41,8 @@ const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padSta
 const initials = (name: string) => name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
 
 export const PaymentsView: React.FC<PaymentsViewProps> = ({
-  payments,
+  payments: allPayments,
+  units = [],
   onSelectReceiptForPrint,
   onDeletePayment,
   onClearAllPayments,
@@ -50,6 +52,14 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const [view, setView] = useState<'accounts' | 'ledger'>(tenantAccounts ? 'accounts' : 'ledger');
   const [search, setSearch] = useState('');
   const [statusTab, setStatusTab] = useState<StatusTab>('All');
+
+  // Shops / spaces: by the unit each payment and tenant account belongs to
+  const [category, setCategory] = useState<UnitCategory>('all');
+  const accountsAll = tenantAccounts || [];
+  const accountCategory = (a: TenantAccount) => unitCategoryOf(a.unit.unitNumber, units);
+  const paymentCategory = (p: PaymentRecord) => unitCategoryOf(p.unitNumber, units);
+  const payments = category === 'all' ? allPayments : allPayments.filter(p => paymentCategory(p) === category);
+  const accounts = category === 'all' ? accountsAll : accountsAll.filter(a => accountCategory(a) === category);
 
   // Period: only transactions paid inside it are listed
   const today = new Date();
@@ -133,7 +143,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             </button>
             {onClearAllPayments && (
               <ClearAllButton
-                count={payments.length}
+                count={allPayments.length}
                 itemLabel="payments"
                 onClear={onClearAllPayments}
                 message="Every payment record is removed from the database, along with the cashflow entries created for them. This cannot be undone."
@@ -148,7 +158,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         <div className="inline-flex items-center bg-slate-100 p-1 rounded-2xl text-xs font-bold">
           {([
             ['accounts', 'Tenant Accounts', Users],
-            ['ledger', `Transactions (${payments.length})`, ListOrdered],
+            ['ledger', `Transactions (${allPayments.length})`, ListOrdered],
           ] as const).map(([v, label, Icon]) => (
             <button
               key={v}
@@ -164,8 +174,33 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div>
       )}
 
+      {/* Shops / spaces */}
+      {view === 'accounts' ? (
+        <CategorySwitch
+          value={category}
+          onChange={setCategory}
+          noun="tenants"
+          counts={{
+            all: accountsAll.length,
+            shop: accountsAll.filter(a => accountCategory(a) === 'shop').length,
+            space: accountsAll.filter(a => accountCategory(a) === 'space').length,
+          }}
+        />
+      ) : (
+        <CategorySwitch
+          value={category}
+          onChange={setCategory}
+          noun="payments"
+          counts={{
+            all: allPayments.filter(inPeriod).length,
+            shop: allPayments.filter(inPeriod).filter(p => paymentCategory(p) === 'shop').length,
+            space: allPayments.filter(inPeriod).filter(p => paymentCategory(p) === 'space').length,
+          }}
+        />
+      )}
+
       {view === 'accounts' && tenantAccounts && onOpenTenantAccount ? (
-        <TenantAccountsPanel accounts={tenantAccounts} payments={payments} onOpenAccount={onOpenTenantAccount} />
+        <TenantAccountsPanel accounts={accounts} payments={payments} onOpenAccount={onOpenTenantAccount} />
       ) : (
         <>
           {/* Period */}
