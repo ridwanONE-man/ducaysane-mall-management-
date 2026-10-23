@@ -22,8 +22,8 @@ import { TenantDepositModal, TenantDepositRequest } from './components/TenantDep
 import { DepositManageModal } from './components/DepositManageModal';
 import { WaitingListView } from './components/WaitingListView';
 import { depositFields, depositIn, RentCurrency } from './utils/currency';
-import { formatMoney } from './utils/printUtils';
-import { buildTenantAccount, buildTenantAccounts, isLegacyCreditDeposit, DEPOSIT_MONTHS_PREFIX, AMOUNT_DEPOSIT_TAG, depositMonthLabels, withDepositMonths, planDepositApplications, accountKey } from './utils/tenantAccount';
+import { formatMoney, parsePaymentDate } from './utils/printUtils';
+import { buildTenantAccount, buildTenantAccounts, isLegacyCreditDeposit, DEPOSIT_MONTHS_PREFIX, AMOUNT_DEPOSIT_TAG, depositMonthLabels, withDepositMonths, planDepositApplications, accountKey, coverageEndOf } from './utils/tenantAccount';
 import { nextReceiptNumber } from './utils/receiptNumbers';
 
 import { 
@@ -319,6 +319,18 @@ export default function App() {
   // Old advance-credit records (overpayments) are hidden and never counted
   const visibleDeposits = useMemo(() => deposits.filter(d => !isLegacyCreditDeposit(d)), [deposits]);
   const tenantAccounts = useMemo(() => buildTenantAccounts(units, payments, visibleDeposits), [units, payments, visibleDeposits]);
+  // Units as the pages show them: days remaining also counts months paid past the lease end
+  const unitsShown = useMemo(() => {
+    const paidThroughById = new Map(tenantAccounts.map(a => [a.unit.id, a.paidThrough]));
+    const today = new Date(new Date().setHours(0, 0, 0, 0));
+    return units.map(u => {
+      const withPaid = { ...u, paidThrough: paidThroughById.get(u.id) };
+      const end = parsePaymentDate(coverageEndOf(withPaid));
+      if (!end || !u.currentTenant) return withPaid;
+      const days = Math.round((end.getTime() - today.getTime()) / 86_400_000);
+      return { ...withPaid, daysRemaining: days, currentTenant: { ...u.currentTenant, daysRemaining: days } };
+    });
+  }, [units, tenantAccounts]);
   const smartPayAccount = tenantAccounts.find(a => a.key === smartPayKey) || null;
   const [depositKey, setDepositKey] = useState<string | null>(null);
   const depositAccount = tenantAccounts.find(a => a.key === depositKey) || null;
@@ -1342,7 +1354,7 @@ export default function App() {
           notifications={notifications}
           onMarkNotificationsRead={handleMarkNotificationsRead}
           realtimeStatus={realtimeStatus}
-          units={units}
+          units={unitsShown}
           payments={payments}
         />
 
@@ -1352,7 +1364,7 @@ export default function App() {
           {/* 1. DASHBOARD VIEW */}
           {activeTab === 'dashboard' && (
             <DashboardView
-              units={units}
+              units={unitsShown}
               payments={payments}
               currencyMode={currencyMode}
               onCurrencyChange={setCurrencyMode}
@@ -1372,7 +1384,7 @@ export default function App() {
           {/* 2. UNITS VIEW */}
           {(activeTab === 'units' || activeTab === 'occupancy') && (
             <UnitsView
-              units={units}
+              units={unitsShown}
               currencyMode={currencyMode}
               onCurrencyChange={setCurrencyMode}
               onOpenRecordPaymentWithUnit={handleOpenRecordPaymentForUnit}
@@ -1397,7 +1409,7 @@ export default function App() {
           {/* 3. TENANTS DIRECTORY */}
           {activeTab === 'tenants' && (
             <TenantsView
-              units={units}
+              units={unitsShown}
               payments={payments}
               deposits={visibleDeposits}
               onRecordPaymentForTenant={handleRecordPaymentForTenantUnit}
@@ -1420,7 +1432,7 @@ export default function App() {
           {activeTab === 'payments' && (
             <PaymentsView
               payments={payments}
-              units={units}
+              units={unitsShown}
               currencyMode={currencyMode}
               onOpenRecordPayment={() => {
                 setPaymentSelectedUnitId(undefined);
@@ -1437,7 +1449,7 @@ export default function App() {
           {/* 6. ESCROW DEPOSITS */}
           {activeTab === 'deposits' && (
             <DepositsView
-              units={units}
+              units={unitsShown}
               currencyMode={currencyMode}
               deposits={visibleDeposits}
               tenantAccounts={tenantAccounts}
@@ -1458,7 +1470,7 @@ export default function App() {
             <CashflowView
               currencyMode={currencyMode}
               transactions={cashflow}
-              units={units}
+              units={unitsShown}
               onSaveTransaction={handleSaveCashflow}
               onDeleteTransaction={handleDeleteCashflow}
               onClearAllTransactions={handleClearAllCashflow}
@@ -1483,7 +1495,7 @@ export default function App() {
           {/* 9. TENANT PAYMENT REPORTS */}
           {activeTab === 'reports' && (
             <ReportsView
-              units={units}
+              units={unitsShown}
               payments={payments}
               deposits={visibleDeposits}
               onSelectReceiptForPrint={(p) => setSelectedReceiptForPrint(p)}
@@ -1495,7 +1507,7 @@ export default function App() {
           {/* 10. ANALYTICS */}
           {activeTab === 'analytics' && (
             <AnalyticsView
-              units={units}
+              units={unitsShown}
               payments={payments}
               deposits={visibleDeposits}
               onDeletePayment={handleDeletePayment}
@@ -1509,7 +1521,7 @@ export default function App() {
           {activeTab === 'waiting' && (
             <WaitingListView
               entries={waitingList}
-              units={units}
+              units={unitsShown}
               dbReady={waitingDbReady}
               onAdd={handleSaveWaitingEntry}
               onUpdate={handleSaveWaitingEntry}
@@ -1544,7 +1556,7 @@ export default function App() {
         payments={payments}
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
-        units={units}
+        units={unitsShown}
         onConfirmPayment={handleConfirmPayment}
         selectedUnitId={paymentSelectedUnitId}
       />
@@ -1594,7 +1606,7 @@ export default function App() {
       <FloorMapView
         isOpen={isFloorMapOpen}
         onClose={() => setIsFloorMapOpen(false)}
-        units={units}
+        units={unitsShown}
         onSelectUnitForPayment={handleOpenRecordPaymentForUnit}
       />
 

@@ -69,6 +69,7 @@ export interface PropertyUnit {
   leaseStart?: string;
   leaseEnd?: string;
   leaseTermMonths?: number;
+  paidThrough?: string; // worked out from payments (not saved): rent is paid up to this date
   daysToExpiry?: number;
   daysRemaining?: number;
   occupancyStatus: OccupancyStatus;

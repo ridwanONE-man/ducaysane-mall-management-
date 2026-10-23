@@ -31,6 +31,7 @@ import { DeleteButton, ClearAllButton } from './DeleteControls';
 import { useConfirm } from './ConfirmDialog';
 import { formatUnitRent } from '../utils/currency';
 import { parsePaymentDate, formatLongDate } from '../utils/printUtils';
+import { coverageEndOf } from '../utils/tenantAccount';
 
 // Colour per occupancy status: top bar, pill and dot
 const STATUS_STYLE: Record<string, { bar: string; pill: string; dot: string }> = {
@@ -42,7 +43,7 @@ const STATUS_STYLE: Record<string, { bar: string; pill: string; dot: string }> =
 
 // Days until the lease ends, from the saved end date (null when there is none)
 const daysLeftOf = (unit: PropertyUnit): number | null => {
-  const end = parsePaymentDate(unit.leaseEnd || unit.currentTenant?.leaseEnd);
+  const end = parsePaymentDate(coverageEndOf(unit));
   if (!end) return null;
   const today = new Date(new Date().setHours(0, 0, 0, 0));
   return Math.round((end.getTime() - today.getTime()) / 86_400_000);
@@ -284,7 +285,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
 
   const leaseInfo = (unit: PropertyUnit) => {
     const start = parsePaymentDate(unit.leaseStart || unit.currentTenant?.leaseStart);
-    const end = parsePaymentDate(unit.leaseEnd || unit.currentTenant?.leaseEnd);
+    const end = parsePaymentDate(coverageEndOf(unit));
     if (!end) return null;
     const today = new Date(new Date().setHours(0, 0, 0, 0));
     const days = Math.round((end.getTime() - today.getTime()) / 86_400_000);

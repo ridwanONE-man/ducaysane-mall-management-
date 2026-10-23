@@ -33,7 +33,7 @@ import {
 import { TenantInfo, PropertyUnit, PaymentRecord, DepositRecord, BillingStatus } from '../types';
 import { ModifyTenantPricingPayload, VacateUnitPayload } from '../lib/supabaseService';
 import { DeleteButton, ClearAllButton } from './DeleteControls';
-import { TenantAccount, accountKey } from '../utils/tenantAccount';
+import { TenantAccount, accountKey, coverageEndOf } from '../utils/tenantAccount';
 import { formatUnitRent, rentFields, unitCurrency, unitRent } from '../utils/currency';
 
 interface TenantsViewProps {
@@ -618,7 +618,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
             const balance = account ? account.balance : tenant.balanceUSD || 0;
             const deposit = account ? account.depositHeld : tenant.depositUSD || unit?.escrowDepositUSD || 0;
             const start = parsePaymentDate(unit?.leaseStart || tenant.leaseStart);
-            const end = parsePaymentDate(unit?.leaseEnd || tenant.leaseEnd);
+            const end = parsePaymentDate(unit ? coverageEndOf(unit) : tenant.leaseEnd);
             const today = new Date(new Date().setHours(0, 0, 0, 0));
             const daysLeft = end ? Math.round((end.getTime() - today.getTime()) / 86_400_000) : null;
             const leasePct = start && end && end > start

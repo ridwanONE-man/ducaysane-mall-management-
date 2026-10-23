@@ -2,6 +2,7 @@ import React from 'react';
 import { DoorOpen, Hourglass, UserPlus, ArrowRight, CalendarClock, AlertTriangle, CheckCircle2, Store } from 'lucide-react';
 import { PropertyUnit, NavigationTab } from '../types';
 import { parsePaymentDate, formatLongDate } from '../utils/printUtils';
+import { coverageEndOf } from '../utils/tenantAccount';
 import { formatBoth, formatUnitRent, unitCurrency, unitRent } from '../utils/currency';
 
 interface DashboardLeaseBoxesProps {
@@ -35,7 +36,7 @@ export const DashboardLeaseBoxes: React.FC<DashboardLeaseBoxesProps> = ({ units,
 
   const leased = units
     .filter(u => u.currentTenant && u.occupancyStatus !== 'Available')
-    .map(u => ({ unit: u, days: daysUntil(u.leaseEnd || u.currentTenant?.leaseEnd) }))
+    .map(u => ({ unit: u, days: daysUntil(coverageEndOf(u)) }))
     .filter((x): x is { unit: PropertyUnit; days: number } => x.days !== null);
   const expiring = leased.filter(x => x.days >= 0 && x.days <= EXPIRING_WITHIN_DAYS).sort((a, b) => a.days - b.days);
   const expired = leased.filter(x => x.days < 0);

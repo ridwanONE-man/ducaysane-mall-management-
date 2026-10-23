@@ -34,6 +34,7 @@ export interface TenantAccount {
   securityDeposits: DepositRecord[]; // held deposits (not overpayment credit)
   depositHeld: number;
   depositMonthKeys: Set<string>; // months already covered by a deposit
+  paidThrough?: string; // yyyy-mm-dd: rent is fully paid from the lease start up to this date
 }
 
 // Advance credit is no longer used. Old overpayment records (slip "CR-...") are hidden
@@ -130,6 +131,12 @@ export function buildTenantAccount(
     accountKey(d.tenantName, d.unitNumber) === key
   );
   const coveredShort = new Set(securityDeposits.flatMap(depositMonthLabels));
+
+  // Months paid in a row from the lease start; each one runs a month from the lease start day
+  let paidRun = 0;
+  while (paidRun < months.length && months[paidRun].status === 'paid') paidRun++;
+  const leaseStart = parsePaymentDate(unit.leaseStart);
+  const paidThrough = leaseStart && paidRun > 0 ? toIsoDate(addMonths(leaseStart, paidRun)) : undefined;
   const dueNow = owingNow(months, todayIdx);
   const lastPayment = [...own].sort(
     (a, b) => (parsePaymentDate(b.date)?.getTime() || 0) - (parsePaymentDate(a.date)?.getTime() || 0)
@@ -151,7 +158,27 @@ export function buildTenantAccount(
     securityDeposits,
     depositHeld: Math.round(securityDeposits.reduce((s, d) => s + depositIn(d, currency), 0) * 100) / 100,
     depositMonthKeys: new Set(months.filter(m => coveredShort.has(m.short)).map(m => m.key)),
+    paidThrough,
   };
+}
+
+function addMonths(date: Date, n: number) {
+  const target = new Date(date.getFullYear(), date.getMonth() + n, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(date.getDate(), lastDay));
+  return target;
+}
+
+const toIsoDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// The date days remaining count to: the lease end, or later when rent is paid beyond it
+export function coverageEndOf(unit: PropertyUnit): string | undefined {
+  const leaseEnd = unit.leaseEnd || unit.currentTenant?.leaseEnd;
+  const end = parsePaymentDate(leaseEnd);
+  const paid = parsePaymentDate(unit.paidThrough);
+  if (paid && (!end || paid > end)) return unit.paidThrough;
+  return leaseEnd;
 }
 
 function owingNow(months: AccountMonth[], todayIdx: number) {
