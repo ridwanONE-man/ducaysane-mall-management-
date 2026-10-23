@@ -21,6 +21,7 @@ import { SmartPayModal, SmartPayRequest } from './components/SmartPayModal';
 import { TenantDepositModal, TenantDepositRequest } from './components/TenantDepositModal';
 import { DepositManageModal } from './components/DepositManageModal';
 import { WaitingListView } from './components/WaitingListView';
+import { ElectricityView, electricityToCashflow } from './components/ElectricityView';
 import { depositFields, depositIn, RentCurrency } from './utils/currency';
 import { formatMoney, parsePaymentDate } from './utils/printUtils';
 import { buildTenantAccount, buildTenantAccounts, isLegacyCreditDeposit, DEPOSIT_MONTHS_PREFIX, AMOUNT_DEPOSIT_TAG, depositMonthLabels, withDepositMonths, planDepositApplications, accountKey, coverageEndOf } from './utils/tenantAccount';
@@ -35,7 +36,8 @@ import {
   CashflowTransaction,
   CurrencyMode,
   CommercialNotification,
-  WaitingEntry
+  WaitingEntry,
+  ElectricityEntry
 } from './types';
 
 import { initialCommercialNotifications, initialPayments } from './data/commercialData';
@@ -71,6 +73,9 @@ import {
   getWaitingListFromSupabase,
   saveWaitingEntryToSupabase,
   deleteWaitingEntryFromSupabase,
+  getElectricityFromSupabase,
+  saveElectricityToSupabase,
+  deleteElectricityFromSupabase,
   RealtimeStatus
 } from './lib/supabaseService';
 
@@ -137,6 +142,30 @@ async function loadWaitingList(): Promise<WaitingEntry[] | null> {
   const local = readCache<WaitingEntry[]>(WAITING_CACHE, []).filter(e => pending.has(e.id));
   for (const e of local) {
     if (await saveWaitingEntryToSupabase(e)) setWaitingPending(e.id, false);
+  }
+  const byId = new Map(local.map(e => [e.id, e]));
+  const dbIds = new Set(dbRows.map(e => e.id));
+  return [...local.filter(e => !dbIds.has(e.id)), ...dbRows.map(e => byId.get(e.id) || e)];
+}
+
+// Electricity entries the database hasn't accepted yet (e.g. before the table exists).
+const ELECTRICITY_CACHE = 'nbc_electricity';
+const ELECTRICITY_PENDING = 'nbc_electricity_pending';
+
+function setElectricityPending(id: string, pending: boolean) {
+  const ids = new Set(readCache<string[]>(ELECTRICITY_PENDING, []));
+  if (pending) ids.add(id); else ids.delete(id);
+  writeCache(ELECTRICITY_PENDING, [...ids]);
+}
+
+// Database rows, plus local entries still waiting to be saved (retried here).
+async function loadElectricity(): Promise<ElectricityEntry[] | null> {
+  const dbRows = await getElectricityFromSupabase();
+  if (dbRows === null) return null;
+  const pending = new Set(readCache<string[]>(ELECTRICITY_PENDING, []));
+  const local = readCache<ElectricityEntry[]>(ELECTRICITY_CACHE, []).filter(e => pending.has(e.id));
+  for (const e of local) {
+    if (await saveElectricityToSupabase(e)) setElectricityPending(e.id, false);
   }
   const byId = new Map(local.map(e => [e.id, e]));
   const dbIds = new Set(dbRows.map(e => e.id));
@@ -307,6 +336,12 @@ export default function App() {
   const [waitingDbReady, setWaitingDbReady] = useState(true);
   useEffect(() => writeCache(WAITING_CACHE, waitingList), [waitingList]);
 
+  // Daily electricity (its own table)
+  const [electricity, setElectricity] = useState<ElectricityEntry[]>(() => readCache(ELECTRICITY_CACHE, []));
+  const [electricityDbReady, setElectricityDbReady] = useState(true);
+  useEffect(() => writeCache(ELECTRICITY_CACHE, electricity), [electricity]);
+  const electricityInCashflow = useMemo(() => electricity.map(electricityToCashflow), [electricity]);
+
   // Modal States
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentSelectedUnitId, setPaymentSelectedUnitId] = useState<string | undefined>(undefined);
@@ -384,6 +419,10 @@ export default function App() {
       if (!isMounted) return;
       setWaitingDbReady(waiting !== null);
       if (waiting) setWaitingList(waiting);
+      const electricityRows = await loadElectricity();
+      if (!isMounted) return;
+      setElectricityDbReady(electricityRows !== null);
+      if (electricityRows) setElectricity(electricityRows);
     }
 
     setRealtimeStatus('connecting');
@@ -1207,6 +1246,23 @@ export default function App() {
     );
   };
 
+  // Add or change an electricity entry; kept on this device until the database accepts it
+  const handleSaveElectricity = async (entry: ElectricityEntry) => {
+    const isNew = !electricity.some(e => e.id === entry.id);
+    setElectricity(prev => (isNew ? [entry, ...prev.filter(e => e.id !== entry.id)] : prev.map(e => (e.id === entry.id ? entry : e))));
+    const ok = await saveElectricityToSupabase(entry);
+    setElectricityPending(entry.id, !ok);
+    if (ok) setElectricityDbReady(true);
+    showToast(`Electricity ${entry.referenceNumber} for ${entry.unitNumber} ${isNew ? 'recorded' : 'updated'}${ok ? '' : ' on this device'}.`);
+  };
+
+  const handleDeleteElectricity = async (entry: ElectricityEntry) => {
+    setElectricity(prev => prev.filter(e => e.id !== entry.id));
+    setElectricityPending(entry.id, false);
+    const ok = await deleteElectricityFromSupabase(entry.id);
+    showToast(ok ? `Electricity ${entry.referenceNumber} deleted.` : `Electricity ${entry.referenceNumber} deleted on this device.`);
+  };
+
   const handleDeleteWaitingEntry = async (entry: WaitingEntry) => {
     setWaitingList(prev => prev.filter(e => e.id !== entry.id));
     setWaitingPending(entry.id, false);
@@ -1468,6 +1524,7 @@ export default function App() {
           {/* 7. CASH FLOW & RESERVES */}
           {activeTab === 'cashflow' && (
             <CashflowView
+              linkedEntries={electricityInCashflow}
               currencyMode={currencyMode}
               transactions={cashflow}
               units={unitsShown}
@@ -1514,6 +1571,17 @@ export default function App() {
               onClearAllPayments={handleClearAllPayments}
               onDeleteDeposit={handleDeleteDeposit}
               onClearAllDeposits={handleClearAllDeposits}
+            />
+          )}
+
+          {/* DAILY ELECTRICITY */}
+          {activeTab === 'electricity' && (
+            <ElectricityView
+              entries={electricity}
+              units={unitsShown}
+              dbReady={electricityDbReady}
+              onSave={handleSaveElectricity}
+              onDelete={handleDeleteElectricity}
             />
           )}
 

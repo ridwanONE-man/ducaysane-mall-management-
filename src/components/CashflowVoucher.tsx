@@ -8,7 +8,7 @@ import logoImg from '../assets/logo.png';
 const ADMIN = `${BUSINESS_PROFILE.managerName} (Admin)`;
 
 // Business strip used on cashflow papers: logo and name on the left, contacts on the right.
-const CashflowHeader: React.FC<{ title: string; subtitle: string; tone: string }> = ({ title, subtitle, tone }) => (
+export const CashflowHeader: React.FC<{ title: string; subtitle: string; tone: string }> = ({ title, subtitle, tone }) => (
   <div className="flex items-stretch border-b-2 border-slate-900">
     <div className={`w-3 ${tone}`} />
     <div className="flex-1 flex items-center gap-4 px-6 py-4">

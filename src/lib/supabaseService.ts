@@ -4,13 +4,13 @@ import {
   PaymentRecord, 
   DepositRecord, 
   CashflowTransaction, 
-  TenantInfo, WaitingEntry } from '../types';
+  TenantInfo, WaitingEntry, ElectricityEntry } from '../types';
 
 // ==========================================
 // 0. VERIFIED DELETES
 // ==========================================
 
-type DeletableTable = 'units' | 'payments' | 'deposits' | 'cashflow_transactions' | 'tenants' | 'waiting_list';
+type DeletableTable = 'units' | 'payments' | 'deposits' | 'cashflow_transactions' | 'tenants' | 'waiting_list' | 'electricity';
 
 // Supabase reports success even when a row-level-security policy silently blocks a
 // delete, so check that the row is really gone before reporting success.
@@ -1151,4 +1151,75 @@ export async function saveWaitingEntryToSupabase(entry: WaitingEntry): Promise<b
 
 export async function deleteWaitingEntryFromSupabase(id: string): Promise<boolean> {
   return deleteRowById('waiting_list', id);
+}
+
+// ==========================================
+// ELECTRICITY (its own table)
+// ==========================================
+
+function mapRowToElectricity(row: any): ElectricityEntry {
+  return {
+    id: row.id,
+    referenceNumber: row.reference_number || row.id,
+    date: String(row.date || row.created_at || '').slice(0, 10),
+    unitNumber: row.unit_number || '',
+    unitType: row.unit_type === 'Space' ? 'Space' : 'Shop',
+    tenantName: row.tenant_name || '',
+    amount: Number(row.amount) || 0,
+    currency: row.currency === 'SSP' ? 'SSP' : 'USD',
+    kwh: row.kwh === null || row.kwh === undefined ? undefined : Number(row.kwh),
+    notes: row.notes || undefined,
+    recordedBy: row.recorded_by || '',
+    createdAt: row.created_at || new Date().toISOString(),
+  };
+}
+
+function mapElectricityToRow(e: ElectricityEntry) {
+  return {
+    id: e.id,
+    reference_number: e.referenceNumber,
+    date: e.date,
+    unit_number: e.unitNumber,
+    unit_type: e.unitType,
+    tenant_name: e.tenantName || null,
+    amount: e.amount,
+    currency: e.currency,
+    kwh: e.kwh ?? null,
+    notes: e.notes || null,
+    recorded_by: e.recordedBy || null,
+    created_at: e.createdAt,
+  };
+}
+
+// null = the table can't be read (not created yet, or offline)
+export async function getElectricityFromSupabase(): Promise<ElectricityEntry[] | null> {
+  try {
+    const { data, error } = await supabase.from('electricity').select('*');
+    if (error) {
+      console.warn('Could not load electricity:', error.message);
+      return null;
+    }
+    return (data || []).map(mapRowToElectricity);
+  } catch (err) {
+    console.warn('Network error loading electricity:', err);
+    return null;
+  }
+}
+
+export async function saveElectricityToSupabase(entry: ElectricityEntry): Promise<boolean> {
+  try {
+    const { error } = await supabase.from('electricity').upsert(mapElectricityToRow(entry));
+    if (error) {
+      console.warn('Could not save electricity entry:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Network error saving electricity entry:', err);
+    return false;
+  }
+}
+
+export async function deleteElectricityFromSupabase(id: string): Promise<boolean> {
+  return deleteRowById('electricity', id);
 }

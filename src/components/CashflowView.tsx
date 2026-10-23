@@ -42,6 +42,7 @@ const CATEGORY_ICON: Partial<Record<CashflowCategory, React.ComponentType<{ clas
   'Rent Collection': Store,
   'Escrow Deposit': ShieldCheck,
   'Utilities Surcharge': Zap,
+  'Electricity': Zap,
   'Security & Guards': Shield,
   'Cleaning & Waste': Sparkles,
   'Repairs & Maintenance': Wrench,
@@ -60,6 +61,8 @@ const toDisplayDate = (iso: string) => {
 interface CashflowViewProps {
   currencyMode: CurrencyMode;
   transactions?: CashflowTransaction[];
+  // Entries from other pages (electricity) shown as money in; managed on their own page
+  linkedEntries?: CashflowTransaction[];
   units?: PropertyUnit[];
   onSaveTransaction?: (tx: CashflowTransaction) => void;
   onDeleteTransaction?: (tx: CashflowTransaction) => void;
@@ -68,13 +71,16 @@ interface CashflowViewProps {
 
 export const CashflowView: React.FC<CashflowViewProps> = ({
   transactions: propTransactions,
+  linkedEntries = [],
   units = [],
   onSaveTransaction,
   onDeleteTransaction,
   onClearAllTransactions
 }) => {
   const [localTransactions, setLocalTransactions] = useState<CashflowTransaction[]>([]);
-  const transactions = propTransactions || localTransactions;
+  const ownTransactions = propTransactions || localTransactions;
+  const transactions = linkedEntries.length ? [...ownTransactions, ...linkedEntries] : ownTransactions;
+  const linkedIds = new Set(linkedEntries.map(t => t.id));
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'Inflow' | 'Outflow'>('ALL');
   const [currencyFilter, setCurrencyFilter] = useState<'ALL' | 'USD' | 'SSP'>('ALL');
@@ -291,7 +297,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
               <Printer className="w-3.5 h-3.5 text-orange-500" /> Print list
             </button>
             {onClearAllTransactions && (
-              <ClearAllButton count={transactions.length} itemLabel="cashflow entries" onClear={onClearAllTransactions} />
+              <ClearAllButton count={ownTransactions.length} itemLabel="cashflow entries" onClear={onClearAllTransactions} />
             )}
             <button
               type="button"
@@ -505,7 +511,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                               <Pencil className="w-3 h-3" /> Edit
                             </button>
                           )}
-                          {onDeleteTransaction && (
+                          {linkedIds.has(t.id) ? (
+                            <span title="Change or delete it on the Electricity page" className="px-2 py-1 rounded-lg bg-amber-50 text-amber-700 text-[10px] font-bold">Electricity page</span>
+                          ) : onDeleteTransaction && (
                             <DeleteButton
                               title="Delete entry"
                               onDelete={() => onDeleteTransaction(t)}

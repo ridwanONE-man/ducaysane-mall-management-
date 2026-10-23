@@ -16,6 +16,7 @@ import {
   Mail,
   LogOut,
   Hourglass,
+  Zap,
 } from 'lucide-react';
 import { NavigationTab, AdminUser } from '../types';
 import logoImg from '../assets/logo.png';
@@ -56,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
     { id: 'waiting', label: 'Waiting List', icon: Hourglass, badge: waitingCount ? waitingCount : undefined, badgeColor: 'bg-orange-100 text-orange-700' },
+    { id: 'electricity', label: 'Electricity', icon: Zap },
     { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadAlertsCount > 0 ? unreadAlertsCount : undefined, badgeColor: 'bg-red-600 text-white' },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];

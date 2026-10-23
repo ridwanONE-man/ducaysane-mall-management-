@@ -10,6 +10,7 @@ export type NavigationTab =
   | 'reports' 
   | 'analytics' 
   | 'waiting'
+  | 'electricity'
   | 'notifications' 
   | 'settings';
 
@@ -133,6 +134,7 @@ export type CashflowCategory =
   | 'Rent Collection' 
   | 'Escrow Deposit' 
   | 'Utilities Surcharge' 
+  | 'Electricity'
   | 'Kiosk Permit' 
   | 'Security & Guards' 
   | 'Cleaning & Waste' 
@@ -194,6 +196,21 @@ export interface MallSettings {
 }
 
 // Someone waiting to rent a shop or space; served first come, first served.
+export interface ElectricityEntry {
+  id: string;
+  referenceNumber: string; // EL-2026-0001
+  date: string; // yyyy-mm-dd
+  unitNumber: string;
+  unitType: 'Shop' | 'Space';
+  tenantName: string;
+  amount: number;
+  currency: 'USD' | 'SSP';
+  kwh?: number;
+  notes?: string;
+  recordedBy: string;
+  createdAt: string;
+}
+
 export interface WaitingEntry {
   id: string;
   name: string;
