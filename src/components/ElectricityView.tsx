@@ -28,6 +28,7 @@ import { formatMoney, parsePaymentDate, formatLongDate } from '../utils/printUti
 import { MONTH_NAMES } from '../utils/rentLedger';
 import { unitCurrency } from '../utils/currency';
 import { BUSINESS_PROFILE } from '../data/businessProfile';
+import { numberToWords } from '../utils/numberToWords';
 
 type Currency = 'USD' | 'SSP';
 type PeriodMode = 'all' | 'day' | 'month' | 'year' | 'range';
@@ -357,7 +358,7 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
             >
               <div className="absolute -right-5 -top-5 w-20 h-20 rounded-full bg-white/10" />
               <div className="relative flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider opacity-80">{usd ? 'Dollar' : 'SSP'} • left</span>
+                <span className="text-[10px] font-black uppercase tracking-wider opacity-80">{usd ? 'Dollar' : 'SSP'} • balance</span>
                 <Zap className={`w-4 h-4 ${usd ? 'text-amber-300' : 'text-white'}`} />
               </div>
               <p className="relative mt-1 text-2xl font-black tracking-tight">{signed(m.left, m.c)}</p>
@@ -1075,97 +1076,143 @@ const ElectricityForm: React.FC<{
 const ElectricityReport: React.FC<{ entries: ElectricityEntry[]; filterLabel: string; units: PropertyUnit[] }> = ({ entries, filterLabel, units }) => {
   const groups = groupByDay(entries);
   const kwh = entries.reduce((s, t) => s + kwhOfEntry(t), 0);
-  const totals = (['USD', 'SSP'] as const).map(c => {
-    const moneyIn = sumBy(entries, c);
-    const moneyOut = sumBy(entries, c, true);
-    return { c, moneyIn, moneyOut, left: moneyIn - moneyOut };
-  });
-  const cell = (t: ElectricityEntry, c: Currency) =>
-    t.currency === c ? `${isOut(t) ? '-' : ''}${formatMoney(t.amount, c)}` : '';
   const net = (list: ElectricityEntry[], c: Currency) => sumBy(list, c) - sumBy(list, c, true);
-  const signed = (n: number, c: Currency) => (n ? `${n < 0 ? '-' : ''}${formatMoney(Math.abs(n), c)}` : '');
+  const signed = (n: number, c: Currency) => `${n < 0 ? '-' : ''}${formatMoney(Math.abs(n), c)}`;
+  const cell = (t: ElectricityEntry, c: Currency) => (t.currency === c ? `${isOut(t) ? '-' : ''}${formatMoney(t.amount, c)}` : '');
   const typeOf = (t: ElectricityEntry) =>
     (isOut(t) || isDailySpaces(t) ? t.unitType.toLowerCase() : unitCategoryOf(t.unitNumber, units) || t.unitType.toLowerCase()) === 'space' ? 'Space' : 'Shop';
+  const unitLabel = (t: ElectricityEntry) =>
+    isOut(t) ? (t.unitType === 'Space' ? 'Spaces' : 'Shops') : isDailySpaces(t) ? 'All spaces' : unitOfEntry(t);
+  const dates = groups.map(g => g.date).sort((a, b) => a.getTime() - b.getTime());
+  const covering = dates.length === 0 ? '—'
+    : dates.length === 1 ? formatLongDate(dates[0])
+    : `${formatLongDate(dates[0])} – ${formatLongDate(dates[dates.length - 1])}`;
+  const reportNo = `ELR-${toISO(new Date()).replace(/-/g, '')}`;
+  const inCount = entries.filter(t => !isOut(t)).length;
+  const outCount = entries.length - inCount;
+  const currencies = (['USD', 'SSP'] as const).filter(c => entries.some(t => t.currency === c));
+  const shownCurrencies = currencies.length ? currencies : (['USD', 'SSP'] as const);
+
+  const Meta: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
+    <div className="flex items-baseline gap-2">
+      <span className="w-24 shrink-0 text-[9px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+      <span className="flex-1 border-b border-dotted border-slate-400 pb-0.5 text-[11px] font-semibold text-slate-900">{value}</span>
+    </div>
+  );
 
   return (
     <div className="bg-white text-slate-900 font-sans p-3">
       <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
         <CashflowHeader title="Electricity Report" subtitle="Money in & out" tone="bg-gradient-to-b from-amber-400 to-orange-500" />
-        <div className="px-6 py-5 space-y-4">
-          <div className="flex items-center justify-between text-[11px] text-slate-600">
-            <span>Showing: <strong className="text-slate-900">{filterLabel}</strong> • {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}{kwh ? ` • ${kwh.toLocaleString()} kWh` : ''}</span>
-            <span>Printed {formatLongDate(new Date())} • {BUSINESS_PROFILE.managerName} (Admin)</span>
+        <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
+
+        <div className="px-7 py-6 space-y-5">
+          {/* Report details */}
+          <div className="grid grid-cols-2 gap-x-10 gap-y-2">
+            <Meta label="Report no." value={<span className="font-mono">{reportNo}</span>} />
+            <Meta label="Printed on" value={formatLongDate(new Date())} />
+            <Meta label="Covering" value={covering} />
+            <Meta label="Showing" value={filterLabel} />
+            <Meta label="Entries" value={`${inCount} money in • ${outCount} money out${kwh ? ` • ${kwh.toLocaleString()} kWh` : ''}`} />
+            <Meta label="Prepared by" value={`${BUSINESS_PROFILE.managerName} (Admin)`} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3 print-avoid-break">
-            {totals.map(t => (
-              <div key={t.c} className="rounded-xl border border-slate-300 overflow-hidden">
-                <div className="bg-slate-900 text-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider">{t.c === 'USD' ? 'Dollar ($)' : 'SSP'}</div>
-                <div className="grid grid-cols-3 text-center text-[10px]">
-                  <div className="py-2"><span className="block text-slate-500">In</span><strong>{formatMoney(t.moneyIn, t.c)}</strong></div>
-                  <div className="py-2 border-x border-slate-200"><span className="block text-slate-500">Out</span><strong>{formatMoney(t.moneyOut, t.c)}</strong></div>
-                  <div className="py-2"><span className="block text-slate-500">Left</span><strong>{t.left < 0 ? '-' : ''}{formatMoney(Math.abs(t.left), t.c)}</strong></div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <table className="w-full text-[10px]">
+          {/* Entries */}
+          <table className="w-full text-[10px] border-collapse">
             <thead>
-              <tr className="border-y-2 border-slate-900 text-left uppercase tracking-wider">
-                <th className="py-1.5">Ref</th>
-                <th className="py-1.5">In / Out</th>
-                <th className="py-1.5">Unit</th>
-                <th className="py-1.5">Type</th>
-                <th className="py-1.5">Tenant / Description</th>
-                <th className="py-1.5 text-right">kWh</th>
-                <th className="py-1.5 text-right">Dollar</th>
-                <th className="py-1.5 text-right">SSP</th>
+              <tr className="bg-slate-900 text-white text-left uppercase tracking-wider text-[9px]">
+                <th className="py-2 px-2 font-bold">Ref</th>
+                <th className="py-2 px-2 font-bold">Unit</th>
+                <th className="py-2 px-2 font-bold">Type</th>
+                <th className="py-2 px-2 font-bold">Tenant / Description</th>
+                <th className="py-2 px-2 font-bold text-center">In / Out</th>
+                <th className="py-2 px-2 font-bold text-right">kWh</th>
+                <th className="py-2 px-2 font-bold text-right">Dollar ($)</th>
+                <th className="py-2 px-2 font-bold text-right">SSP</th>
               </tr>
             </thead>
             {groups.map(g => (
               <tbody key={g.key} className="print-avoid-break">
-                <tr className="bg-slate-100">
-                  <td colSpan={6} className="py-1.5 px-1 font-black">{formatLongDate(g.date)}</td>
-                  <td className="py-1.5 text-right font-black font-mono">{signed(net(g.items, 'USD'), 'USD')}</td>
-                  <td className="py-1.5 text-right font-black font-mono">{signed(net(g.items, 'SSP'), 'SSP')}</td>
+                <tr className="border-b border-slate-300">
+                  <td colSpan={6} className="pt-3 pb-1 px-2 text-[10px] font-black uppercase tracking-wider text-orange-700">
+                    {g.date.toLocaleDateString('en-US', { weekday: 'long' })}, {formatLongDate(g.date)}
+                  </td>
+                  <td className="pt-3 pb-1 px-2 text-right font-mono font-bold text-slate-500">{g.items.some(t => t.currency === 'USD') ? signed(net(g.items, 'USD'), 'USD') : ''}</td>
+                  <td className="pt-3 pb-1 px-2 text-right font-mono font-bold text-slate-500">{g.items.some(t => t.currency === 'SSP') ? signed(net(g.items, 'SSP'), 'SSP') : ''}</td>
                 </tr>
-                {g.items.map(t => (
-                  <tr key={t.id} className="border-b border-slate-200">
-                    <td className="py-1.5 font-mono">{t.referenceNumber}</td>
-                    <td className="py-1.5 font-bold">{isOut(t) ? 'Out' : 'In'}</td>
-                    <td className="py-1.5 font-bold">{isOut(t) ? (t.unitType === 'Space' ? 'Spaces' : 'Shops') : isDailySpaces(t) ? 'All spaces' : unitOfEntry(t)}</td>
-                    <td className="py-1.5">{typeOf(t)}</td>
-                    <td className="py-1.5">{tenantOfEntry(t)}</td>
-                    <td className="py-1.5 text-right">{kwhOfEntry(t) || ''}</td>
-                    <td className="py-1.5 text-right font-mono">{cell(t, 'USD')}</td>
-                    <td className="py-1.5 text-right font-mono">{cell(t, 'SSP')}</td>
+                {g.items.map((t, i) => (
+                  <tr key={t.id} className={`border-b border-slate-100 ${i % 2 ? 'bg-slate-50/70' : ''}`}>
+                    <td className="py-1.5 px-2 font-mono text-slate-600">{t.referenceNumber}</td>
+                    <td className="py-1.5 px-2 font-bold">{unitLabel(t)}</td>
+                    <td className="py-1.5 px-2 text-slate-600">{typeOf(t)}</td>
+                    <td className="py-1.5 px-2">{tenantOfEntry(t)}</td>
+                    <td className="py-1.5 px-2 text-center">
+                      <span className={`inline-block px-1.5 rounded text-[9px] font-bold ${isOut(t) ? 'text-rose-700 border border-rose-300' : 'text-emerald-700 border border-emerald-300'}`}>
+                        {isOut(t) ? 'OUT' : 'IN'}
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-2 text-right text-slate-600">{kwhOfEntry(t) || ''}</td>
+                    <td className="py-1.5 px-2 text-right font-mono font-semibold">{cell(t, 'USD')}</td>
+                    <td className="py-1.5 px-2 text-right font-mono font-semibold">{cell(t, 'SSP')}</td>
                   </tr>
                 ))}
               </tbody>
             ))}
-            <tfoot>
-              {([['Total in', (c: Currency) => formatMoney(sumBy(entries, c), c)],
-                 ['Total out', (c: Currency) => `-${formatMoney(sumBy(entries, c, true), c)}`],
-                 ['Left', (c: Currency) => signed(net(entries, c), c) || formatMoney(0, c)]] as [string, (c: Currency) => string][]).map(([label, value], i) => (
-                <tr key={label} className={`font-black ${i === 0 ? 'border-t-2 border-slate-900' : ''} ${i === 2 ? 'border-t border-slate-400' : ''}`}>
-                  <td colSpan={6} className="py-1.5 uppercase">{label}</td>
-                  <td className="py-1.5 text-right font-mono">{value('USD')}</td>
-                  <td className="py-1.5 text-right font-mono">{value('SSP')}</td>
-                </tr>
-              ))}
-            </tfoot>
           </table>
 
-          <div className="grid grid-cols-2 gap-10 pt-6 print-avoid-break">
-            {['Prepared by', 'Approved by'].map(r => (
-              <div key={r} className={r === 'Approved by' ? 'text-right' : ''}>
+          {/* Summary + balance in words */}
+          <div className="flex items-start justify-between gap-8 print-avoid-break">
+            <div className="flex-1 space-y-2 pt-1">
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Balance in words</p>
+              {shownCurrencies.map(c => {
+                const b = net(entries, c);
+                return (
+                  <p key={c} className="text-[11px] italic text-slate-800 border-l-2 border-orange-500 pl-2">
+                    <span className="not-italic font-bold mr-1">{c === 'USD' ? 'Dollar:' : 'SSP:'}</span>
+                    {b < 0 ? 'Minus ' : ''}{numberToWords(Math.abs(b), c)}
+                  </p>
+                );
+              })}
+            </div>
+            <table className="w-72 text-[11px] border-collapse">
+              <thead>
+                <tr className="border-b-2 border-slate-900 text-[9px] uppercase tracking-wider text-slate-500">
+                  <th className="py-1.5 text-left font-bold">Summary</th>
+                  {shownCurrencies.map(c => <th key={c} className="py-1.5 text-right font-bold">{c === 'USD' ? 'Dollar ($)' : 'SSP'}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-slate-200">
+                  <td className="py-1.5">Total money in</td>
+                  {shownCurrencies.map(c => <td key={c} className="py-1.5 text-right font-mono">{formatMoney(sumBy(entries, c), c)}</td>)}
+                </tr>
+                <tr className="border-b border-slate-200">
+                  <td className="py-1.5">Total money out</td>
+                  {shownCurrencies.map(c => <td key={c} className="py-1.5 text-right font-mono">-{formatMoney(sumBy(entries, c, true), c)}</td>)}
+                </tr>
+                <tr className="bg-slate-900 text-white font-black">
+                  <td className="py-2 px-2 uppercase tracking-wider text-[10px]">Balance</td>
+                  {shownCurrencies.map(c => <td key={c} className="py-2 px-2 text-right font-mono">{signed(net(entries, c), c)}</td>)}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Signatures */}
+          <div className="grid grid-cols-3 gap-8 pt-8 print-avoid-break">
+            {[['Prepared by', `${BUSINESS_PROFILE.managerName} (Admin)`], ['Checked by', ''], ['Approved by', '']].map(([role, name]) => (
+              <div key={role} className="text-center">
                 <div className="h-10 border-b border-slate-500" />
-                <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">{r}</p>
-                <p className="text-[10px] font-bold">{BUSINESS_PROFILE.managerName} (Admin)</p>
+                <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">{role}</p>
+                <p className="text-[10px] font-semibold text-slate-800 min-h-[14px]">{name}</p>
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="px-7 py-2 border-t border-slate-300 bg-slate-50 flex items-center justify-between text-[9px] text-slate-500">
+          <span>{BUSINESS_PROFILE.name} • Electricity records</span>
+          <span>Dollar and SSP are kept separate and never added together.</span>
         </div>
       </div>
     </div>
