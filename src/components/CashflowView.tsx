@@ -501,7 +501,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                           <button type="button" onClick={() => setPrintJob(t)} title="Print voucher" className="p-1.5 rounded-lg text-slate-500 hover:text-orange-600 hover:bg-orange-50 cursor-pointer">
                             <Printer className="w-3.5 h-3.5" />
                           </button>
-                          {!inflow && (
+                          {!inflow && !linkedIds.has(t.id) && (
                             <button
                               type="button"
                               onClick={() => openEdit(t)}

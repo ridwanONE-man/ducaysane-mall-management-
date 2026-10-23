@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Zap,
   Plus,
@@ -14,8 +14,10 @@ import {
   CheckSquare,
   Square,
   Gauge,
-  Building2,
   Database,
+  ArrowDownLeft,
+  ArrowUpRight,
+  FileText,
 } from 'lucide-react';
 import { CashflowTransaction, ElectricityEntry, PropertyUnit } from '../types';
 import { CategorySwitch, UnitCategory, unitCategoryOf } from './CategorySwitch';
@@ -27,25 +29,9 @@ import { MONTH_NAMES } from '../utils/rentLedger';
 import { unitCurrency } from '../utils/currency';
 import { BUSINESS_PROFILE } from '../data/businessProfile';
 
-// Electricity has its own table. The Cash Flow page lists these entries read-only
-// (as money in) through electricityToCashflow; they are never saved to cashflow.
-export const electricityToCashflow = (e: ElectricityEntry): CashflowTransaction => ({
-  id: e.id,
-  referenceNumber: e.referenceNumber,
-  date: toDisplayDate(e.date),
-  title: e.unitNumber === DAILY_SPACES ? 'Electricity: Daily space electricity (Spaces)' : `Electricity: ${e.tenantName || 'No tenant'} (${e.unitNumber})`,
-  category: 'Electricity',
-  type: 'Inflow',
-  amount: e.amount,
-  currency: e.currency,
-  account: 'Central Vault Cash Float',
-  recordedBy: e.recordedBy || BUSINESS_PROFILE.managerName,
-  status: 'Completed',
-  notes: [e.kwh ? `${e.kwh} kWh` : '', e.notes || ''].filter(Boolean).join(' • ') || undefined,
-});
-
 type Currency = 'USD' | 'SSP';
 type PeriodMode = 'all' | 'day' | 'month' | 'year' | 'range';
+type FlowFilter = 'all' | 'in' | 'out';
 type PrintJob = ElectricityEntry | 'report' | null;
 
 const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -56,11 +42,34 @@ const toDisplayDate = (iso: string) =>
 export const DAILY_SPACES = 'ALL SPACES';
 const DAILY_SPACES_LABEL = 'Daily space electricity';
 const isDailySpaces = (e: ElectricityEntry) => e.unitNumber === DAILY_SPACES;
+// Money out is spent from the shops' or the spaces' electricity money
+const OUT_UNIT = { Shop: 'SHOPS', Space: 'SPACES' } as const;
+const isOut = (e: ElectricityEntry) => e.direction === 'Out';
 
 const unitOfEntry = (e: ElectricityEntry) => e.unitNumber;
-const tenantOfEntry = (e: ElectricityEntry) => (isDailySpaces(e) ? DAILY_SPACES_LABEL : e.tenantName || 'No tenant');
+const tenantOfEntry = (e: ElectricityEntry) =>
+  isOut(e) ? e.notes || 'Electricity expense' : isDailySpaces(e) ? DAILY_SPACES_LABEL : e.tenantName || 'No tenant';
 const kwhOfEntry = (e: ElectricityEntry) => e.kwh || 0;
 const noteOfEntry = (e: ElectricityEntry) => e.notes || '';
+
+// Electricity has its own table. The Cash Flow page lists these entries read-only
+// through electricityToCashflow; they are never saved to cashflow.
+export const electricityToCashflow = (e: ElectricityEntry): CashflowTransaction => ({
+  id: e.id,
+  referenceNumber: e.referenceNumber,
+  date: toDisplayDate(e.date),
+  title: isOut(e)
+    ? `Electricity out: ${e.notes || 'Expense'} (${e.unitType === 'Space' ? 'Spaces' : 'Shops'})`
+    : isDailySpaces(e) ? 'Electricity: Daily space electricity (Spaces)' : `Electricity: ${e.tenantName || 'No tenant'} (${e.unitNumber})`,
+  category: 'Electricity',
+  type: isOut(e) ? 'Outflow' : 'Inflow',
+  amount: e.amount,
+  currency: e.currency,
+  account: 'Central Vault Cash Float',
+  recordedBy: e.recordedBy || BUSINESS_PROFILE.managerName,
+  status: 'Completed',
+  notes: [e.kwh ? `${e.kwh} kWh` : '', isOut(e) ? '' : e.notes || ''].filter(Boolean).join(' • ') || undefined,
+});
 
 const dayHeading = (d: Date) => {
   const today = new Date();
@@ -70,8 +79,8 @@ const dayHeading = (d: Date) => {
   return d.toLocaleDateString('en-US', { weekday: 'long' });
 };
 
-const sumBy = (list: ElectricityEntry[], currency: Currency) =>
-  list.filter(t => t.currency === currency).reduce((s, t) => s + t.amount, 0);
+const sumBy = (list: ElectricityEntry[], currency: Currency, out = false) =>
+  list.filter(t => t.currency === currency && isOut(t) === out).reduce((s, t) => s + t.amount, 0);
 
 // Entries grouped by day, newest day first
 function groupByDay(list: ElectricityEntry[]) {
@@ -108,11 +117,14 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
   const [toDate, setToDate] = useState(toISO(today));
   const [category, setCategory] = useState<UnitCategory>('all');
   const [currencyFilter, setCurrencyFilter] = useState<'ALL' | Currency>('ALL');
+  const [flow, setFlow] = useState<FlowFilter>('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [form, setForm] = useState<{ editing: ElectricityEntry | null } | null>(null);
+  const [outForm, setOutForm] = useState<{ editing: ElectricityEntry | null } | null>(null);
   const [printJob, setPrintJob] = useState<PrintJob>(null);
   const [printList, setPrintList] = useState<ElectricityEntry[]>([]);
+  const lastIssued = useRef(0);
 
   useEffect(() => {
     if (!printJob) return;
@@ -137,7 +149,8 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
     : periodMode === 'day' ? formatLongDate(day)
     : `${formatLongDate(fromDate)} – ${formatLongDate(toDate)}`;
 
-  const categoryOf = (t: ElectricityEntry) => unitCategoryOf(t.unitNumber, units) || (t.unitType === 'Space' ? 'space' : 'shop');
+  const categoryOf = (t: ElectricityEntry) =>
+    isOut(t) || isDailySpaces(t) ? (t.unitType === 'Space' ? 'space' : 'shop') : unitCategoryOf(t.unitNumber, units) || (t.unitType === 'Space' ? 'space' : 'shop');
   const dated = entries.filter(inPeriod);
   const categoryCounts = {
     all: dated.length,
@@ -150,13 +163,13 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
   const q = search.trim().toLowerCase();
   const shown = periodEntries.filter(t =>
     (currencyFilter === 'ALL' || t.currency === currencyFilter) &&
+    (flow === 'all' || (flow === 'out') === isOut(t)) &&
     (!q || [t.tenantName, t.unitNumber, t.referenceNumber, t.notes].some(v => (v || '').toLowerCase().includes(q)))
   );
   const groups = groupByDay(shown);
 
   const todays = entries.filter(t => parsePaymentDate(t.date)?.toDateString() === today.toDateString());
   const kwhTotal = periodEntries.reduce((s, t) => s + kwhOfEntry(t), 0);
-  const unitsCharged = new Set(periodEntries.map(unitOfEntry)).size;
   const availableYears = [...new Set([today.getFullYear(), ...entries.map(t => parsePaymentDate(t.date)?.getFullYear()).filter((y): y is number => Boolean(y))])]
     .sort((a, b) => b - a);
 
@@ -172,6 +185,7 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
   const filterLabel = [
     categoryLabel,
     periodLabel,
+    flow === 'all' ? '' : flow === 'in' ? 'Money in' : 'Money out',
     currencyFilter === 'ALL' ? '' : currencyFilter === 'USD' ? 'Dollar only' : 'SSP only',
     q ? `search "${search.trim()}"` : '',
   ].filter(Boolean).join(' • ');
@@ -182,13 +196,15 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
   };
 
   // Next numbers in this year's electricity sequence: EL-2026-0001, ...
+  // (also remembers numbers handed out this session, so quick saves never repeat one)
   const nextReferences = (count: number) => {
     const y = new Date().getFullYear();
     const pattern = new RegExp(`^EL-${y}-(\\d+)$`);
-    const last = entries.reduce((max, t) => {
+    const last = Math.max(lastIssued.current, entries.reduce((max, t) => {
       const m = pattern.exec(t.referenceNumber || '');
       return m ? Math.max(max, Number(m[1])) : max;
-    }, 0);
+    }, 0));
+    lastIssued.current = last + count;
     return Array.from({ length: count }, (_, i) => `EL-${y}-${String(last + 1 + i).padStart(4, '0')}`);
   };
 
@@ -220,46 +236,60 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
     setForm(null);
   };
 
+  const handleSubmitOut = (out: OutDetails) => {
+    const details = {
+      date: out.date,
+      unitNumber: OUT_UNIT[out.from],
+      unitType: out.from,
+      tenantName: '',
+      amount: out.amount,
+      currency: out.currency,
+      kwh: undefined,
+      notes: out.description,
+      direction: 'Out' as const,
+    };
+    const editing = outForm?.editing;
+    if (editing) onSave({ ...editing, ...details });
+    else onSave({
+      id: `el-out-${Date.now()}`,
+      referenceNumber: nextReferences(1)[0],
+      recordedBy: BUSINESS_PROFILE.managerName,
+      createdAt: new Date().toISOString(),
+      ...details,
+    });
+    setOutForm(null);
+  };
+
   const pill = (active: boolean) =>
     `px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
       active ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
     }`;
   const selectCls = 'px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500';
 
-  const cards = [
-    {
-      key: 'USD' as const,
-      label: 'Dollar collected',
-      value: formatMoney(sumBy(periodEntries, 'USD'), 'USD'),
-      sub: `${periodEntries.filter(t => t.currency === 'USD').length} entries`,
-      cls: 'bg-gradient-to-br from-slate-900 to-slate-800 text-white',
-      icon: 'bg-white/10 text-amber-300',
-    },
-    {
-      key: 'SSP' as const,
-      label: 'SSP collected',
-      value: formatMoney(sumBy(periodEntries, 'SSP'), 'SSP'),
-      sub: `${periodEntries.filter(t => t.currency === 'SSP').length} entries`,
-      cls: 'bg-gradient-to-br from-orange-500 to-amber-500 text-white',
-      icon: 'bg-white/20 text-white',
-    },
-  ];
+  // Money boxes: what came in, what went out, and what is left, per currency
+  const money = (['USD', 'SSP'] as const).map(c => {
+    const moneyIn = sumBy(periodEntries, c);
+    const moneyOut = sumBy(periodEntries, c, true);
+    return { c, moneyIn, moneyOut, left: moneyIn - moneyOut };
+  });
+  const outCount = periodEntries.filter(isOut).length;
+  const signed = (n: number, c: Currency) => `${n < 0 ? '-' : ''}${formatMoney(Math.abs(n), c)}`;
 
   return (
-    <div id="electricity-view" className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div id="electricity-view" className="p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
 
       {/* Header */}
       <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs">
-        <div className="h-1.5 bg-gradient-to-r from-amber-400 via-orange-500 to-amber-400" />
-        <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-amber-100/60" />
-        <div className="relative p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="h-1.5 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
+        <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-orange-100/50" />
+        <div className="relative p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/30">
-              <Zap className="w-7 h-7 fill-white/30" />
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/30">
+              <Zap className="w-6 h-6 fill-white/30" />
             </div>
             <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Daily Electricity Report</h1>
-              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Electricity money from shops and spaces. Also listed in Cash Flow as money in.</p>
+              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Daily Electricity</h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">Money in from shops and spaces, money out for electricity.</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -267,24 +297,31 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
               type="button"
               disabled={shown.length === 0}
               onClick={() => printReport(shown)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-200 text-slate-700 rounded-xl text-xs font-bold shadow-2xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <Printer className="w-3.5 h-3.5 text-orange-500" /> Print all ({shown.length})
+              <Printer className="w-3.5 h-3.5 text-orange-500" /> Print all
             </button>
             <button
               type="button"
               disabled={selectedShown.length === 0}
               onClick={() => printReport(selectedShown)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-200 text-slate-700 rounded-xl text-xs font-bold shadow-2xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <CheckSquare className="w-3.5 h-3.5 text-orange-500" /> Print selected ({selectedShown.length})
+              <CheckSquare className="w-3.5 h-3.5 text-orange-500" /> Print selected{selectedShown.length ? ` (${selectedShown.length})` : ''}
             </button>
             <button
               type="button"
               onClick={() => setForm({ editing: null })}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-sm font-extrabold shadow-md shadow-orange-500/25 cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-md shadow-emerald-500/25 cursor-pointer"
             >
-              <Plus className="w-4 h-4" /> Add Electricity
+              <ArrowDownLeft className="w-4 h-4" /> Money In
+            </button>
+            <button
+              type="button"
+              onClick={() => setOutForm({ editing: null })}
+              className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600 text-white rounded-xl text-xs font-extrabold shadow-md shadow-rose-500/25 cursor-pointer"
+            >
+              <ArrowUpRight className="w-4 h-4" /> Money Out
             </button>
           </div>
         </div>
@@ -304,54 +341,65 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
       <CategorySwitch value={category} onChange={setCategory} counts={categoryCounts} noun="entries" />
 
       {/* Money boxes */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {cards.map(c => {
-          const active = currencyFilter === c.key;
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        {money.map(m => {
+          const usd = m.c === 'USD';
+          const active = currencyFilter === m.c;
           return (
             <button
-              key={c.key}
+              key={m.c}
               type="button"
-              onClick={() => setCurrencyFilter(active ? 'ALL' : c.key)}
-              title={active ? 'Show all money' : `Show only ${c.key === 'USD' ? 'dollar' : 'SSP'} entries`}
-              className={`relative overflow-hidden text-left rounded-3xl p-5 shadow-md transition-all cursor-pointer hover:-translate-y-0.5 ${c.cls} ${active ? 'ring-4 ring-orange-300' : ''}`}
+              onClick={() => setCurrencyFilter(active ? 'ALL' : m.c)}
+              title={active ? 'Show all money' : `Show only ${usd ? 'dollar' : 'SSP'}`}
+              className={`relative overflow-hidden text-left rounded-2xl p-4 shadow-sm transition-all cursor-pointer hover:-translate-y-0.5 text-white ${
+                usd ? 'bg-gradient-to-br from-slate-900 to-slate-800' : 'bg-gradient-to-br from-orange-500 to-amber-500'
+              } ${active ? 'ring-4 ring-orange-300' : ''}`}
             >
-              <div className="absolute -right-6 -bottom-8 w-28 h-28 rounded-full bg-white/10" />
+              <div className="absolute -right-5 -top-5 w-20 h-20 rounded-full bg-white/10" />
               <div className="relative flex items-center justify-between">
-                <span className="text-[11px] font-black uppercase tracking-wider opacity-80">{c.label}</span>
-                <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${c.icon}`}><Zap className="w-4.5 h-4.5" /></span>
+                <span className="text-[10px] font-black uppercase tracking-wider opacity-80">{usd ? 'Dollar' : 'SSP'} • left</span>
+                <Zap className={`w-4 h-4 ${usd ? 'text-amber-300' : 'text-white'}`} />
               </div>
-              <p className="relative mt-3 text-2xl sm:text-3xl font-black tracking-tight">{c.value}</p>
-              <p className="relative mt-1 text-xs opacity-75">{c.sub} • {periodLabel}</p>
+              <p className="relative mt-1 text-2xl font-black tracking-tight">{signed(m.left, m.c)}</p>
+              <div className="relative mt-2 flex items-center gap-3 text-[11px] font-bold">
+                <span className="flex items-center gap-0.5 text-emerald-300"><ArrowDownLeft className="w-3 h-3" />{formatMoney(m.moneyIn, m.c)}</span>
+                <span className={`flex items-center gap-0.5 ${usd ? 'text-rose-300' : 'text-rose-100'}`}><ArrowUpRight className="w-3 h-3" />{formatMoney(m.moneyOut, m.c)}</span>
+              </div>
             </button>
           );
         })}
 
-        <div className="relative overflow-hidden rounded-3xl p-5 bg-white border border-emerald-200 shadow-xs">
-          <div className="absolute -right-6 -bottom-8 w-28 h-28 rounded-full bg-emerald-50" />
+        <button
+          type="button"
+          onClick={() => setFlow(flow === 'out' ? 'all' : 'out')}
+          className={`relative overflow-hidden text-left rounded-2xl p-4 bg-white border shadow-xs transition-all cursor-pointer hover:-translate-y-0.5 ${flow === 'out' ? 'border-rose-400 ring-4 ring-rose-100' : 'border-rose-200'}`}
+        >
+          <div className="absolute -right-5 -top-5 w-20 h-20 rounded-full bg-rose-50" />
           <div className="relative flex items-center justify-between">
-            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-700">Today</span>
-            <span className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center"><CalendarDays className="w-4.5 h-4.5" /></span>
+            <span className="text-[10px] font-black uppercase tracking-wider text-rose-600">Money out</span>
+            <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-rose-500 to-orange-500 text-white flex items-center justify-center"><ArrowUpRight className="w-4 h-4" /></span>
           </div>
-          <p className="relative mt-3 text-xl font-black text-slate-900">{formatMoney(sumBy(todays, 'USD'), 'USD')}</p>
-          <p className="relative text-xl font-black text-orange-600">{formatMoney(sumBy(todays, 'SSP'), 'SSP')}</p>
-          <p className="relative mt-1 text-xs text-slate-500">{todays.length} entr{todays.length === 1 ? 'y' : 'ies'} • {formatLongDate(today)}</p>
-        </div>
+          <p className="relative mt-1 text-lg font-black text-slate-900 leading-tight">{formatMoney(money[0].moneyOut, 'USD')}</p>
+          <p className="relative text-lg font-black text-orange-600 leading-tight">{formatMoney(money[1].moneyOut, 'SSP')}</p>
+          <p className="relative mt-1 text-[11px] text-slate-500">{outCount} payment{outCount === 1 ? '' : 's'} out</p>
+        </button>
 
-        <div className="relative overflow-hidden rounded-3xl p-5 bg-white border border-blue-200 shadow-xs">
-          <div className="absolute -right-6 -bottom-8 w-28 h-28 rounded-full bg-blue-50" />
+        <div className="relative overflow-hidden rounded-2xl p-4 bg-white border border-emerald-200 shadow-xs">
+          <div className="absolute -right-5 -top-5 w-20 h-20 rounded-full bg-emerald-50" />
           <div className="relative flex items-center justify-between">
-            <span className="text-[11px] font-black uppercase tracking-wider text-blue-700">Units charged</span>
-            <span className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center"><Building2 className="w-4.5 h-4.5" /></span>
+            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Today in</span>
+            <span className="w-7 h-7 rounded-lg bg-emerald-500 text-white flex items-center justify-center"><CalendarDays className="w-4 h-4" /></span>
           </div>
-          <p className="relative mt-3 text-3xl font-black text-slate-900">{unitsCharged}</p>
-          <p className="relative mt-1 text-xs text-slate-500 flex items-center gap-1">
-            <Gauge className="w-3.5 h-3.5 text-blue-500" /> {kwhTotal ? `${kwhTotal.toLocaleString()} kWh used` : 'No kWh recorded'} • {periodLabel}
+          <p className="relative mt-1 text-lg font-black text-slate-900 leading-tight">{formatMoney(sumBy(todays, 'USD'), 'USD')}</p>
+          <p className="relative text-lg font-black text-orange-600 leading-tight">{formatMoney(sumBy(todays, 'SSP'), 'SSP')}</p>
+          <p className="relative mt-1 text-[11px] text-slate-500 flex items-center gap-1">
+            <Gauge className="w-3 h-3 text-blue-500" /> {kwhTotal ? `${kwhTotal.toLocaleString()} kWh` : 'No kWh'} • {periodLabel}
           </p>
         </div>
       </div>
 
       {/* Period */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-3 flex flex-wrap items-center gap-2">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-2.5 flex flex-wrap items-center gap-2">
         <span className="flex items-center gap-1.5 px-2 text-xs font-bold text-slate-700"><CalendarRange className="w-4 h-4 text-orange-500" /> Show</span>
         <div className="inline-flex bg-slate-100 p-0.5 rounded-xl">
           {([['all', 'All'], ['day', 'Day'], ['month', 'Month'], ['year', 'Year'], ['range', 'Custom']] as [PeriodMode, string][]).map(([m, label]) => (
@@ -383,29 +431,34 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
 
       {/* List */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-3 sm:p-4 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="relative flex-1 max-w-sm">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search tenant, unit, reference..."
-              className="w-full pl-9 pr-3 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+              placeholder="Search tenant, unit, description, reference..."
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex bg-slate-100 p-0.5 rounded-xl">
+              {([['all', 'In & Out'], ['in', 'Money in'], ['out', 'Money out']] as [FlowFilter, string][]).map(([f, label]) => (
+                <button key={f} type="button" onClick={() => setFlow(f)} className={pill(flow === f)}>{label}</button>
+              ))}
+            </div>
             <div className="inline-flex bg-slate-100 p-0.5 rounded-xl">
               {(['ALL', 'USD', 'SSP'] as const).map(c => (
                 <button key={c} type="button" onClick={() => setCurrencyFilter(c)} className={pill(currencyFilter === c)}>
-                  {c === 'ALL' ? 'All money' : c === 'USD' ? '$ Dollar' : 'SSP'}
+                  {c === 'ALL' ? 'All money' : c === 'USD' ? '$' : 'SSP'}
                 </button>
               ))}
             </div>
             {shown.length > 0 && (
-              <button type="button" onClick={toggleAll} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 hover:border-orange-300 text-xs font-bold text-slate-700 cursor-pointer">
+              <button type="button" onClick={toggleAll} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-orange-300 text-xs font-bold text-slate-700 cursor-pointer">
                 {allShownSelected ? <CheckSquare className="w-4 h-4 text-orange-500" /> : <Square className="w-4 h-4 text-slate-400" />}
-                {allShownSelected ? 'Unselect all' : 'Select all'}
+                {allShownSelected ? 'Unselect' : 'Select all'}
               </button>
             )}
           </div>
@@ -413,87 +466,91 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
 
         {groups.length === 0 ? (
           <div className="p-12 text-center">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center"><Zap className="w-7 h-7" /></div>
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center"><Zap className="w-7 h-7" /></div>
             <p className="mt-3 text-sm font-bold text-slate-700">{entries.length === 0 ? 'No electricity recorded yet' : 'Nothing matches this period or search'}</p>
-            <p className="text-xs text-slate-400 mt-1">Press “Add Electricity”, choose the shops or spaces and type the money.</p>
+            <p className="text-xs text-slate-400 mt-1">Use “Money In” for collections and “Money Out” for electricity expenses.</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {groups.map(g => (
-              <div key={g.key}>
-                {/* Day header with that day's totals */}
-                <div className="px-4 py-2.5 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
-                  <span className="flex items-center gap-2 text-xs font-extrabold text-slate-800">
-                    <CalendarDays className="w-4 h-4 text-orange-500" />
-                    {dayHeading(g.date)} • {formatLongDate(g.date)}
-                    <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-[10px] text-slate-500">{g.items.length} unit{g.items.length === 1 ? '' : 's'}</span>
-                  </span>
-                  <span className="flex items-center gap-2 text-xs font-black">
-                    {sumBy(g.items, 'USD') > 0 && <span className="px-2 py-0.5 rounded-lg bg-slate-900 text-white">{formatMoney(sumBy(g.items, 'USD'), 'USD')}</span>}
-                    {sumBy(g.items, 'SSP') > 0 && <span className="px-2 py-0.5 rounded-lg bg-orange-500 text-white">{formatMoney(sumBy(g.items, 'SSP'), 'SSP')}</span>}
-                    <button
-                      type="button"
-                      onClick={() => printReport(g.items)}
-                      title="Print this day"
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-white cursor-pointer"
-                    >
-                      <Printer className="w-3.5 h-3.5" />
-                    </button>
-                  </span>
-                </div>
-
-                {g.items.map(t => {
-                  const unitNo = unitOfEntry(t);
-                  const isSpace = categoryOf(t) === 'space';
-                  const isSel = selected.has(t.id);
-                  const kwh = kwhOfEntry(t);
-                  const note = noteOfEntry(t);
-                  const daily = isDailySpaces(t);
-                  return (
-                    <div key={t.id} className={`px-4 py-3 flex items-center gap-3 transition-colors ${isSel ? 'bg-orange-50/60' : daily ? 'bg-blue-50/50 hover:bg-blue-50' : 'hover:bg-slate-50/70'}`}>
-                      <button type="button" onClick={() => toggleOne(t.id)} className="shrink-0 cursor-pointer" title={isSel ? 'Unselect' : 'Select to print'}>
-                        {isSel ? <CheckSquare className="w-5 h-5 text-orange-500" /> : <Square className="w-5 h-5 text-slate-300 hover:text-slate-400" />}
+            {groups.map(g => {
+              const net = (c: Currency) => sumBy(g.items, c) - sumBy(g.items, c, true);
+              return (
+                <div key={g.key}>
+                  {/* Day header with that day's totals */}
+                  <div className="px-4 py-2 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+                    <span className="flex items-center gap-2 text-xs font-extrabold text-slate-800">
+                      <CalendarDays className="w-4 h-4 text-orange-500" />
+                      {dayHeading(g.date)} • {formatLongDate(g.date)}
+                      <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-[10px] text-slate-500">{g.items.length}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[11px] font-black">
+                      {(['USD', 'SSP'] as const).filter(c => g.items.some(t => t.currency === c)).map(c => (
+                        <span key={c} className={`px-2 py-0.5 rounded-lg text-white ${c === 'USD' ? 'bg-slate-900' : 'bg-orange-500'}`}>{signed(net(c), c)}</span>
+                      ))}
+                      <button type="button" onClick={() => printReport(g.items)} title="Print this day" className="p-1.5 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-white cursor-pointer">
+                        <Printer className="w-3.5 h-3.5" />
                       </button>
-                      <span className={`shrink-0 w-16 py-1.5 rounded-xl text-center text-xs font-black text-white bg-gradient-to-br ${isSpace ? 'from-blue-500 to-indigo-600' : 'from-orange-500 to-amber-500'}`}>
-                        {daily ? <LayoutGrid className="w-4 h-4 mx-auto" /> : unitNo || '—'}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className={`text-sm font-bold truncate ${daily ? 'text-blue-900' : 'text-slate-900'}`}>
-                          {tenantOfEntry(t)}
-                          {daily && <span className="ml-2 px-1.5 py-0.5 rounded-md bg-blue-600 text-white text-[10px] font-black align-middle">{formatLongDate(t.date)}</span>}
-                        </p>
-                        <p className="text-[11px] text-slate-500 truncate">
-                          <span className="font-mono">{t.referenceNumber}</span>
-                          {kwh > 0 && <> • <Gauge className="inline w-3 h-3 -mt-0.5 text-blue-500" /> {kwh.toLocaleString()} kWh</>}
-                          {note && <> • {note}</>}
-                        </p>
-                      </div>
-                      <span className={`shrink-0 text-base font-black ${t.currency === 'SSP' ? 'text-orange-600' : 'text-slate-900'}`}>
-                        {formatMoney(t.amount, t.currency)}
-                      </span>
-                      <div className="shrink-0 flex items-center gap-1">
-                        <button type="button" onClick={() => setPrintJob(t)} title="Print voucher" className="p-2 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-orange-50 cursor-pointer">
-                          <Printer className="w-4 h-4" />
+                    </span>
+                  </div>
+
+                  {g.items.map(t => {
+                    const out = isOut(t);
+                    const daily = isDailySpaces(t);
+                    const isSpace = categoryOf(t) === 'space';
+                    const isSel = selected.has(t.id);
+                    const kwh = kwhOfEntry(t);
+                    const note = out ? '' : noteOfEntry(t);
+                    return (
+                      <div key={t.id} className={`px-4 py-2.5 flex items-center gap-3 transition-colors ${isSel ? 'bg-orange-50/60' : out ? 'bg-rose-50/40 hover:bg-rose-50' : daily ? 'bg-blue-50/40 hover:bg-blue-50' : 'hover:bg-slate-50/70'}`}>
+                        <button type="button" onClick={() => toggleOne(t.id)} className="shrink-0 cursor-pointer" title={isSel ? 'Unselect' : 'Select to print'}>
+                          {isSel ? <CheckSquare className="w-5 h-5 text-orange-500" /> : <Square className="w-5 h-5 text-slate-300 hover:text-slate-400" />}
                         </button>
-                        <button type="button" onClick={() => setForm({ editing: t })} title="Modify" className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer">
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <DeleteButton
-                          title="Delete"
-                          onDelete={() => onDelete(t)}
-                          confirm={{
-                            title: 'Delete this electricity entry?',
-                            subject: `${tenantOfEntry(t)} • ${unitNo} • ${formatMoney(t.amount, t.currency)}`,
-                            message: 'It is removed from the electricity records and the Cash Flow list.',
-                            confirmLabel: 'Delete entry',
-                          }}
-                        />
+                        <span className={`shrink-0 w-14 py-1.5 rounded-xl text-center text-[11px] font-black text-white bg-gradient-to-br ${
+                          out ? 'from-rose-500 to-orange-500' : isSpace ? 'from-blue-500 to-indigo-600' : 'from-orange-500 to-amber-500'
+                        }`}>
+                          {out ? <ArrowUpRight className="w-4 h-4 mx-auto" /> : daily ? <LayoutGrid className="w-4 h-4 mx-auto" /> : unitOfEntry(t) || '—'}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-sm font-bold truncate ${out ? 'text-rose-900' : daily ? 'text-blue-900' : 'text-slate-900'}`}>{tenantOfEntry(t)}</p>
+                          <p className="text-[11px] text-slate-500 truncate">
+                            <span className="font-mono">{t.referenceNumber}</span>
+                            {out && <> • <span className={`font-bold ${isSpace ? 'text-blue-600' : 'text-orange-600'}`}>Out from {isSpace ? 'spaces' : 'shops'}</span></>}
+                            {kwh > 0 && <> • <Gauge className="inline w-3 h-3 -mt-0.5 text-blue-500" /> {kwh.toLocaleString()} kWh</>}
+                            {note && <> • {note}</>}
+                          </p>
+                        </div>
+                        <span className={`shrink-0 text-sm sm:text-base font-black ${out ? 'text-rose-600' : t.currency === 'SSP' ? 'text-orange-600' : 'text-slate-900'}`}>
+                          {out ? '-' : '+'}{formatMoney(t.amount, t.currency)}
+                        </span>
+                        <div className="shrink-0 flex items-center">
+                          <button type="button" onClick={() => setPrintJob(t)} title="Print voucher" className="p-1.5 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-orange-50 cursor-pointer">
+                            <Printer className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => (out ? setOutForm({ editing: t }) : setForm({ editing: t }))}
+                            title="Modify"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <DeleteButton
+                            title="Delete"
+                            onDelete={() => onDelete(t)}
+                            confirm={{
+                              title: out ? 'Delete this money out?' : 'Delete this electricity entry?',
+                              subject: `${tenantOfEntry(t)} • ${formatMoney(t.amount, t.currency)}`,
+                              message: 'It is removed from the electricity records and the Cash Flow list.',
+                              confirmLabel: 'Delete entry',
+                            }}
+                          />
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -507,6 +564,14 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
         />
       )}
 
+      {outForm && (
+        <MoneyOutForm
+          editing={outForm.editing}
+          onClose={() => setOutForm(null)}
+          onSubmit={handleSubmitOut}
+        />
+      )}
+
       {printJob && (
         <PrintPortal>
           {printJob === 'report'
@@ -514,6 +579,150 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
             : <CashflowVoucher tx={electricityToCashflow(printJob)} />}
         </PrintPortal>
       )}
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Money out: an electricity expense paid from the shops' or spaces' money
+// ---------------------------------------------------------------------------
+
+interface OutDetails {
+  date: string;
+  from: 'Shop' | 'Space';
+  currency: Currency;
+  amount: number;
+  description: string;
+}
+
+const MoneyOutForm: React.FC<{
+  editing: ElectricityEntry | null;
+  onClose: () => void;
+  onSubmit: (out: OutDetails) => void;
+}> = ({ editing, onClose, onSubmit }) => {
+  const [date, setDate] = useState(() => editing?.date || toISO(new Date()));
+  const [from, setFrom] = useState<'Shop' | 'Space'>(editing?.unitType || 'Shop');
+  const [currency, setCurrency] = useState<Currency>(editing?.currency || 'USD');
+  const [amount, setAmount] = useState(editing ? String(editing.amount) : '');
+  const [description, setDescription] = useState(editing?.notes || '');
+  const ready = Number(amount) > 0 && description.trim().length > 0;
+  const submit = () => ready && onSubmit({ date, from, currency, amount: Number(amount), description: description.trim() });
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+      <div className="bg-white rounded-3xl w-full max-w-lg max-h-[94vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+        <div className="px-6 py-5 bg-gradient-to-r from-rose-500 to-orange-500 text-white flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center"><ArrowUpRight className="w-6 h-6" /></span>
+            <div>
+              <h2 className="text-xl font-black">{editing ? 'Modify money out' : 'Electricity money out'}</h2>
+              <p className="text-xs text-white/85">{editing ? editing.referenceNumber : 'Money spent from the electricity collection'}</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-white/20 cursor-pointer"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
+          {/* Date */}
+          <div className="flex flex-wrap items-center gap-3 p-3 rounded-2xl bg-amber-50 border border-amber-200">
+            <CalendarDays className="w-5 h-5 text-orange-500" />
+            <label htmlFor="el-out-date" className="text-sm font-bold text-slate-800">Date</label>
+            <input
+              id="el-out-date"
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="px-3 py-2 bg-white border border-amber-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-orange-500"
+            />
+            <span className="text-xs text-amber-800">{date === toISO(new Date()) ? 'Today' : formatLongDate(date)}</span>
+          </div>
+
+          {/* From shops or spaces */}
+          <div>
+            <p className="text-sm font-extrabold text-slate-800 mb-2">Out from which money?</p>
+            <div className="grid grid-cols-2 gap-2">
+              {([['Shop', 'Shops', Store], ['Space', 'Spaces', LayoutGrid]] as ['Shop' | 'Space', string, typeof Store][]).map(([k, label, Icon]) => {
+                const on = from === k;
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setFrom(k)}
+                    className={`flex items-center justify-center gap-2 py-3.5 rounded-2xl border-2 text-sm font-extrabold transition-all cursor-pointer ${
+                      on
+                        ? k === 'Space' ? 'border-blue-600 bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md' : 'border-orange-500 bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" /> {label}
+                    {on && <Check className="w-4 h-4" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Amount */}
+          <div>
+            <p className="text-sm font-extrabold text-slate-800 mb-2">Amount</p>
+            <div className="flex gap-2">
+              <div className="inline-flex bg-slate-100 p-1 rounded-2xl shrink-0">
+                {(['USD', 'SSP'] as const).map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCurrency(c)}
+                    className={`px-4 py-2.5 rounded-xl text-sm font-black cursor-pointer ${currency === c ? (c === 'USD' ? 'bg-slate-900 text-white' : 'bg-orange-500 text-white') : 'text-slate-500'}`}
+                  >
+                    {c === 'USD' ? '$' : 'SSP'}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                inputMode="decimal"
+                autoFocus
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                placeholder="How much went out"
+                className="flex-1 min-w-0 h-13 px-4 bg-white border-2 border-slate-200 rounded-2xl text-xl font-black text-slate-900 placeholder:text-sm placeholder:font-semibold focus:outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
+              />
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label htmlFor="el-out-desc" className="text-sm font-extrabold text-slate-800 mb-2 flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-slate-400" /> Description
+            </label>
+            <textarea
+              id="el-out-desc"
+              rows={3}
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="e.g. Paid electricity company bill, bought cables, meter repair..."
+              className="w-full px-4 py-3 bg-slate-50 focus:bg-white border-2 border-slate-200 rounded-2xl text-sm text-slate-900 focus:outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-100 resize-none"
+            />
+          </div>
+        </div>
+
+        <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
+          <span className="text-sm font-black text-rose-600">{Number(amount) > 0 ? `-${formatMoney(Number(amount), currency)}` : ''}</span>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onClose} className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:text-slate-900 cursor-pointer">Cancel</button>
+            <button
+              type="button"
+              disabled={!ready}
+              onClick={submit}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600 text-white text-sm font-extrabold shadow-md shadow-rose-500/25 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {editing ? 'Save changes' : 'Save money out'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
@@ -617,7 +826,7 @@ const ElectricityForm: React.FC<{
           <div className="flex items-center gap-3">
             <span className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center"><Zap className="w-6 h-6" /></span>
             <div>
-              <h2 className="text-xl font-black">{editing ? 'Modify electricity' : 'Add electricity'}</h2>
+              <h2 className="text-xl font-black">{editing ? 'Modify electricity' : 'Electricity money in'}</h2>
               <p className="text-xs text-white/85">{editing ? editing.referenceNumber : 'Shops one by one, spaces as one daily amount'}</p>
             </div>
           </div>
@@ -860,37 +1069,55 @@ const ElectricityForm: React.FC<{
 };
 
 // ---------------------------------------------------------------------------
-// Printed report: grouped by day, dollar and SSP totals kept apart
+// Printed report: grouped by day, money in and out, dollar and SSP kept apart
 // ---------------------------------------------------------------------------
 
 const ElectricityReport: React.FC<{ entries: ElectricityEntry[]; filterLabel: string; units: PropertyUnit[] }> = ({ entries, filterLabel, units }) => {
   const groups = groupByDay(entries);
-  const usd = sumBy(entries, 'USD');
-  const ssp = sumBy(entries, 'SSP');
   const kwh = entries.reduce((s, t) => s + kwhOfEntry(t), 0);
+  const totals = (['USD', 'SSP'] as const).map(c => {
+    const moneyIn = sumBy(entries, c);
+    const moneyOut = sumBy(entries, c, true);
+    return { c, moneyIn, moneyOut, left: moneyIn - moneyOut };
+  });
+  const cell = (t: ElectricityEntry, c: Currency) =>
+    t.currency === c ? `${isOut(t) ? '-' : ''}${formatMoney(t.amount, c)}` : '';
+  const net = (list: ElectricityEntry[], c: Currency) => sumBy(list, c) - sumBy(list, c, true);
+  const signed = (n: number, c: Currency) => (n ? `${n < 0 ? '-' : ''}${formatMoney(Math.abs(n), c)}` : '');
+  const typeOf = (t: ElectricityEntry) =>
+    (isOut(t) || isDailySpaces(t) ? t.unitType.toLowerCase() : unitCategoryOf(t.unitNumber, units) || t.unitType.toLowerCase()) === 'space' ? 'Space' : 'Shop';
+
   return (
     <div className="bg-white text-slate-900 font-sans p-3">
       <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
-        <CashflowHeader title="Electricity Report" subtitle="Daily collection" tone="bg-gradient-to-b from-amber-400 to-orange-500" />
+        <CashflowHeader title="Electricity Report" subtitle="Money in & out" tone="bg-gradient-to-b from-amber-400 to-orange-500" />
         <div className="px-6 py-5 space-y-4">
           <div className="flex items-center justify-between text-[11px] text-slate-600">
-            <span>Showing: <strong className="text-slate-900">{filterLabel}</strong> • {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}</span>
+            <span>Showing: <strong className="text-slate-900">{filterLabel}</strong> • {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}{kwh ? ` • ${kwh.toLocaleString()} kWh` : ''}</span>
             <span>Printed {formatLongDate(new Date())} • {BUSINESS_PROFILE.managerName} (Admin)</span>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 print-avoid-break text-center">
-            <div className="rounded-xl border border-slate-300 py-2"><span className="block text-[10px] uppercase text-slate-500 font-bold">Dollar</span><strong className="text-base">{formatMoney(usd, 'USD')}</strong></div>
-            <div className="rounded-xl border border-slate-300 py-2"><span className="block text-[10px] uppercase text-slate-500 font-bold">SSP</span><strong className="text-base">{formatMoney(ssp, 'SSP')}</strong></div>
-            <div className="rounded-xl border border-slate-300 py-2"><span className="block text-[10px] uppercase text-slate-500 font-bold">kWh</span><strong className="text-base">{kwh ? kwh.toLocaleString() : '—'}</strong></div>
+          <div className="grid grid-cols-2 gap-3 print-avoid-break">
+            {totals.map(t => (
+              <div key={t.c} className="rounded-xl border border-slate-300 overflow-hidden">
+                <div className="bg-slate-900 text-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider">{t.c === 'USD' ? 'Dollar ($)' : 'SSP'}</div>
+                <div className="grid grid-cols-3 text-center text-[10px]">
+                  <div className="py-2"><span className="block text-slate-500">In</span><strong>{formatMoney(t.moneyIn, t.c)}</strong></div>
+                  <div className="py-2 border-x border-slate-200"><span className="block text-slate-500">Out</span><strong>{formatMoney(t.moneyOut, t.c)}</strong></div>
+                  <div className="py-2"><span className="block text-slate-500">Left</span><strong>{t.left < 0 ? '-' : ''}{formatMoney(Math.abs(t.left), t.c)}</strong></div>
+                </div>
+              </div>
+            ))}
           </div>
 
           <table className="w-full text-[10px]">
             <thead>
               <tr className="border-y-2 border-slate-900 text-left uppercase tracking-wider">
                 <th className="py-1.5">Ref</th>
+                <th className="py-1.5">In / Out</th>
                 <th className="py-1.5">Unit</th>
                 <th className="py-1.5">Type</th>
-                <th className="py-1.5">Tenant</th>
+                <th className="py-1.5">Tenant / Description</th>
                 <th className="py-1.5 text-right">kWh</th>
                 <th className="py-1.5 text-right">Dollar</th>
                 <th className="py-1.5 text-right">SSP</th>
@@ -899,29 +1126,34 @@ const ElectricityReport: React.FC<{ entries: ElectricityEntry[]; filterLabel: st
             {groups.map(g => (
               <tbody key={g.key} className="print-avoid-break">
                 <tr className="bg-slate-100">
-                  <td colSpan={5} className="py-1.5 px-1 font-black">{formatLongDate(g.date)}</td>
-                  <td className="py-1.5 text-right font-black font-mono">{sumBy(g.items, 'USD') ? formatMoney(sumBy(g.items, 'USD'), 'USD') : ''}</td>
-                  <td className="py-1.5 text-right font-black font-mono">{sumBy(g.items, 'SSP') ? formatMoney(sumBy(g.items, 'SSP'), 'SSP') : ''}</td>
+                  <td colSpan={6} className="py-1.5 px-1 font-black">{formatLongDate(g.date)}</td>
+                  <td className="py-1.5 text-right font-black font-mono">{signed(net(g.items, 'USD'), 'USD')}</td>
+                  <td className="py-1.5 text-right font-black font-mono">{signed(net(g.items, 'SSP'), 'SSP')}</td>
                 </tr>
                 {g.items.map(t => (
                   <tr key={t.id} className="border-b border-slate-200">
                     <td className="py-1.5 font-mono">{t.referenceNumber}</td>
-                    <td className="py-1.5 font-bold">{isDailySpaces(t) ? 'All spaces' : unitOfEntry(t)}</td>
-                    <td className="py-1.5">{(unitCategoryOf(t.unitNumber, units) || t.unitType.toLowerCase()) === 'space' ? 'Space' : 'Shop'}</td>
+                    <td className="py-1.5 font-bold">{isOut(t) ? 'Out' : 'In'}</td>
+                    <td className="py-1.5 font-bold">{isOut(t) ? (t.unitType === 'Space' ? 'Spaces' : 'Shops') : isDailySpaces(t) ? 'All spaces' : unitOfEntry(t)}</td>
+                    <td className="py-1.5">{typeOf(t)}</td>
                     <td className="py-1.5">{tenantOfEntry(t)}</td>
                     <td className="py-1.5 text-right">{kwhOfEntry(t) || ''}</td>
-                    <td className="py-1.5 text-right font-mono">{t.currency === 'USD' ? formatMoney(t.amount, 'USD') : ''}</td>
-                    <td className="py-1.5 text-right font-mono">{t.currency === 'SSP' ? formatMoney(t.amount, 'SSP') : ''}</td>
+                    <td className="py-1.5 text-right font-mono">{cell(t, 'USD')}</td>
+                    <td className="py-1.5 text-right font-mono">{cell(t, 'SSP')}</td>
                   </tr>
                 ))}
               </tbody>
             ))}
             <tfoot>
-              <tr className="border-t-2 border-slate-900 font-black">
-                <td colSpan={5} className="py-2 uppercase">Total</td>
-                <td className="py-2 text-right font-mono">{formatMoney(usd, 'USD')}</td>
-                <td className="py-2 text-right font-mono">{formatMoney(ssp, 'SSP')}</td>
-              </tr>
+              {([['Total in', (c: Currency) => formatMoney(sumBy(entries, c), c)],
+                 ['Total out', (c: Currency) => `-${formatMoney(sumBy(entries, c, true), c)}`],
+                 ['Left', (c: Currency) => signed(net(entries, c), c) || formatMoney(0, c)]] as [string, (c: Currency) => string][]).map(([label, value], i) => (
+                <tr key={label} className={`font-black ${i === 0 ? 'border-t-2 border-slate-900' : ''} ${i === 2 ? 'border-t border-slate-400' : ''}`}>
+                  <td colSpan={6} className="py-1.5 uppercase">{label}</td>
+                  <td className="py-1.5 text-right font-mono">{value('USD')}</td>
+                  <td className="py-1.5 text-right font-mono">{value('SSP')}</td>
+                </tr>
+              ))}
             </tfoot>
           </table>
 

@@ -206,7 +206,8 @@ export interface ElectricityEntry {
   amount: number;
   currency: 'USD' | 'SSP';
   kwh?: number;
-  notes?: string;
+  notes?: string; // money out: the description
+  direction?: 'In' | 'Out'; // money in (default) or money out
   recordedBy: string;
   createdAt: string;
 }

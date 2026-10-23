@@ -1169,6 +1169,7 @@ function mapRowToElectricity(row: any): ElectricityEntry {
     currency: row.currency === 'SSP' ? 'SSP' : 'USD',
     kwh: row.kwh === null || row.kwh === undefined ? undefined : Number(row.kwh),
     notes: row.notes || undefined,
+    direction: row.direction === 'Out' ? 'Out' : 'In',
     recordedBy: row.recorded_by || '',
     createdAt: row.created_at || new Date().toISOString(),
   };
@@ -1188,6 +1189,8 @@ function mapElectricityToRow(e: ElectricityEntry) {
     notes: e.notes || null,
     recorded_by: e.recordedBy || null,
     created_at: e.createdAt,
+    // Sent only for money out, so money in still saves before the direction column is added
+    ...(e.direction === 'Out' ? { direction: 'Out' } : {}),
   };
 }
 

@@ -12,6 +12,7 @@ create table if not exists public.electricity (
   currency         text not null default 'USD' check (currency in ('USD', 'SSP')),
   kwh              numeric(12, 2),
   notes            text,
+  direction        text not null default 'In' check (direction in ('In', 'Out')),
   recorded_by      text,
   created_at       timestamptz not null default now()
 );
