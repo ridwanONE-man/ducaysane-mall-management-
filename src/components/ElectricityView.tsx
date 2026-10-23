@@ -574,14 +574,19 @@ const ElectricityForm: React.FC<{
 
   // All spaces at once: one amount for every occupied space
   const isSpaceUnit = (u: PropertyUnit) => unitCategoryOf(u.unitNumber, units) === 'space';
-  const occupiedSpaces = units.filter(u => u.currentTenant && isSpaceUnit(u)).sort((a, b) => a.unitNumber.localeCompare(b.unitNumber));
+  const bulkSpaces = units
+    .filter(u => isSpaceUnit(u) && (!f || u.unitNumber.toLowerCase().includes(f) || (u.currentTenant?.name || '').toLowerCase().includes(f)))
+    .sort((a, b) => a.unitNumber.localeCompare(b.unitNumber));
   const [spaceAmount, setSpaceAmount] = useState('');
-  const [spaceCurrency, setSpaceCurrency] = useState<Currency>(() => (occupiedSpaces[0] ? unitCurrency(occupiedSpaces[0]) : 'SSP'));
+  const [spaceCurrency, setSpaceCurrency] = useState<Currency>(() => {
+    const first = units.find(isSpaceUnit);
+    return first ? unitCurrency(first) : 'SSP';
+  });
   const [showSpaceRows, setShowSpaceRows] = useState(false);
   const applyAllSpaces = () => {
     setRows(prev => [
       ...prev.filter(r => !isSpaceUnit(r.unit)),
-      ...occupiedSpaces.map(u => ({ ...rowFor(u), amount: spaceAmount, currency: spaceCurrency })),
+      ...bulkSpaces.map(u => ({ ...rowFor(u), amount: spaceAmount, currency: spaceCurrency })),
     ]);
     setShowSpaceRows(false);
   };
@@ -624,61 +629,6 @@ const ElectricityForm: React.FC<{
             <span className="text-xs text-amber-800">{date === toISO(new Date()) ? 'Today, set automatically' : formatLongDate(date)}</span>
           </div>
 
-          {/* All spaces at once */}
-          {!editing && occupiedSpaces.length > 0 && (
-            <div className="rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
-              <div className="flex flex-col md:flex-row md:items-center gap-3">
-                <div className="flex items-center gap-3 md:flex-1">
-                  <span className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/30 shrink-0">
-                    <LayoutGrid className="w-5 h-5" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-black text-slate-900">All spaces at once</p>
-                    <p className="text-xs text-slate-600">Same money for all {occupiedSpaces.length} spaces with tenants</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="inline-flex bg-white p-0.5 rounded-xl border border-blue-200 shrink-0">
-                    {(['USD', 'SSP'] as const).map(c => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setSpaceCurrency(c)}
-                        className={`px-2.5 py-2 rounded-lg text-xs font-black cursor-pointer ${spaceCurrency === c ? (c === 'USD' ? 'bg-slate-900 text-white' : 'bg-orange-500 text-white') : 'text-slate-500'}`}
-                      >
-                        {c === 'USD' ? '$' : 'SSP'}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    inputMode="decimal"
-                    value={spaceAmount}
-                    onChange={e => setSpaceAmount(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && Number(spaceAmount) > 0) applyAllSpaces(); }}
-                    placeholder="Amount each"
-                    className="w-32 h-11 px-3 bg-white border-2 border-blue-200 rounded-xl text-base font-black text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                  <button
-                    type="button"
-                    disabled={!(Number(spaceAmount) > 0)}
-                    onClick={applyAllSpaces}
-                    className="h-11 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-extrabold shadow-md shadow-blue-500/25 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                  >
-                    {spaceRows.length ? 'Update all' : 'Add all spaces'}
-                  </button>
-                </div>
-              </div>
-              {Number(spaceAmount) > 0 && (
-                <p className="mt-2 text-xs font-bold text-blue-800">
-                  {occupiedSpaces.length} spaces × {formatMoney(Number(spaceAmount), spaceCurrency)} = {formatMoney(Number(spaceAmount) * occupiedSpaces.length, spaceCurrency)}
-                </p>
-              )}
-            </div>
-          )}
-
           {/* Unit picker */}
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
@@ -690,7 +640,11 @@ const ElectricityForm: React.FC<{
                       key={k}
                       type="button"
                       onClick={() => setKind(k)}
-                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${kind === k ? 'bg-white text-orange-600 shadow-xs' : 'text-slate-600'}`}
+                      className={`flex items-center gap-1 px-3.5 py-2 rounded-lg text-sm font-bold cursor-pointer transition-all ${
+                        kind === k
+                          ? k === 'space' ? 'bg-blue-600 text-white shadow-sm' : k === 'shop' ? 'bg-orange-500 text-white shadow-sm' : 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
                     >
                       <Icon className="w-3.5 h-3.5" /> {label}
                     </button>
@@ -705,15 +659,69 @@ const ElectricityForm: React.FC<{
                     className="w-44 pl-8 pr-2 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-orange-500"
                   />
                 </div>
-                {!editing && (
+                {!editing && kind !== 'space' && (
                   <button type="button" onClick={pickAllShown} className="px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold cursor-pointer">
                     Select all with tenants
                   </button>
                 )}
               </div>
             </div>
+            {/* All spaces at once (Spaces tab) */}
+            {!editing && kind === 'space' && bulkSpaces.length > 0 && (
+              <div className="mb-3 rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
+                <div className="flex items-center gap-3">
+                  <span className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/30 shrink-0">
+                    <LayoutGrid className="w-5 h-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-base font-black text-slate-900">Select all spaces • one price</p>
+                    <p className="text-xs text-slate-600">Type the money each space pays; all {bulkSpaces.length} space{bulkSpaces.length === 1 ? '' : 's'} get it at once.</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                  <div className="inline-flex self-start bg-white p-0.5 rounded-xl border border-blue-200 shrink-0">
+                    {(['USD', 'SSP'] as const).map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setSpaceCurrency(c)}
+                        className={`px-4 py-2.5 rounded-lg text-sm font-black cursor-pointer ${spaceCurrency === c ? (c === 'USD' ? 'bg-slate-900 text-white' : 'bg-orange-500 text-white') : 'text-slate-500'}`}
+                      >
+                        {c === 'USD' ? '$ Dollar' : 'SSP'}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    inputMode="decimal"
+                    autoFocus
+                    value={spaceAmount}
+                    onChange={e => setSpaceAmount(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && Number(spaceAmount) > 0) applyAllSpaces(); }}
+                    placeholder="Price for each space"
+                    className="flex-1 min-w-0 h-12 px-4 bg-white border-2 border-blue-200 rounded-xl text-lg font-black text-slate-900 placeholder:text-sm placeholder:font-semibold focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  />
+                  <button
+                    type="button"
+                    disabled={!(Number(spaceAmount) > 0)}
+                    onClick={applyAllSpaces}
+                    className="h-12 px-5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-extrabold shadow-md shadow-blue-500/25 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 whitespace-nowrap"
+                  >
+                    <Check className="w-4 h-4" />
+                    {spaceRows.length ? 'Update all spaces' : `Select all ${bulkSpaces.length} spaces`}
+                  </button>
+                </div>
+                {Number(spaceAmount) > 0 && (
+                  <p className="mt-2 text-sm font-bold text-blue-800">
+                    {bulkSpaces.length} × {formatMoney(Number(spaceAmount), spaceCurrency)} = <span className="font-black">{formatMoney(Number(spaceAmount) * bulkSpaces.length, spaceCurrency)}</span>
+                  </p>
+                )}
+              </div>
+            )}
             {pickable.length === 0 ? (
-              <p className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl">No units. Create shops and spaces on the Units page first.</p>
+              <p className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl">{kind === 'space' ? 'No spaces found.' : 'No units. Create shops and spaces on the Units page first.'}</p>
             ) : (
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 max-h-48 overflow-y-auto p-1">
                 {pickable.map(u => {
