@@ -119,13 +119,13 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
                 const owedNow = m.contracted && m.status !== 'paid';
                 const cls =
                   m.status === 'paid'
-                    ? `bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100 ${viewingMonth?.key === m.key ? 'ring-2 ring-emerald-400' : ''}`
+                    ? `bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-600 shadow-sm shadow-emerald-500/25 ${viewingMonth?.key === m.key ? 'ring-2 ring-emerald-300' : ''}`
                     : isSel && owedNow
-                    ? 'bg-rose-600 border-rose-600 text-white shadow-sm shadow-rose-500/30'
+                    ? 'bg-rose-700 border-rose-800 text-white ring-2 ring-rose-300 shadow-sm shadow-rose-500/30'
                     : isSel
-                    ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm shadow-emerald-500/30'
+                    ? 'bg-orange-500 border-orange-600 text-white ring-2 ring-orange-200 shadow-sm shadow-orange-500/30'
                     : owedNow
-                    ? 'bg-white border-rose-300 text-rose-700 hover:bg-rose-50'
+                    ? 'bg-rose-500 border-rose-500 text-white hover:bg-rose-600 shadow-sm shadow-rose-500/25'
                     : m.idx === todayIdx + 1
                     ? 'bg-emerald-50/60 border-emerald-200 text-slate-700 hover:bg-emerald-50'
                     : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50';

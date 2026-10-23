@@ -624,7 +624,18 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
             const leasePct = start && end && end > start
               ? Math.min(100, Math.max(0, ((today.getTime() - start.getTime()) / (end.getTime() - start.getTime())) * 100))
               : 0;
-            const leaseTone = daysLeft === null ? 'text-slate-500' : daysLeft < 0 ? 'text-rose-600' : daysLeft <= 15 ? 'text-amber-600' : 'text-emerald-600';
+            // Rent owed now: the bar counts to the paid-up date instead of the lease end
+            const owedNow = account ? account.dueNow : [];
+            const owedNowAmt = owedNow.reduce((s, m) => s + m.remaining, 0);
+            const paidUntil = parsePaymentDate(account?.paidThrough);
+            // Lease months (start → end), plus any paid beyond it
+            const leaseMonthCount = start && end
+              ? Math.max(1, (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth() + (end.getDate() > start.getDate() ? 1 : 0))
+              : 0;
+            const lastPaidAt = account ? account.months.reduce((n, m, i) => (m.paid > 0 ? i + 1 : n), 0) : 0;
+            const monthChips = account ? account.months.slice(0, Math.max(leaseMonthCount, lastPaidAt, owedNow.length ? account.months.indexOf(owedNow[owedNow.length - 1]) + 1 : 0)) : [];
+            const todayIdx = today.getFullYear() * 12 + today.getMonth();
+            const leaseTone = owedNow.length ? 'text-rose-600' : daysLeft === null ? 'text-slate-500' : daysLeft < 0 ? 'text-rose-600' : daysLeft <= 15 ? 'text-amber-600' : 'text-emerald-600';
             const band = isShop ? 'from-orange-500 to-amber-500' : 'from-sky-500 to-blue-500';
 
             return (
@@ -676,18 +687,43 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="flex items-center gap-1 font-semibold text-slate-500">
                         <Calendar className="w-3.5 h-3.5 text-orange-500" />
-                        {start && end ? `${formatLongDate(start)} → ${formatLongDate(end)}` : 'No lease dates'}
+                        {owedNow.length
+                          ? (paidUntil ? `Paid until ${formatLongDate(paidUntil)}` : 'No rent paid yet')
+                          : start && end ? `${formatLongDate(start)} → ${formatLongDate(end)}` : 'No lease dates'}
                       </span>
                       <span className={`font-black ${leaseTone}`}>
-                        {daysLeft === null ? '' : daysLeft < 0 ? `Expired ${-daysLeft}d ago` : daysLeft === 0 ? 'Ends today' : `${daysLeft} days left`}
+                        {owedNow.length
+                          ? `Owes ${owedNow.map(m => m.short.split(' ')[0]).join(', ')} ${formatMoney(owedNowAmt, cur)}`
+                          : daysLeft === null ? '' : daysLeft < 0 ? `Expired ${-daysLeft}d ago` : daysLeft === 0 ? 'Ends today' : `${daysLeft} days left`}
                       </span>
                     </div>
                     <div className="mt-1.5 h-1.5 rounded-full bg-slate-100 overflow-hidden">
                       <div
-                        className={`h-full rounded-full ${daysLeft !== null && daysLeft <= 15 ? 'bg-gradient-to-r from-rose-500 to-amber-500' : `bg-gradient-to-r ${band}`}`}
+                        className={`h-full rounded-full ${owedNow.length || (daysLeft !== null && daysLeft <= 15) ? 'bg-gradient-to-r from-rose-500 to-amber-500' : `bg-gradient-to-r ${band}`}`}
                         style={{ width: `${leasePct}%` }}
                       />
                     </div>
+
+                    {/* Rent months: green paid, red owed */}
+                    {monthChips.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {monthChips.map(m => {
+                          const tone = m.status === 'paid'
+                            ? 'bg-emerald-500 text-white'
+                            : m.status === 'partial'
+                              ? 'bg-amber-400 text-white'
+                              : m.idx <= todayIdx
+                                ? 'bg-rose-500 text-white'
+                                : 'bg-slate-100 text-slate-400';
+                          const note = m.status === 'paid' ? 'paid' : m.status === 'partial' ? `${formatMoney(m.remaining, cur)} left` : m.idx <= todayIdx ? `not paid (${formatMoney(m.remaining, cur)})` : 'coming';
+                          return (
+                            <span key={m.key} title={`${m.label}: ${note}`} className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${tone}`}>
+                              {m.status === 'paid' ? '✓ ' : ''}{m.short.split(' ')[0]}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Contact */}
