@@ -572,6 +572,25 @@ const ElectricityForm: React.FC<{
   const pickAllShown = () => setRows(prev => [...prev, ...pickable.filter(u => u.currentTenant && !prev.some(r => r.unit.id === u.id)).map(rowFor)]);
   const update = (id: string, patch: Partial<FormRow>) => setRows(prev => prev.map(r => (r.unit.id === id ? { ...r, ...patch } : r)));
 
+  // All spaces at once: one amount for every occupied space
+  const isSpaceUnit = (u: PropertyUnit) => unitCategoryOf(u.unitNumber, units) === 'space';
+  const occupiedSpaces = units.filter(u => u.currentTenant && isSpaceUnit(u)).sort((a, b) => a.unitNumber.localeCompare(b.unitNumber));
+  const [spaceAmount, setSpaceAmount] = useState('');
+  const [spaceCurrency, setSpaceCurrency] = useState<Currency>(() => (occupiedSpaces[0] ? unitCurrency(occupiedSpaces[0]) : 'SSP'));
+  const [showSpaceRows, setShowSpaceRows] = useState(false);
+  const applyAllSpaces = () => {
+    setRows(prev => [
+      ...prev.filter(r => !isSpaceUnit(r.unit)),
+      ...occupiedSpaces.map(u => ({ ...rowFor(u), amount: spaceAmount, currency: spaceCurrency })),
+    ]);
+    setShowSpaceRows(false);
+  };
+  const removeAllSpaces = () => setRows(prev => prev.filter(r => !isSpaceUnit(r.unit)));
+  const spaceRows = rows.filter(r => isSpaceUnit(r.unit));
+  const collapseSpaces = !editing && spaceRows.length > 1 && !showSpaceRows;
+  const visibleRows = collapseSpaces ? rows.filter(r => !isSpaceUnit(r.unit)) : rows;
+  const spaceTotal = (c: Currency) => spaceRows.filter(r => r.currency === c).reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
   const ready = rows.length > 0 && rows.every(r => Number(r.amount) > 0);
   const total = (c: Currency) => rows.filter(r => r.currency === c).reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
@@ -604,6 +623,61 @@ const ElectricityForm: React.FC<{
             />
             <span className="text-xs text-amber-800">{date === toISO(new Date()) ? 'Today, set automatically' : formatLongDate(date)}</span>
           </div>
+
+          {/* All spaces at once */}
+          {!editing && occupiedSpaces.length > 0 && (
+            <div className="rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
+              <div className="flex flex-col md:flex-row md:items-center gap-3">
+                <div className="flex items-center gap-3 md:flex-1">
+                  <span className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/30 shrink-0">
+                    <LayoutGrid className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-black text-slate-900">All spaces at once</p>
+                    <p className="text-xs text-slate-600">Same money for all {occupiedSpaces.length} spaces with tenants</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex bg-white p-0.5 rounded-xl border border-blue-200 shrink-0">
+                    {(['USD', 'SSP'] as const).map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setSpaceCurrency(c)}
+                        className={`px-2.5 py-2 rounded-lg text-xs font-black cursor-pointer ${spaceCurrency === c ? (c === 'USD' ? 'bg-slate-900 text-white' : 'bg-orange-500 text-white') : 'text-slate-500'}`}
+                      >
+                        {c === 'USD' ? '$' : 'SSP'}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    inputMode="decimal"
+                    value={spaceAmount}
+                    onChange={e => setSpaceAmount(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && Number(spaceAmount) > 0) applyAllSpaces(); }}
+                    placeholder="Amount each"
+                    className="w-32 h-11 px-3 bg-white border-2 border-blue-200 rounded-xl text-base font-black text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                  <button
+                    type="button"
+                    disabled={!(Number(spaceAmount) > 0)}
+                    onClick={applyAllSpaces}
+                    className="h-11 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-extrabold shadow-md shadow-blue-500/25 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    {spaceRows.length ? 'Update all' : 'Add all spaces'}
+                  </button>
+                </div>
+              </div>
+              {Number(spaceAmount) > 0 && (
+                <p className="mt-2 text-xs font-bold text-blue-800">
+                  {occupiedSpaces.length} spaces × {formatMoney(Number(spaceAmount), spaceCurrency)} = {formatMoney(Number(spaceAmount) * occupiedSpaces.length, spaceCurrency)}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Unit picker */}
           <div>
@@ -671,11 +745,28 @@ const ElectricityForm: React.FC<{
           {/* Money per unit */}
           <div>
             <p className="text-sm font-extrabold text-slate-800 mb-2">2. Electricity money {rows.length > 0 && <span className="text-slate-400 font-bold">({rows.length})</span>}</p>
+            {collapseSpaces && (
+              <div className="mb-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-3 flex flex-wrap items-center gap-3">
+                <LayoutGrid className="w-5 h-5 shrink-0" />
+                <span className="text-sm font-black">{spaceRows.length} spaces</span>
+                <span className="text-xs text-white/85 flex-1 min-w-0 truncate">{spaceRows.map(r => r.unit.unitNumber).join(', ')}</span>
+                <span className="flex items-center gap-1.5 text-sm font-black">
+                  {spaceTotal('USD') > 0 && <span className="px-2 py-0.5 rounded-lg bg-white/20">{formatMoney(spaceTotal('USD'), 'USD')}</span>}
+                  {spaceTotal('SSP') > 0 && <span className="px-2 py-0.5 rounded-lg bg-white/20">{formatMoney(spaceTotal('SSP'), 'SSP')}</span>}
+                </span>
+                <button type="button" onClick={() => setShowSpaceRows(true)} className="px-3 py-1.5 rounded-lg bg-white text-blue-700 text-xs font-bold cursor-pointer">
+                  Show each / change one
+                </button>
+                <button type="button" onClick={removeAllSpaces} title="Remove all spaces" className="p-1.5 rounded-lg hover:bg-white/20 cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
             {rows.length === 0 ? (
               <p className="p-6 text-center text-sm text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">Choose at least one shop or space above.</p>
             ) : (
               <div className="space-y-2">
-                {rows.map(r => {
+                {visibleRows.map(r => {
                   const isSpace = unitCategoryOf(r.unit.unitNumber, units) === 'space';
                   return (
                     <div key={r.unit.id} className="rounded-2xl border border-slate-200 p-3 flex flex-col md:flex-row md:items-center gap-3">
