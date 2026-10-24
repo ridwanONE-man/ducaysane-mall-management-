@@ -481,7 +481,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
             )}
 
             {availableUnits.length > 0 && onOpenAssignUnit && (
-              <button
+              <button data-edit
                 onClick={() => onOpenAssignUnit(availableUnits[0])}
                 className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-extrabold shadow-md shadow-orange-500/25 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
               >
@@ -807,7 +807,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
               </div>
               <div className="flex items-center gap-2">
                 {selectedTenant.unit && (
-                  <button
+                  <button data-edit
                     onClick={() => openModifyModal(selectedTenant.unit!, selectedTenant.tenant)}
                     className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                     title="Modify details or price"
@@ -865,7 +865,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                   <span className="font-bold text-slate-900 text-xs uppercase tracking-wide">Financial Statement (USD)</span>
                   <div className="flex items-center gap-2">
                     {selectedTenant.unit && (
-                      <button
+                      <button data-edit
                         onClick={() => handleOpenDepositModal(selectedTenant.unit!)}
                         className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-[10px] font-bold cursor-pointer"
                       >
@@ -1400,7 +1400,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                 Keep Occupied
               </button>
 
-              <button
+              <button data-edit
                 type="button"
                 disabled={isVacatingSaving || !vacateConfirmed}
                 onClick={handleConfirmVacate}

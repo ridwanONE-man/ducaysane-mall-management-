@@ -12,7 +12,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { AdminUser } from '../types';
-import { getAdminCredentials } from '../lib/supabaseService';
+import { signIn } from '../lib/auth';
 import logoImg from '../assets/logo.png';
 
 interface LoginPageProps {
@@ -29,78 +29,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
   // Modals & Dropdown states
   const [showForgotModal, setShowForgotModal] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotSubmitted, setForgotSubmitted] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
 
-  // Direct Admin login
+  // Sign in with the account's email and password (Supabase login)
   const handleLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!emailOrUsername.trim()) {
-      setErrorMessage('Please enter your administrator email.');
+      setErrorMessage('Please enter your email.');
       return;
     }
-    if (!password.trim()) {
+    if (!password) {
       setErrorMessage('Please enter your password.');
       return;
     }
 
     setIsLoading(true);
     setErrorMessage('');
-
-    try {
-      const admin = await getAdminCredentials();
-      const enteredEmail = emailOrUsername.trim().toLowerCase();
-      const authorizedEmail = admin.email.toLowerCase();
-
-      // Allow admin email, standard usernames, or configured credentials
-      const isEmailValid = 
-        enteredEmail === authorizedEmail ||
-        enteredEmail === 'admin' ||
-        enteredEmail === 'mohamed' ||
-        enteredEmail === 'admin@nyakuron.com' ||
-        enteredEmail === 'ducaysane@gmail.com';
-
-      if (!isEmailValid) {
-        setIsLoading(false);
-        setErrorMessage('Access Denied: Invalid administrator credentials.');
-        return;
-      }
-
-      const isPasswordValid = 
-        password === admin.password ||
-        password === 'admin' ||
-        password === 'admin123' ||
-        password === 'ducaysane1212';
-
-      if (!isPasswordValid) {
-        setIsLoading(false);
-        setErrorMessage('Incorrect password. Please verify your administrator password.');
-        return;
-      }
-
-      setIsLoading(false);
-      onLoginSuccess({
-        id: 'usr-admin-1',
-        name: admin.name || 'Mohamed Mohamoud',
-        email: admin.email || 'admin@nyakuron.com',
-        role: admin.role || 'Super Admin',
-        avatar: '/logo.png',
-        lastLogin: 'Just now'
-      });
-    } catch {
-      setIsLoading(false);
-      setErrorMessage('Authentication error occurred. Please try again.');
+    const res = await signIn(emailOrUsername, password);
+    setIsLoading(false);
+    if (!res.ok) {
+      setErrorMessage(res.error);
+      return;
     }
-  };
-
-  const handleResetPassword = (e: React.FormEvent) => {
-    e.preventDefault();
-    setForgotSubmitted(true);
-    setTimeout(() => {
-      setForgotSubmitted(false);
-      setShowForgotModal(false);
-    }, 2000);
+    onLoginSuccess(res.value);
   };
 
   return (
@@ -208,13 +159,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             <form onSubmit={handleLogin} className="space-y-5">
               <div>
                 <label htmlFor="login-email" className="block text-sm font-bold text-slate-700 mb-2 ml-1">
-                  Email or username
+                  Email
                 </label>
                 <div className="relative">
                   <Mail className="w-5 h-5 text-slate-400 absolute left-5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     id="login-email"
-                    type="text"
+                    type="email"
                     required
                     autoComplete="username"
                     value={emailOrUsername}
@@ -288,7 +239,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             </form>
 
             <p className="mt-6 flex items-center justify-center gap-2 text-sm text-slate-400">
-              <ShieldCheck className="w-4 h-4 text-emerald-500" /> Admin access only
+              <ShieldCheck className="w-4 h-4 text-emerald-500" /> Secure login • accounts are made by the admin
             </p>
           </div>
         </div>
@@ -313,32 +264,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            {forgotSubmitted ? (
-              <div className="text-center py-6">
-                <Check className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-                <p className="text-xs font-semibold text-slate-800">Password reset instructions sent.</p>
-              </div>
-            ) : (
-              <form onSubmit={handleResetPassword} className="space-y-4">
-                <p className="text-sm text-slate-500">
-                  Enter your administrative email to receive a password reset link.
-                </p>
-                <input
-                  type="email"
-                  required
-                  value={forgotEmail}
-                  onChange={(e) => setForgotEmail(e.target.value)}
-                  placeholder="admin@nyakuron.com"
-                  className="w-full h-14 px-4 bg-slate-50 border-2 border-slate-200 rounded-2xl text-base text-slate-800 focus:outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100"
-                />
-                <button
-                  type="submit"
-                  className="w-full h-12 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-2xl text-sm font-bold cursor-pointer"
-                >
-                  Send Reset Link
-                </button>
-              </form>
-            )}
+            <div className="space-y-3 text-sm text-slate-600">
+              <p><strong className="text-slate-900">Staff accounts:</strong> ask the admin. The admin opens <strong>Settings → Accounts</strong> and sets a new password for you.</p>
+              <p><strong className="text-slate-900">Admin:</strong> open Supabase → Authentication → Users, choose your account and set a new password.</p>
+              <button
+                type="button"
+                onClick={() => setShowForgotModal(false)}
+                className="w-full h-12 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-2xl text-sm font-bold cursor-pointer"
+              >
+                OK
+              </button>
+            </div>
           </div>
         </div>
       )}

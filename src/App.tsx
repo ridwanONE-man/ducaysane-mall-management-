@@ -22,6 +22,7 @@ import { TenantDepositModal, TenantDepositRequest } from './components/TenantDep
 import { DepositManageModal } from './components/DepositManageModal';
 import { WaitingListView } from './components/WaitingListView';
 import { ElectricityView } from './components/ElectricityView';
+import { currentUser, signOut, onSignedOut } from './lib/auth';
 import { depositFields, depositIn, RentCurrency } from './utils/currency';
 import { formatMoney, parsePaymentDate } from './utils/printUtils';
 import { buildTenantAccount, buildTenantAccounts, isLegacyCreditDeposit, DEPOSIT_MONTHS_PREFIX, AMOUNT_DEPOSIT_TAG, depositMonthLabels, withDepositMonths, planDepositApplications, accountKey, coverageEndOf } from './utils/tenantAccount';
@@ -248,46 +249,41 @@ const isCashflowForPayment = (tx: CashflowTransaction, payment: PaymentRecord, a
 };
 
 export default function App() {
-  // Authentication State with localStorage persistence
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('nbc_admin_auth') === 'true';
-    } catch {
-      return false;
-    }
-  });
+  // Signed-in account (Supabase login). Admin changes data; view-only accounts read and print.
+  const [sessionUser, setSessionUser] = useState<AdminUser | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    currentUser().then(u => {
+      if (!alive) return;
+      setSessionUser(u);
+      setAuthChecked(true);
+    });
+    const stop = onSignedOut(() => setSessionUser(null));
+    return () => { alive = false; stop(); };
+  }, []);
+  const isAuthenticated = sessionUser !== null;
+  const adminUser: AdminUser = sessionUser || { id: '', name: '', email: '', role: '', avatar: '/logo.png', lastLogin: '' };
+  const canEdit = sessionUser?.access === 'admin';
 
-  const [adminUser, setAdminUser] = useState<AdminUser>(() => {
-    try {
-      const savedUser = localStorage.getItem('nbc_admin_user');
-      if (savedUser) return JSON.parse(savedUser);
-    } catch {}
-    return {
-      id: 'usr-admin-1',
-      name: 'Mohamed Mohamoud',
-      email: 'admin@nyakuron.com',
-      role: 'Super Admin',
-      avatar: '/logo.png',
-      lastLogin: 'Just now'
-    };
-  });
+  // View-only accounts: buttons that change data are hidden (see index.css)
+  useEffect(() => {
+    document.body.classList.toggle('view-only', isAuthenticated && !canEdit);
+  }, [isAuthenticated, canEdit]);
 
   const handleLoginSuccess = (user: AdminUser) => {
-    setAdminUser(user);
-    setIsAuthenticated(true);
-    try {
-      localStorage.setItem('nbc_admin_auth', 'true');
-      localStorage.setItem('nbc_admin_user', JSON.stringify(user));
-    } catch {}
-  };
-
-  const handleLogout = () => {
-    setIsAuthenticated(false);
+    setSessionUser(user);
     try {
       localStorage.removeItem('nbc_admin_auth');
       localStorage.removeItem('nbc_admin_user');
-      localStorage.removeItem('nbc_active_tab');
+      localStorage.removeItem('nbc_admin_pwd');
     } catch {}
+  };
+
+  const handleLogout = async () => {
+    await signOut();
+    setSessionUser(null);
+    try { localStorage.removeItem('nbc_active_tab'); } catch {}
   };
 
   // App Navigation & Data State (persisted across page reload)
@@ -393,6 +389,13 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
+  // True (and tells the person) when a view-only account tries to change something
+  const readOnlyBlocked = () => {
+    if (canEdit) return false;
+    showToast('View-only account: you can read and print, but only the admin can make changes.');
+    return true;
+  };
+
   // ==========================================
   // REAL-TIME SUPABASE HYDRATION & LISTENER
   // ==========================================
@@ -424,6 +427,7 @@ export default function App() {
       if (electricityRows) setElectricity(electricityRows);
     }
 
+    if (!sessionUser) return;
     setRealtimeStatus('connecting');
     refreshFromDatabase();
 
@@ -510,10 +514,11 @@ export default function App() {
       window.removeEventListener('online', refreshFromDatabase);
       unsubscribe();
     };
-  }, []);
+  }, [sessionUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear all data
   const handleClearAllData = async () => {
+    if (readOnlyBlocked()) return;
     setUnits([]);
     setPayments([]);
     setDeposits([]);
@@ -529,6 +534,7 @@ export default function App() {
 
   // Payment Confirmation Handler
   const handleConfirmPayment = async (newPayment: PaymentRecord) => {
+    if (readOnlyBlocked()) return;
     // 1. Optimistic update
     setPayments(prev => [newPayment, ...prev]);
 
@@ -599,6 +605,7 @@ export default function App() {
 
   // Add / Edit Unit Handler
   const handleSaveUnit = async (unitToSave: PropertyUnit) => {
+    if (readOnlyBlocked()) return;
     const isExisting = units.some(u => u.id === unitToSave.id);
     const tenantName = unitToSave.currentTenant?.name;
     if (isExisting) {
@@ -641,6 +648,7 @@ export default function App() {
 
   // Delete Unit Handler
   const handleDeleteUnit = async (unitId: string) => {
+    if (readOnlyBlocked()) return;
     const found = units.find(u => u.id === unitId);
     setPending('units', unitId, false);
     setUnits(prev => prev.filter(u => u.id !== unitId));
@@ -650,6 +658,7 @@ export default function App() {
 
   // Delete Tenant from Unit Handler (removes tenant from unit & deletes from Tenants page)
   const handleDeleteTenantFromUnit = async (unitId: string) => {
+    if (readOnlyBlocked()) return;
     const targetUnit = units.find(u => u.id === unitId);
     if (!targetUnit) return;
     const tenantName = targetUnit.currentTenant?.name || 'Tenant';
@@ -693,6 +702,7 @@ export default function App() {
 
   // Remove every tenant but keep units, payments, deposits and cashflow
   const handleClearAllTenants = async () => {
+    if (readOnlyBlocked()) return;
     const leased = units.filter(u => u.currentTenant);
     if (leased.length === 0) return;
     setUnits(prev => prev.map(u => u.currentTenant ? {
@@ -727,6 +737,7 @@ export default function App() {
 
   // Clear All Units at Once Handler
   const handleDeleteAllUnits = async () => {
+    if (readOnlyBlocked()) return;
     setUnits([]);
     const ok = await deleteAllUnitsFromSupabase();
     if (ok) {
@@ -746,6 +757,7 @@ export default function App() {
 
   // Delete Selected Units Batch Handler
   const handleDeleteSelectedUnits = async (unitIds: string[]) => {
+    if (readOnlyBlocked()) return;
     if (unitIds.length === 0) return;
     setUnits(prev => prev.filter(u => !unitIds.includes(u.id)));
     const ok = await deleteUnitsBulkFromSupabase(unitIds);
@@ -754,6 +766,7 @@ export default function App() {
 
   // Modify Tenant & Lease Pricing Handler from Tenants Page
   const handleModifyTenantPricing = async (unitId: string, payload: ModifyTenantPricingPayload): Promise<boolean> => {
+    if (readOnlyBlocked()) return false;
     const targetUnit = units.find(u => u.id === unitId);
     const res = await updateTenantAndPricingInSupabase(unitId, payload);
     if (res.success && res.unit) {
@@ -781,6 +794,7 @@ export default function App() {
 
   // Vacate Unit Handler from Tenants Page
   const handleVacateUnit = async (unitId: string, payload?: VacateUnitPayload): Promise<boolean> => {
+    if (readOnlyBlocked()) return false;
     const targetUnit = units.find(u => u.id === unitId);
     const tenantName = targetUnit?.currentTenant?.name || 'Tenant';
     let res = await vacateUnitInSupabase(unitId, payload);
@@ -832,6 +846,7 @@ export default function App() {
 
   // Save Deposit Handler
   const handleSaveDeposit = async (dep: DepositRecord) => {
+    if (readOnlyBlocked()) return;
     const isExisting = deposits.some(d => d.id === dep.id);
     if (isExisting) {
       setDeposits(prev => prev.map(d => d.id === dep.id ? dep : d));
@@ -845,6 +860,7 @@ export default function App() {
 
   // Save Cashflow Handler
   const handleSaveCashflow = async (tx: CashflowTransaction) => {
+    if (readOnlyBlocked()) return;
     const isExisting = cashflow.some(c => c.id === tx.id);
     if (isExisting) {
       setCashflow(prev => prev.map(c => c.id === tx.id ? tx : c));
@@ -858,6 +874,7 @@ export default function App() {
 
   // Delete a payment and the cashflow entry that was recorded with it
   const handleDeletePayment = async (payment: PaymentRecord) => {
+    if (readOnlyBlocked()) return;
     const linked = cashflow.filter(tx => isCashflowForPayment(tx, payment, payments));
     setPending('payments', payment.id, false);
     setPayments(prev => prev.filter(p => p.id !== payment.id));
@@ -868,6 +885,7 @@ export default function App() {
   };
 
   const handleClearAllPayments = async () => {
+    if (readOnlyBlocked()) return;
     const linked = cashflow.filter(tx => payments.some(p => isCashflowForPayment(tx, p, payments)));
     clearPending('payments');
     setPayments([]);
@@ -879,6 +897,7 @@ export default function App() {
 
   // Delete a deposit; a deposit still held is also taken off its unit
   const handleDeleteDeposit = async (dep: DepositRecord) => {
+    if (readOnlyBlocked()) return;
     setPending('deposits', dep.id, false);
     setDeposits(prev => prev.filter(d => d.id !== dep.id));
     const ok = await deleteDepositFromSupabase(dep.id);
@@ -892,6 +911,7 @@ export default function App() {
   };
 
   const handleClearAllDeposits = async () => {
+    if (readOnlyBlocked()) return;
     const heldUnitNumbers = new Set(deposits.filter(d => d.status === 'Held in Escrow').map(d => d.unitNumber));
     const affectedUnits = units
       .filter(u => heldUnitNumbers.has(u.unitNumber) && u.escrowDepositUSD)
@@ -907,6 +927,7 @@ export default function App() {
   };
 
   const handleDeleteCashflow = async (tx: CashflowTransaction) => {
+    if (readOnlyBlocked()) return;
     setPending('cashflow', tx.id, false);
     setCashflow(prev => prev.filter(c => c.id !== tx.id));
     const ok = await deleteCashflowFromSupabase(tx.id);
@@ -914,6 +935,7 @@ export default function App() {
   };
 
   const handleClearAllCashflow = async () => {
+    if (readOnlyBlocked()) return;
     clearPending('cashflow');
     setCashflow([]);
     const ok = await clearTableInSupabase('cashflow_transactions');
@@ -922,6 +944,7 @@ export default function App() {
 
   // Smart Pay: one payment row per rent month on a single receipt.
   const handleSmartPay = async (req: SmartPayRequest) => {
+    if (readOnlyBlocked()) return;
     const { account, allocations, cash, method, remark, transferId } = req;
     const { tenant, unit, currency } = account;
     const money = (n: number) => formatMoney(n, currency);
@@ -1014,6 +1037,7 @@ export default function App() {
 
   // Security deposit for chosen months, only offered once rent is paid up to date
   const handleAddTenantDeposit = async ({ account, mode, months, amount, bankAccount, notes }: TenantDepositRequest) => {
+    if (readOnlyBlocked()) return;
     const { tenant, unit, currency } = account;
     const money = (n: number) => formatMoney(n, currency);
     const coverText = mode === 'amount' ? 'any amount (not for a month)' : months.map(m => m.short).join(', ');
@@ -1093,6 +1117,7 @@ export default function App() {
 
   // Untick months on a month deposit: its money goes down by the removed months
   const handleSaveDepositMonths = async (dep: DepositRecord, keep: string[]) => {
+    if (readOnlyBlocked()) return;
     const labels = depositMonthLabels(dep);
     const removed = labels.filter(l => !keep.includes(l));
     if (!removed.length) return;
@@ -1129,6 +1154,7 @@ export default function App() {
 
   // Remove a deposit and its money completely
   const handleClearTenantDeposit = async (dep: DepositRecord) => {
+    if (readOnlyBlocked()) return;
     const nextDeposits = deposits.filter(d => d.id !== dep.id);
     const unit = units.find(u => u.unitNumber === dep.unitNumber);
     const updatedUnit = unit ? unitWithDeposits(unit, nextDeposits) : null;
@@ -1153,7 +1179,7 @@ export default function App() {
   // Row ids are fixed per deposit + month, so running this twice (or on two devices)
   // never books the same rent twice.
   useEffect(() => {
-    if (!dbReady) return;
+    if (!dbReady || !canEdit) return;
     const rows: PaymentRecord[] = [];
     const changedDeposits: DepositRecord[] = [];
     const changedUnits: PropertyUnit[] = [];
@@ -1229,6 +1255,7 @@ export default function App() {
 
   // Add or change a waiting list entry; kept on this device until the database accepts it
   const handleSaveWaitingEntry = async (entry: WaitingEntry) => {
+    if (readOnlyBlocked()) return;
     const isNew = !waitingList.some(e => e.id === entry.id);
     setWaitingList(prev => (isNew ? [entry, ...prev] : prev.map(e => (e.id === entry.id ? entry : e))));
     const ok = await saveWaitingEntryToSupabase(entry);
@@ -1247,6 +1274,7 @@ export default function App() {
 
   // Add or change an electricity entry; kept on this device until the database accepts it
   const handleSaveElectricity = async (entry: ElectricityEntry) => {
+    if (readOnlyBlocked()) return;
     const isNew = !electricity.some(e => e.id === entry.id);
     setElectricity(prev => (isNew ? [entry, ...prev.filter(e => e.id !== entry.id)] : prev.map(e => (e.id === entry.id ? entry : e))));
     const ok = await saveElectricityToSupabase(entry);
@@ -1256,6 +1284,7 @@ export default function App() {
   };
 
   const handleDeleteElectricity = async (entry: ElectricityEntry) => {
+    if (readOnlyBlocked()) return;
     setElectricity(prev => prev.filter(e => e.id !== entry.id));
     setElectricityPending(entry.id, false);
     const ok = await deleteElectricityFromSupabase(entry.id);
@@ -1263,6 +1292,7 @@ export default function App() {
   };
 
   const handleDeleteWaitingEntry = async (entry: WaitingEntry) => {
+    if (readOnlyBlocked()) return;
     setWaitingList(prev => prev.filter(e => e.id !== entry.id));
     setWaitingPending(entry.id, false);
     const ok = await deleteWaitingEntryFromSupabase(entry.id);
@@ -1271,6 +1301,7 @@ export default function App() {
 
   // Return a held deposit to the tenant
   const handleReleaseDeposit = async (dep: DepositRecord) => {
+    if (readOnlyBlocked()) return;
     const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const released: DepositRecord = {
       ...dep,
@@ -1315,6 +1346,7 @@ export default function App() {
 
   // Quick action: record payment for specific unit (navigates to payments page)
   const handleOpenRecordPaymentForUnit = (unitId: string) => {
+    if (readOnlyBlocked()) return;
     setPaymentSelectedUnitId(unitId);
     setActiveTab('payments');
     setIsPaymentModalOpen(true);
@@ -1322,6 +1354,7 @@ export default function App() {
 
   // Quick action: record payment for tenant name or unit number (navigates to payments page)
   const handleRecordPaymentForTenantUnit = (unitNumber: string) => {
+    if (readOnlyBlocked()) return;
     const found = units.find(u => u.unitNumber === unitNumber);
     setPaymentSelectedUnitId(found?.id);
     setActiveTab('payments');
@@ -1350,6 +1383,13 @@ export default function App() {
   const unreadAlertsCount = notifications.filter(n => !n.read).length;
 
   // Render Login Page if not authenticated
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#082142]">
+        <span className="w-10 h-10 border-4 border-white/20 border-t-orange-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
   if (!isAuthenticated) {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
@@ -1602,7 +1642,7 @@ export default function App() {
 
           {/* 10. SETTINGS */}
           {activeTab === 'settings' && (
-            <SettingsView onClearAllData={handleClearAllData} />
+            <SettingsView user={adminUser} onClearAllData={canEdit ? handleClearAllData : undefined} />
           )}
 
           {/* 11. NOTIFICATIONS */}

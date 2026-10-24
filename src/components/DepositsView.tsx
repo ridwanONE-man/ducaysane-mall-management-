@@ -331,7 +331,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
 
                     <div className="mt-auto pt-1 flex gap-2">
                       {hasDeposit && onManageDeposit && (
-                        <button
+                        <button data-edit
                           type="button"
                           onClick={() => onManageDeposit(a)}
                           className="shrink-0 px-3 py-2.5 rounded-xl bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 text-slate-700 hover:text-orange-700 text-xs font-extrabold cursor-pointer"
@@ -341,7 +341,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
                         </button>
                       )}
                       {a.canDeposit ? (
-                        <button
+                        <button data-edit
                           type="button"
                           onClick={() => onOpenDeposit?.(a)}
                           className="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm shadow-orange-500/25 cursor-pointer"

@@ -337,7 +337,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
             >
               <Map className="w-3.5 h-3.5 text-orange-500" /> Floor Map
             </button>
-            <button
+            <button data-edit
               type="button"
               onClick={onOpenAddUnit}
               className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-extrabold shadow-md shadow-orange-500/25 flex items-center gap-1.5 transition-all cursor-pointer"
@@ -492,7 +492,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
               <Download className="w-3.5 h-3.5" /> Export
             </button>
             {onDeleteSelectedUnits && (
-              <button
+              <button data-edit
                 type="button"
                 onClick={async () => {
                   const ok = await confirm({
@@ -657,7 +657,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                           <p className="text-xs font-extrabold text-emerald-800">Vacant — ready to lease</p>
                           <p className="text-[10px] text-emerald-700/80">No tenant on this unit yet</p>
                         </div>
-                        <button
+                        <button data-edit
                           type="button"
                           onClick={() => onAssignTenant ? onAssignTenant(unit) : (onEditUnit ? onEditUnit(unit) : onOpenAddUnit())}
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold shadow-sm cursor-pointer"
@@ -677,7 +677,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                         )}
                       </div>
                       <div className="flex items-center gap-1">
-                        <button
+                        <button data-edit
                           type="button"
                           onClick={() => onEditUnit ? onEditUnit(unit) : onOpenAddUnit()}
                           className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold text-slate-600 bg-slate-100 hover:text-orange-700 hover:bg-orange-50 rounded-xl transition-colors cursor-pointer"
@@ -752,7 +752,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                             <p className="text-[11px] text-slate-500 truncate">{unit.currentTenant.trade}</p>
                           </div>
                         ) : (
-                          <button
+                          <button data-edit
                             type="button"
                             onClick={() => onAssignTenant ? onAssignTenant(unit) : (onEditUnit ? onEditUnit(unit) : onOpenAddUnit())}
                             className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
@@ -782,7 +782,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
                       </td>
                       <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button
+                          <button data-edit
                             type="button"
                             onClick={() => onEditUnit ? onEditUnit(unit) : onOpenAddUnit()}
                             className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors cursor-pointer"

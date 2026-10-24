@@ -129,7 +129,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             >
               <CreditCard className="w-4 h-4" /> Take payment
             </button>
-            <button
+            <button data-edit
               type="button"
               onClick={onOpenAddUnit}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-bold cursor-pointer"

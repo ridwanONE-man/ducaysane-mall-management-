@@ -256,7 +256,7 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
             </p>
           </div>
 
-          <button
+          <button data-edit
             type="button"
             disabled={!canConfirm}
             onClick={() => onConfirm({ account, allocations, cash, method, remark: remark.trim(), transferId: transferId.trim() })}

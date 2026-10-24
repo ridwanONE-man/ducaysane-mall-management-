@@ -160,7 +160,7 @@ export const WaitingListView: React.FC<WaitingListViewProps> = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] gap-6 items-start">
         {/* Add to the list */}
-        <form onSubmit={handleAdd} className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5 space-y-3 lg:sticky lg:top-4">
+        <form data-edit onSubmit={handleAdd} className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5 space-y-3 lg:sticky lg:top-4">
           <div className="flex items-center gap-2">
             <span className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center"><UserPlus className="w-4 h-4" /></span>
             <h2 className="text-sm font-extrabold text-slate-900">Add to waiting list</h2>
@@ -319,7 +319,7 @@ export const WaitingListView: React.FC<WaitingListViewProps> = ({
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 sm:justify-end">
-                        <button
+                        <button data-edit
                           type="button"
                           disabled={free === 0}
                           onClick={() => startLease(e)}
@@ -328,7 +328,7 @@ export const WaitingListView: React.FC<WaitingListViewProps> = ({
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" /> {free === 0 ? 'None free' : `Lease (${free} free)`}
                         </button>
-                        <button
+                        <button data-edit
                           type="button"
                           onClick={() => onUpdate({ ...e, status: 'Removed' })}
                           title="Take off the list (kept in history)"
@@ -366,7 +366,7 @@ export const WaitingListView: React.FC<WaitingListViewProps> = ({
                         {e.status === 'Leased'
                           ? <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-bold">Leased {e.leasedUnit}</span>
                           : (
-                            <button
+                            <button data-edit
                               type="button"
                               onClick={() => onUpdate({ ...e, status: 'Waiting' })}
                               className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 font-bold cursor-pointer hover:bg-orange-100"

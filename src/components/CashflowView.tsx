@@ -304,14 +304,14 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
             {onClearAllTransactions && (
               <ClearAllButton count={ownTransactions.length} itemLabel="cashflow entries" onClear={onClearAllTransactions} />
             )}
-            <button
+            <button data-edit
               type="button"
               onClick={() => openNewEntry('Inflow')}
               className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-md shadow-emerald-500/25 cursor-pointer"
             >
               <ArrowDownLeft className="w-4 h-4" /> Money In
             </button>
-            <button
+            <button data-edit
               type="button"
               onClick={() => openNewEntry('Outflow')}
               className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600 text-white rounded-xl text-xs font-extrabold shadow-md shadow-rose-500/25 cursor-pointer"
@@ -458,10 +458,10 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                     <p className="font-extrabold text-slate-900 text-sm">{transactions.length && periodMode !== 'all' ? `No cashflow entries in ${periodLabel}` : 'No cashflow entries'}</p>
                     <p className="text-xs text-slate-500 mt-1 mb-4">Record money coming in or going out.</p>
                     <div className="inline-flex gap-2">
-                      <button type="button" onClick={() => openNewEntry('Inflow')} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5">
+                      <button data-edit type="button" onClick={() => openNewEntry('Inflow')} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5">
                         <ArrowDownLeft className="w-3.5 h-3.5" /> Money In
                       </button>
-                      <button type="button" onClick={() => openNewEntry('Outflow')} className="px-4 py-2 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5">
+                      <button data-edit type="button" onClick={() => openNewEntry('Outflow')} className="px-4 py-2 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5">
                         <ArrowUpRight className="w-3.5 h-3.5" /> Money Out
                       </button>
                     </div>
@@ -507,7 +507,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                             <Printer className="w-3.5 h-3.5" />
                           </button>
                           {!inflow && !linkedIds.has(t.id) && (
-                            <button
+                            <button data-edit
                               type="button"
                               onClick={() => openEdit(t)}
                               title="Edit this outflow"

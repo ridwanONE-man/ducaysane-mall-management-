@@ -295,7 +295,7 @@ export const DepositRecordsPanel: React.FC<DepositRecordsPanelProps> = ({ deposi
                         <Printer className="w-3.5 h-3.5" />
                       </button>
                       {d.status === 'Held in Escrow' && onRelease && (
-                        <button
+                        <button data-edit
                           type="button"
                           onClick={() => onRelease(d)}
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-amber-50 hover:text-amber-700 text-slate-600 rounded-lg text-[11px] font-bold cursor-pointer"

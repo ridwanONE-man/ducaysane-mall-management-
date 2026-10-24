@@ -310,14 +310,14 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
             >
               <CheckSquare className="w-3.5 h-3.5 text-orange-500" /> Print selected{selectedShown.length ? ` (${selectedShown.length})` : ''}
             </button>
-            <button
+            <button data-edit
               type="button"
               onClick={() => setForm({ editing: null })}
               className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-md shadow-emerald-500/25 cursor-pointer"
             >
               <ArrowDownLeft className="w-4 h-4" /> Money In
             </button>
-            <button
+            <button data-edit
               type="button"
               onClick={() => setOutForm({ editing: null })}
               className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600 text-white rounded-xl text-xs font-extrabold shadow-md shadow-rose-500/25 cursor-pointer"
@@ -527,7 +527,7 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
                           <button type="button" onClick={() => setPrintJob(t)} title="Print voucher" className="p-1.5 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-orange-50 cursor-pointer">
                             <Printer className="w-4 h-4" />
                           </button>
-                          <button
+                          <button data-edit
                             type="button"
                             onClick={() => (out ? setOutForm({ editing: t }) : setForm({ editing: t }))}
                             title="Modify"

@@ -14,7 +14,7 @@ interface DeleteButtonProps {
 export const DeleteButton: React.FC<DeleteButtonProps> = ({ onDelete, confirm: options, label, title, className = '' }) => {
   const confirm = useConfirm();
   return (
-    <button
+    <button data-edit
       type="button"
       onClick={async e => {
         e.stopPropagation();
@@ -44,7 +44,7 @@ interface ClearAllButtonProps {
 export const ClearAllButton: React.FC<ClearAllButtonProps> = ({ count, itemLabel, onClear, message, size = 'md' }) => {
   const confirm = useConfirm();
   return (
-    <button
+    <button data-edit
       type="button"
       disabled={count === 0}
       onClick={async () => {

@@ -16,11 +16,14 @@ export type NavigationTab =
 
 export type CurrencyMode = 'USD' | 'ALL';
 
+export type AppRole = 'admin' | 'viewer';
+
 export interface AdminUser {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: string; // shown under the name
+  access?: AppRole; // admin changes data; viewer can only read and print
   avatar: string;
   lastLogin: string;
 }

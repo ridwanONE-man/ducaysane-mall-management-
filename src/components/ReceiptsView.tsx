@@ -187,7 +187,7 @@ Generated electronically by Nyakuron Business Centre Management.
                 message="Every receipt is a payment record, so all payments are removed from the database. This cannot be undone."
               />
             )}
-            <button
+            <button data-edit
               type="button"
               onClick={onOpenRecordPayment}
               className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-extrabold shadow-md shadow-orange-500/25 cursor-pointer"
@@ -303,7 +303,7 @@ Generated electronically by Nyakuron Business Centre Management.
                     </div>
                     <p className="font-extrabold text-slate-900 text-sm">{payments.length === 0 ? 'No receipts yet' : periodReceipts.length === 0 ? `No receipts in ${periodLabel}` : 'No matching receipts'}</p>
                     <p className="text-xs text-slate-500 mt-1 mb-4">Receipts are created automatically whenever rent is paid.</p>
-                    <button
+                    <button data-edit
                       type="button"
                       onClick={onOpenRecordPayment}
                       className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer inline-flex items-center gap-1.5"

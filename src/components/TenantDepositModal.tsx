@@ -214,7 +214,7 @@ export const TenantDepositModal: React.FC<TenantDepositModalProps> = ({ account,
             </p>
           </div>
 
-          <button
+          <button data-edit
             type="button"
             disabled={!canSave}
             onClick={() => onConfirm({ account, mode, months: chosen, amount, bankAccount, notes: notes.trim() })}

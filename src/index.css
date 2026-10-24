@@ -37,3 +37,8 @@
     break-before: page;
   }
 }
+
+/* View-only accounts: anything that changes data is hidden (the database blocks it too) */
+body.view-only [data-edit] {
+  display: none !important;
+}

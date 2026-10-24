@@ -90,7 +90,7 @@ export const DashboardLeaseBoxes: React.FC<DashboardLeaseBoxesProps> = ({ units,
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {available.slice(0, 8).map(u => (
-                  <button
+                  <button data-edit
                     key={u.id}
                     type="button"
                     onClick={() => onLeaseUnit(u)}
