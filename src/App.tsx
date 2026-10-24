@@ -1428,18 +1428,15 @@ export default function App() {
             <DashboardView
               units={unitsShown}
               payments={payments}
-              currencyMode={currencyMode}
-              onCurrencyChange={setCurrencyMode}
-              onOpenRecordPayment={() => {
-                setPaymentSelectedUnitId(undefined);
-                setIsPaymentModalOpen(true);
-              }}
+              tenantAccounts={tenantAccounts}
+              deposits={visibleDeposits}
               onOpenAddUnit={() => {
                 setEditingUnit(null);
                 setIsAddUnitModalOpen(true);
               }}
-              onRecordPaymentForTenant={handleRecordPaymentForTenantUnit}
               onNavigate={setActiveTab}
+              onSaveUnit={handleSaveUnit}
+              onSaveDeposit={handleSaveDeposit}
             />
           )}
 
