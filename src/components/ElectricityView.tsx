@@ -53,9 +53,9 @@ const tenantOfEntry = (e: ElectricityEntry) =>
 const kwhOfEntry = (e: ElectricityEntry) => e.kwh || 0;
 const noteOfEntry = (e: ElectricityEntry) => e.notes || '';
 
-// Electricity has its own table. The Cash Flow page lists these entries read-only
-// through electricityToCashflow; they are never saved to cashflow.
-export const electricityToCashflow = (e: ElectricityEntry): CashflowTransaction => ({
+// Electricity is independent: its own table, never counted in Cash Flow or the
+// other money pages. electricityToCashflow only shapes an entry for its printed voucher.
+const electricityToCashflow = (e: ElectricityEntry): CashflowTransaction => ({
   id: e.id,
   referenceNumber: e.referenceNumber,
   date: toDisplayDate(e.date),
@@ -541,7 +541,7 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
                             confirm={{
                               title: out ? 'Delete this money out?' : 'Delete this electricity entry?',
                               subject: `${tenantOfEntry(t)} • ${formatMoney(t.amount, t.currency)}`,
-                              message: 'It is removed from the electricity records and the Cash Flow list.',
+                              message: 'It is removed from the electricity records.',
                               confirmLabel: 'Delete entry',
                             }}
                           />

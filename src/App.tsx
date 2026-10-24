@@ -21,7 +21,7 @@ import { SmartPayModal, SmartPayRequest } from './components/SmartPayModal';
 import { TenantDepositModal, TenantDepositRequest } from './components/TenantDepositModal';
 import { DepositManageModal } from './components/DepositManageModal';
 import { WaitingListView } from './components/WaitingListView';
-import { ElectricityView, electricityToCashflow } from './components/ElectricityView';
+import { ElectricityView } from './components/ElectricityView';
 import { depositFields, depositIn, RentCurrency } from './utils/currency';
 import { formatMoney, parsePaymentDate } from './utils/printUtils';
 import { buildTenantAccount, buildTenantAccounts, isLegacyCreditDeposit, DEPOSIT_MONTHS_PREFIX, AMOUNT_DEPOSIT_TAG, depositMonthLabels, withDepositMonths, planDepositApplications, accountKey, coverageEndOf } from './utils/tenantAccount';
@@ -340,7 +340,6 @@ export default function App() {
   const [electricity, setElectricity] = useState<ElectricityEntry[]>(() => readCache(ELECTRICITY_CACHE, []));
   const [electricityDbReady, setElectricityDbReady] = useState(true);
   useEffect(() => writeCache(ELECTRICITY_CACHE, electricity), [electricity]);
-  const electricityInCashflow = useMemo(() => electricity.map(electricityToCashflow), [electricity]);
 
   // Modal States
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -1531,7 +1530,6 @@ export default function App() {
           {/* 7. CASH FLOW & RESERVES */}
           {activeTab === 'cashflow' && (
             <CashflowView
-              linkedEntries={electricityInCashflow}
               currencyMode={currencyMode}
               transactions={cashflow}
               units={unitsShown}
@@ -1575,7 +1573,7 @@ export default function App() {
               payments={payments}
               tenantAccounts={tenantAccounts}
               deposits={visibleDeposits}
-              cashflow={[...cashflow, ...electricityInCashflow]}
+              cashflow={cashflow}
               waitingList={waitingList}
             />
           )}

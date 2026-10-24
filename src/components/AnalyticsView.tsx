@@ -55,7 +55,7 @@ interface AnalyticsViewProps {
   payments: PaymentRecord[];
   tenantAccounts: TenantAccount[];
   deposits: DepositRecord[];
-  cashflow: CashflowTransaction[]; // cashflow plus electricity, as listed on Cash Flow
+  cashflow: CashflowTransaction[];
   waitingList: WaitingEntry[];
 }
 
@@ -423,7 +423,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ units, payments, t
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5"><PieChart className="w-4 h-4 text-orange-500" /> Money in &amp; out</h2>
-            <p className="text-xs text-slate-500">{periodLabel} • all money: rent, deposits, electricity and other cash flow</p>
+            <p className="text-xs text-slate-500">{periodLabel} • cash flow money (electricity is kept separate)</p>
           </div>
           <div className="inline-flex bg-slate-100 p-0.5 rounded-xl">
             {CURRENCIES.map(c => (
