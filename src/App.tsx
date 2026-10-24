@@ -1572,6 +1572,7 @@ export default function App() {
           {activeTab === 'analytics' && (
             <AnalyticsView
               units={unitsShown}
+              payments={payments}
               tenantAccounts={tenantAccounts}
               deposits={visibleDeposits}
               cashflow={[...cashflow, ...electricityInCashflow]}
