@@ -32,11 +32,8 @@ import { DeleteButton, ClearAllButton } from './DeleteControls';
 import { PrintPortal } from './PrintPortal';
 import { CashflowVoucher, CashflowStatement } from './CashflowVoucher';
 
-const ACCOUNTS: CashflowTransaction['account'][] = ['Central Vault Cash Float', 'Stanbic Bank Operating', 'Ecobank Operating', 'Escrow Trust Account'];
-
-// Categories offered for each direction
-const IN_CATEGORIES: CashflowCategory[] = ['Rent Collection', 'Escrow Deposit', 'Utilities Surcharge', 'Kiosk Permit'];
-const OUT_CATEGORIES: CashflowCategory[] = ['Repairs & Maintenance', 'Security & Guards', 'Cleaning & Waste', 'Staff Payroll', 'Taxes & Licensing', 'Utilities Surcharge'];
+// New entries start with this account; the admin can type any other
+const DEFAULT_ACCOUNT = 'Cash';
 
 const CATEGORY_ICON: Partial<Record<CashflowCategory, React.ComponentType<{ className?: string }>>> = {
   'Rent Collection': Store,
@@ -100,7 +97,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const [newType, setNewType] = useState<'Inflow' | 'Outflow'>('Inflow');
   const [newCategory, setNewCategory] = useState<CashflowCategory>('Rent Collection');
   const [newAmount, setNewAmount] = useState('');
-  const [newAccount, setNewAccount] = useState<CashflowTransaction['account']>('Central Vault Cash Float');
+  const [newAccount, setNewAccount] = useState<string>(DEFAULT_ACCOUNT);
   const [newNotes, setNewNotes] = useState('');
   const [newCurrency, setNewCurrency] = useState<'USD' | 'SSP'>('USD');
   const [newDate, setNewDate] = useState(toISO(new Date()));
@@ -120,9 +117,9 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     setEditingTx(null);
     setNewTitle('');
     setNewType(type);
-    setNewCategory(type === 'Inflow' ? 'Rent Collection' : 'Repairs & Maintenance');
+    setNewCategory('');
     setNewAmount('');
-    setNewAccount('Central Vault Cash Float');
+    setNewAccount(DEFAULT_ACCOUNT);
     setNewNotes('');
     setNewCurrency('USD');
     setNewDate(toISO(new Date()));
@@ -207,13 +204,14 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
+    const category = newCategory.trim() || (newType === 'Inflow' ? 'Money in' : 'Money out');
     const details = {
-      title: newTitle.trim() || `${newCategory} Voucher`,
-      category: newCategory,
+      title: newTitle.trim() || `${category} Voucher`,
+      category,
       type: newType,
       amount: parseFloat(newAmount) || 0,
       currency: newCurrency,
-      account: newAccount,
+      account: newAccount.trim() || DEFAULT_ACCOUNT,
       notes: newNotes,
       date: toDisplayDate(newDate),
     };
@@ -260,7 +258,14 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
     }`;
   const selectCls = 'px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500';
   const isOut = newType === 'Outflow';
-  const categories = isOut ? OUT_CATEGORIES : IN_CATEGORIES;
+  // Balance of the chosen currency, before and after this entry (an edited entry is taken out first)
+  const balanceOf = (c: 'USD' | 'SSP') =>
+    ownTransactions
+      .filter(t => (t.currency || 'USD') === c && t.id !== editingTx?.id)
+      .reduce((s, t) => s + (t.type === 'Inflow' ? t.amount : -t.amount), 0);
+  const formBefore = balanceOf(newCurrency);
+  const formAfter = formBefore + (isOut ? -1 : 1) * (parseFloat(newAmount) || 0);
+  const signedMoney = (n: number, c: 'USD' | 'SSP') => `${n < 0 ? '-' : ''}${formatMoney(Math.abs(n), c)}`;
 
   return (
     <div id="cashflow-view" className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
@@ -349,7 +354,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="block text-[10px] font-bold uppercase tracking-wider opacity-70">Net</span>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider opacity-70">Balance</span>
                   <span className="block text-2xl font-black">{t.net < 0 ? '-' : ''}{formatMoney(Math.abs(t.net), t.currency)}</span>
                 </div>
               </div>
@@ -584,6 +589,15 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
                     className="w-full pl-14 pr-4 py-3 bg-slate-50 focus:bg-white border border-slate-200 rounded-2xl text-xl font-black text-slate-900 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                   />
                 </div>
+                <div className={`mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-[11px] font-bold ${
+                  newCurrency === 'USD' ? 'bg-slate-900 text-white' : 'bg-orange-500 text-white'
+                }`}>
+                  <span>{newCurrency === 'USD' ? 'Dollar' : 'SSP'} balance: {signedMoney(formBefore, newCurrency)}</span>
+                  <span className="flex items-center gap-1">
+                    {isOut ? <TrendingDown className="w-3.5 h-3.5" /> : <TrendingUp className="w-3.5 h-3.5" />}
+                    After this: <span className="font-black">{signedMoney(formAfter, newCurrency)}</span>
+                  </span>
+                </div>
               </div>
 
               <div>
@@ -600,14 +614,16 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Bank / Account</label>
-                  <select
+                  <label htmlFor="cf-account" className="block text-xs font-bold text-slate-700 mb-1">Bank / Account</label>
+                  <input
+                    id="cf-account"
+                    type="text"
                     value={newAccount}
-                    onChange={(e) => setNewAccount(e.target.value as CashflowTransaction['account'])}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:border-orange-500"
-                  >
-                    {[...ACCOUNTS, ...(ACCOUNTS.includes(newAccount) ? [] : [newAccount])].map(a => <option key={a} value={a}>{a}</option>)}
-                  </select>
+                    onChange={(e) => setNewAccount(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="e.g. Cash, KCB Bank, Equity Bank"
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Date</label>
@@ -625,25 +641,16 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">Category</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {[...categories, ...(categories.includes(newCategory) ? [] : [newCategory])].map(c => {
-                    const Icon = CATEGORY_ICON[c] || Landmark;
-                    const on = newCategory === c;
-                    return (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setNewCategory(c)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold cursor-pointer transition-all ${
-                          on ? 'bg-orange-50 border-orange-400 text-orange-800' : 'bg-white border-slate-200 text-slate-600 hover:border-orange-200'
-                        }`}
-                      >
-                        <Icon className="w-3 h-3" /> {c}
-                      </button>
-                    );
-                  })}
-                </div>
+                <label htmlFor="cf-category" className="block text-xs font-bold text-slate-700 mb-1">Category</label>
+                <input
+                  id="cf-category"
+                  type="text"
+                  required
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  placeholder={isOut ? 'e.g. Repairs, Staff salary, Cleaning, Generator fuel' : 'e.g. Rent, Parking, Kiosk permit'}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                />
               </div>
 
               <div>

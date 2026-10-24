@@ -140,7 +140,8 @@ export type CashflowCategory =
   | 'Cleaning & Waste' 
   | 'Repairs & Maintenance' 
   | 'Taxes & Licensing' 
-  | 'Staff Payroll';
+  | 'Staff Payroll'
+  | (string & {}); // any category the admin types
 
 export interface CashflowTransaction {
   id: string;
@@ -151,7 +152,7 @@ export interface CashflowTransaction {
   type: 'Inflow' | 'Outflow';
   amount: number;
   currency: 'USD' | 'SSP';
-  account: 'Central Vault Cash Float' | 'Stanbic Bank Operating' | 'Ecobank Operating' | 'Escrow Trust Account';
+  account: string; // bank or cash account, typed freely
   recordedBy: string;
   status: 'Completed' | 'Pending Verification';
   notes?: string;
