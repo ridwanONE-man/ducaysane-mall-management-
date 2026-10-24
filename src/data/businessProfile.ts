@@ -6,7 +6,7 @@ export const BUSINESS_PROFILE = {
   shortName: 'NBC',
   tagline: 'Commercial Shops & Business Spaces',
   address: defaultMallSettings.address || 'Nyakuron East, Juba - South Sudan',
-  phones: ['+211 928 223 154', '+211 924 991 131', '+211 921 515 150'],
+  phones: ['+211 928 223 154', '+211 925 250 398', '+211 987 790 000'],
   email: defaultMallSettings.contactEmail || 'info@nyakuroncentre.com',
   managerName: defaultMallSettings.managerName || 'Mohamed Mohamoud',
 };

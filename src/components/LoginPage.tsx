@@ -358,8 +358,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
               <div className="p-3.5 bg-slate-50 rounded-2xl space-y-2 border border-slate-200/80">
                 <p>📍 <strong>Location:</strong> Nyakuron East, Juba, South Sudan</p>
                 <p>📞 <strong>Phone 1:</strong> +211 928 223 154</p>
-                <p>📞 <strong>Phone 2:</strong> +211 924 991 131</p>
-                <p>📞 <strong>Phone 3:</strong> +211 921 515 150</p>
+                <p>📞 <strong>Phone 2:</strong> +211 925 250 398</p>
+                <p>📞 <strong>Phone 3:</strong> +211 987 790 000</p>
                 <p>👤 <strong>Management In-Charge:</strong> Mohamed Mohamoud</p>
               </div>
             </div>
