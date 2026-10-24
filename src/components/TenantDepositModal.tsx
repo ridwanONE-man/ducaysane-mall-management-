@@ -70,7 +70,7 @@ export const TenantDepositModal: React.FC<TenantDepositModalProps> = ({ account,
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-6">
         <div className="flex items-start justify-between gap-3 p-6 pb-4 border-b border-slate-100 bg-gradient-to-br from-blue-50 to-white">
           <div className="flex items-start gap-3 min-w-0">
@@ -92,7 +92,7 @@ export const TenantDepositModal: React.FC<TenantDepositModalProps> = ({ account,
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="p-4 sm:p-6 space-y-5">
           {/* Deposit type */}
           <div className="grid grid-cols-2 gap-2">
             {([

@@ -214,7 +214,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   return (
-    <div id="dashboard-view-container" className="p-6 lg:p-8 space-y-7 max-w-7xl mx-auto">
+    <div id="dashboard-view-container" className="p-3 sm:p-6 lg:p-8 space-y-7 max-w-7xl mx-auto">
       
       {/* Header Banner - Sleek, High-End */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

@@ -263,7 +263,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
   const categories = isOut ? OUT_CATEGORIES : IN_CATEGORIES;
 
   return (
-    <div id="cashflow-view" className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div id="cashflow-view" className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
 
       {/* Header */}
       <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs">
@@ -431,7 +431,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full min-w-[720px] text-left border-collapse">
             <thead>
               <tr className="bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider">
                 <th className="py-3 px-4">Ref / Date</th>
@@ -538,7 +538,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
       {/* Money in / out form */}
       {isRecordModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 my-6">
             <div className={`px-6 py-5 text-white ${isOut ? 'bg-gradient-to-r from-rose-500 to-orange-500' : 'bg-gradient-to-r from-emerald-600 to-teal-500'}`}>
               <div className="flex items-start justify-between gap-3">
@@ -557,7 +557,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
               </div>
             </div>
 
-            <form onSubmit={handleAddTransaction} className="p-6 space-y-4">
+            <form onSubmit={handleAddTransaction} className="p-4 sm:p-6 space-y-4">
               {/* Amount first: the main thing being recorded */}
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -677,7 +677,7 @@ export const CashflowView: React.FC<CashflowViewProps> = ({
 
       {/* Voucher preview */}
       {viewingTx && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto" onClick={() => setViewingTx(null)}>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-3 sm:p-4 overflow-y-auto" onClick={() => setViewingTx(null)}>
           <div className="bg-slate-100 rounded-3xl max-w-3xl w-full shadow-2xl my-6 overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between gap-3 px-5 py-3 bg-white border-b border-slate-200">
               <p className="text-sm font-extrabold text-slate-900 truncate">Voucher {viewingTx.referenceNumber}</p>

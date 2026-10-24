@@ -132,7 +132,7 @@ export const WaitingListView: React.FC<WaitingListViewProps> = ({
   const spaceCount = waiting.filter(e => e.unitType === 'Space').length;
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs">
         <div className="h-1.5 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
@@ -392,7 +392,7 @@ export const WaitingListView: React.FC<WaitingListViewProps> = ({
 
       {/* Choose which free unit to lease */}
       {pickingFor && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4" onClick={() => setPickingFor(null)}>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto" onClick={() => setPickingFor(null)}>
           <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden" onClick={ev => ev.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <div>

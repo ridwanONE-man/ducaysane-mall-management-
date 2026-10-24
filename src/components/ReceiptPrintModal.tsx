@@ -45,7 +45,7 @@ export const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
   const { combined, items } = receiptGroup(payment, allPayments);
 
   return (
-    <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 my-8">
         {/* Modal Controls */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/70">

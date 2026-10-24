@@ -1,788 +1,443 @@
-import React, { useState, useMemo } from 'react';
-import { 
-  BarChart3, 
-  TrendingUp, 
-  Download, 
-  Printer, 
-  Calendar, 
-  AlertTriangle, 
-  Layers, 
-  CheckCircle2, 
-  FileText,
-  Clock,
-  ArrowUpRight,
-  ShieldAlert,
+import React, { useMemo, useState } from 'react';
+import {
+  TrendingUp,
+  Building2,
+  Wallet,
+  AlertTriangle,
   ShieldCheck,
+  Hourglass,
+  Trophy,
+  Timer,
+  Flame,
+  CalendarClock,
   Store,
-  DollarSign,
-  PieChart
+  LayoutGrid,
+  CheckCircle2,
+  Medal,
 } from 'lucide-react';
-import { PropertyUnit, PaymentRecord, DepositRecord } from '../types';
-import { DeleteButton, ClearAllButton } from './DeleteControls';
+import { CashflowTransaction, DepositRecord, PropertyUnit, WaitingEntry } from '../types';
+import { TenantAccount, AccountMonth, coverageEndOf } from '../utils/tenantAccount';
+import { unitCategoryOf } from './CategorySwitch';
+import { formatMoney, parsePaymentDate, formatLongDate } from '../utils/printUtils';
+import { MONTH_NAMES } from '../utils/rentLedger';
+import { depositIn } from '../utils/currency';
+
+type Currency = 'USD' | 'SSP';
+
+// Rent is due on the 1st; paid by the 5th still counts as on time
+const GRACE_DAYS = 5;
+const DAY = 86_400_000;
 
 interface AnalyticsViewProps {
   units: PropertyUnit[];
-  payments: PaymentRecord[];
-  deposits?: DepositRecord[];
-  onDeletePayment?: (payment: PaymentRecord) => void;
-  onClearAllPayments?: () => void;
-  onDeleteDeposit?: (deposit: DepositRecord) => void;
-  onClearAllDeposits?: () => void;
+  tenantAccounts: TenantAccount[];
+  deposits: DepositRecord[];
+  cashflow: CashflowTransaction[]; // cashflow plus electricity, as listed on Cash Flow
+  waitingList: WaitingEntry[];
 }
 
-type ReportTab = 'revenue' | 'spatial' | 'arrears' | 'deposits' | 'expirations';
+const monthStart = (idx: number) => new Date(Math.floor(idx / 12), idx % 12, 1);
 
-export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ 
-  units, 
-  payments, 
-  deposits = [],
-  onDeletePayment,
-  onClearAllPayments,
-  onDeleteDeposit,
-  onClearAllDeposits
-}) => {
-  const [activeReportTab, setActiveReportTab] = useState<ReportTab>('revenue');
-  const [revenuePeriodFilter, setRevenuePeriodFilter] = useState<'6months' | 'year' | 'all'>('6months');
-  const [hoveredChartMonth, setHoveredChartMonth] = useState<number | null>(null);
+// When a month became fully paid: the latest payment that went into it
+const paidOn = (m: AccountMonth) =>
+  m.payments.reduce<Date | null>((latest, p) => {
+    const d = parsePaymentDate(p.date);
+    return d && (!latest || d > latest) ? d : latest;
+  }, null);
 
-  // Aggregations (Strictly USD)
-  const totalClearedUSD = payments
-    .filter(p => p.currency === 'USD')
-    .reduce((sum, p) => sum + p.amount, 0);
+const firstPaymentOn = (m: AccountMonth) =>
+  m.payments.reduce<Date | null>((first, p) => {
+    const d = parsePaymentDate(p.date);
+    return d && (!first || d < first) ? d : first;
+  }, null);
 
-  const totalArrearsUSD = units.reduce((sum, u) => sum + (u.arrearsUSD || 0), 0);
-  const unitsInArrears = units.filter(u => (u.arrearsUSD || 0) > 0);
-  const unitsExpiringSoon = units.filter(u => u.daysRemaining !== undefined && u.daysRemaining <= 60);
+interface Behaviour {
+  account: TenantAccount;
+  onTime: number;
+  early: number;
+  late: number;
+  missed: number; // past the grace days and still not fully paid
+  avgDaysLate: number;
+  score: number; // on-time share of months that are due, 0–100
+  owed: number;
+}
 
-  // Total Escrow Deposits
-  const totalEscrowDepositsUSD = deposits.filter(d => d.status === 'Held in Escrow').length > 0
-    ? deposits.filter(d => d.status === 'Held in Escrow').reduce((sum, d) => sum + d.amountUSD, 0)
-    : units.reduce((sum, u) => sum + (u.escrowDepositUSD || 0), 0);
-
-  // Category Breakdown: Shops vs Spaces
-  const shops = units.filter(u => u.type === 'Shop' || u.categoryType === 'Shop' || u.unitNumber.startsWith('G'));
-  const spaces = units.filter(u => u.type === 'Space' || u.categoryType === 'Space' || u.unitNumber.startsWith('BW'));
-
-  const shopsRevenue = shops.filter(u => u.occupancyStatus === 'Occupied').reduce((sum, u) => sum + u.monthlyRateUSD, 0);
-  const spacesRevenue = spaces.filter(u => u.occupancyStatus === 'Occupied').reduce((sum, u) => sum + u.monthlyRateUSD, 0);
-  const totalMonthlyPotential = shopsRevenue + spacesRevenue;
-
-  const shopsRevenuePct = totalMonthlyPotential > 0 ? Math.round((shopsRevenue / totalMonthlyPotential) * 100) : 0;
-  const spacesRevenuePct = totalMonthlyPotential > 0 ? Math.round((spacesRevenue / totalMonthlyPotential) * 100) : 0;
-
-  // Monthly Revenue Chart Data
-  const monthlyChartData = useMemo(() => {
-    const months = ['May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026', 'Oct 2026'];
-    const baseline = [16500, 18200, 21400, 23800, 0, 0];
-
-    // Map actual payments into periods
-    const mapped = months.map((m, idx) => {
-      const monthPrefix = m.split(' ')[0].slice(0, 3);
-      const matches = payments.filter(p => {
-        if (p.accountingPeriod && p.accountingPeriod.includes(monthPrefix)) return true;
-        if (p.date && p.date.includes(monthPrefix)) return true;
-        return false;
-      });
-
-      const actualSum = matches.reduce((s, p) => s + p.amount, 0);
-      const amount = actualSum > 0 ? actualSum : (idx === 4 && totalClearedUSD > 0 ? totalClearedUSD : baseline[idx]);
-      const count = matches.length > 0 ? matches.length : Math.max(1, Math.round(amount / 550));
-
-      return {
-        month: m,
-        monthShort: monthPrefix,
-        amount,
-        count
-      };
-    });
-
-    return mapped;
-  }, [payments, totalClearedUSD]);
-
-  // Floor yields
-  const floorStats = ['Ground Floor', 'Floor 1', 'Floor 2', 'Floor 3'].map(floor => {
-    const floorUnits = units.filter(u => u.floor === floor);
-    const occupied = floorUnits.filter(u => u.occupancyStatus === 'Occupied').length;
-    const total = floorUnits.length;
-    const totalArea = floorUnits.reduce((sum, u) => sum + u.sizeSqM, 0);
-    const totalRevenueUSD = floorUnits
-      .filter(u => u.occupancyStatus === 'Occupied')
-      .reduce((sum, u) => sum + u.monthlyRateUSD, 0);
-    const yieldPerSqM = totalArea > 0 ? totalRevenueUSD / totalArea : 0;
-    return {
-      floor,
-      total,
-      occupied,
-      rate: total > 0 ? (occupied / total) * 100 : 0,
-      totalArea,
-      totalRevenueUSD,
-      yieldPerSqM
-    };
-  });
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const handleExportReportCSV = () => {
-    let headers: string[] = [];
-    let rows: string[][] = [];
-    let filename = '';
-
-    if (activeReportTab === 'revenue') {
-      filename = 'NBC_Revenue_Report';
-      headers = ['Receipt #', 'Tenant', 'Unit Space', 'Date', 'Period', 'Amount Paid (USD)', 'Payment Method'];
-      rows = payments.map(p => [
-        p.receiptNumber,
-        `"${p.tenantName}"`,
-        `"${p.unitSpace}"`,
-        p.date,
-        p.accountingPeriod,
-        p.amount.toFixed(2),
-        `"${p.paymentMethod}"`
-      ]);
-    } else if (activeReportTab === 'arrears') {
-      filename = 'NBC_Arrears_Aging_Report';
-      headers = ['Unit Number', 'Tenant Name', 'Floor', 'Billing Status', 'Overdue Balance (USD)', 'Days Remaining'];
-      rows = unitsInArrears.map(u => [
-        u.unitNumber,
-        `"${u.currentTenant?.name || 'Vacant'}"`,
-        u.floor,
-        u.billingStatus,
-        (u.arrearsUSD || 0).toFixed(2),
-        (u.daysRemaining || 0).toString()
-      ]);
-    } else if (activeReportTab === 'deposits') {
-      filename = 'NBC_Escrow_Deposits_Liability';
-      headers = ['Deposit ID', 'Tenant Name', 'Unit Number', 'Escrow Balance (USD)', 'Months Covered', 'Depository Bank', 'Status'];
-      rows = deposits.map(d => [
-        d.depositSlip || d.id,
-        `"${d.tenantName}"`,
-        d.unitNumber,
-        d.amountUSD.toFixed(2),
-        (d.depositMonths || 2).toString(),
-        `"${d.bankAccount}"`,
-        d.status
-      ]);
-    } else if (activeReportTab === 'spatial') {
-      filename = 'NBC_Spatial_Yield_Report';
-      headers = ['Floor Level', 'Total Units', 'Occupied Units', 'Occupancy Rate (%)', 'Total Area (sq.m)', 'Monthly Yield (USD)', 'Yield / sq.m'];
-      rows = floorStats.map(f => [
-        f.floor,
-        f.total.toString(),
-        f.occupied.toString(),
-        f.rate.toFixed(1) + '%',
-        f.totalArea.toFixed(1),
-        f.totalRevenueUSD.toFixed(2),
-        '$' + f.yieldPerSqM.toFixed(2)
-      ]);
-    } else {
-      filename = 'NBC_Lease_Expirations';
-      headers = ['Unit Number', 'Tenant Name', 'Floor', 'Lease Maturity', 'Days Remaining', 'Monthly Rate USD'];
-      rows = unitsExpiringSoon.map(u => [
-        u.unitNumber,
-        `"${u.currentTenant?.name || ''}"`,
-        u.floor,
-        u.leaseEnd || 'N/A',
-        (u.daysRemaining || 0).toString(),
-        u.monthlyRateUSD.toFixed(2)
-      ]);
+function behaviourOf(a: TenantAccount, today: Date): Behaviour {
+  let onTime = 0, early = 0, late = 0, missed = 0, lateDays = 0;
+  for (const m of a.months) {
+    if (!m.contracted) continue;
+    const due = monthStart(m.idx);
+    const graceEnd = new Date(due.getTime() + GRACE_DAYS * DAY);
+    if (m.status === 'paid') {
+      const done = paidOn(m) || due;
+      if (done <= graceEnd) {
+        onTime++;
+        if (done < due) early++;
+      } else {
+        late++;
+        lateDays += Math.round((done.getTime() - graceEnd.getTime()) / DAY);
+      }
+    } else if (today > graceEnd) {
+      missed++;
     }
+  }
+  const counted = onTime + late + missed;
+  return {
+    account: a,
+    onTime,
+    early,
+    late,
+    missed,
+    avgDaysLate: late ? Math.round(lateDays / late) : 0,
+    score: counted ? Math.round((onTime / counted) * 100) : 100,
+    owed: a.balance,
+  };
+}
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `${filename}_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ units, tenantAccounts, deposits, cashflow, waitingList }) => {
+  const today = new Date();
+  const todayIdx = today.getFullYear() * 12 + today.getMonth();
+  const [chartCurrency, setChartCurrency] = useState<Currency>(() =>
+    tenantAccounts.filter(a => a.currency === 'SSP').length > tenantAccounts.filter(a => a.currency === 'USD').length ? 'SSP' : 'USD'
+  );
+  const [firstMonthIdx, setFirstMonthIdx] = useState(todayIdx);
+
+  // ---- Overview ---------------------------------------------------------
+  const isSpace = (u: PropertyUnit) => unitCategoryOf(u.unitNumber, units) === 'space';
+  const occupied = (list: PropertyUnit[]) => list.filter(u => u.currentTenant && u.occupancyStatus !== 'Available').length;
+  const shops = units.filter(u => !isSpace(u));
+  const spaces = units.filter(isSpace);
+  const occupancy = units.length ? Math.round((occupied(units) / units.length) * 100) : 0;
+
+  const thisMonth = (d: Date | null) => Boolean(d && d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth());
+  const rentPayments = tenantAccounts.flatMap(a => a.months.flatMap(m => m.payments));
+  const uniquePayments = [...new Map(rentPayments.map(p => [p.id, p])).values()].filter(p => p.paymentMethod !== 'Security Deposit');
+  const collectedThisMonth = (c: Currency) =>
+    uniquePayments.filter(p => p.currency === c && thisMonth(parsePaymentDate(p.date))).reduce((s, p) => s + p.amount, 0);
+  const owedBy = (c: Currency) => tenantAccounts.filter(a => a.currency === c).reduce((s, a) => s + a.balance, 0);
+  const owingCount = tenantAccounts.filter(a => a.balance > 0).length;
+  const held = deposits.filter(d => d.status === 'Held in Escrow');
+  const heldIn = (c: Currency) => held.reduce((s, d) => s + depositIn(d, c), 0);
+  const cashNet = (c: Currency) =>
+    cashflow
+      .filter(t => (t.currency || 'USD') === c && thisMonth(parsePaymentDate(t.date)))
+      .reduce((s, t) => s + (t.type === 'Inflow' ? t.amount : -t.amount), 0);
+  const waiting = waitingList.filter(w => w.status === 'Waiting');
+
+  const signed = (n: number, c: Currency) => `${n < 0 ? '-' : ''}${formatMoney(Math.abs(n), c)}`;
+  const tiles = [
+    { label: 'Occupancy', icon: Building2, tone: 'from-orange-500 to-amber-500', main: `${occupancy}%`, sub: `Shops ${occupied(shops)}/${shops.length} • Spaces ${occupied(spaces)}/${spaces.length}` },
+    { label: 'Rent this month', icon: TrendingUp, tone: 'from-emerald-500 to-teal-500', main: formatMoney(collectedThisMonth('USD'), 'USD'), sub: formatMoney(collectedThisMonth('SSP'), 'SSP') },
+    { label: 'Owed now', icon: AlertTriangle, tone: 'from-rose-500 to-orange-500', main: formatMoney(owedBy('USD'), 'USD'), sub: `${formatMoney(owedBy('SSP'), 'SSP')} • ${owingCount} tenant${owingCount === 1 ? '' : 's'}` },
+    { label: 'Deposits held', icon: ShieldCheck, tone: 'from-blue-500 to-indigo-600', main: formatMoney(heldIn('USD'), 'USD'), sub: formatMoney(heldIn('SSP'), 'SSP') },
+    { label: 'Cash this month', icon: Wallet, tone: 'from-slate-700 to-slate-900', main: signed(cashNet('USD'), 'USD'), sub: signed(cashNet('SSP'), 'SSP') },
+    { label: 'Waiting list', icon: Hourglass, tone: 'from-amber-500 to-yellow-500', main: String(waiting.length), sub: `${waiting.filter(w => w.unitType === 'Shop').length} shops • ${waiting.filter(w => w.unitType === 'Space').length} spaces` },
+  ];
+
+  // ---- Collected vs expected, last 6 months ------------------------------
+  const chart = useMemo(() => {
+    const list = tenantAccounts.filter(a => a.currency === chartCurrency);
+    return Array.from({ length: 6 }, (_, i) => {
+      const idx = todayIdx - 5 + i;
+      let expected = 0, paid = 0;
+      for (const a of list) {
+        const m = a.months.find(x => x.idx === idx);
+        if (m?.contracted) expected += m.due;
+        if (m) paid += Math.min(m.paid, m.due);
+      }
+      return { idx, label: MONTH_NAMES[idx % 12].slice(0, 3), expected, paid };
+    });
+  }, [tenantAccounts, chartCurrency, todayIdx]);
+  const chartMax = Math.max(1, ...chart.map(c => Math.max(c.expected, c.paid)));
+  const chartRate = (() => {
+    const e = chart.reduce((s, c) => s + c.expected, 0);
+    return e ? Math.round((chart.reduce((s, c) => s + Math.min(c.paid, c.expected), 0) / e) * 100) : 0;
+  })();
+
+  // ---- Payment behaviour --------------------------------------------------
+  const behaviour = useMemo(() => tenantAccounts.map(a => behaviourOf(a, today)), [tenantAccounts]); // eslint-disable-line react-hooks/exhaustive-deps
+  const best = behaviour
+    .filter(b => b.onTime + b.late + b.missed > 0)
+    .sort((a, b) => b.score - a.score || b.early - a.early || b.onTime - a.onTime)
+    .slice(0, 8);
+  const worst = behaviour
+    .filter(b => b.missed > 0 || b.late > 0 || b.owed > 0)
+    .sort((a, b) => b.account.dueNow.length - a.account.dueNow.length || b.owed - a.owed || b.late - a.late)
+    .slice(0, 8);
+
+  // Who paid first for a chosen month
+  const monthChoices = Array.from({ length: 12 }, (_, i) => todayIdx - i);
+  const firstPayers = tenantAccounts
+    .map(a => {
+      const m = a.months.find(x => x.idx === firstMonthIdx);
+      const first = m ? firstPaymentOn(m) : null;
+      return m && first ? { a, m, first } : null;
+    })
+    .filter((x): x is { a: TenantAccount; m: AccountMonth; first: Date } => x !== null)
+    .sort((x, y) => x.first.getTime() - y.first.getTime());
+  const notPaidYet = tenantAccounts.filter(a => {
+    const m = a.months.find(x => x.idx === firstMonthIdx);
+    return m?.contracted && m.payments.length === 0;
+  }).length;
+  const timingLabel = (d: Date, idx: number) => {
+    const days = Math.round((d.getTime() - monthStart(idx).getTime()) / DAY);
+    if (days < 0) return `${-days} day${days === -1 ? '' : 's'} early`;
+    if (days <= GRACE_DAYS) return days === 0 ? 'On the 1st' : `Day ${days + 1} • on time`;
+    return `${days - GRACE_DAYS} day${days - GRACE_DAYS === 1 ? '' : 's'} late`;
   };
 
-  const chartCeiling = Math.ceil(Math.max(...monthlyChartData.map(d => d.amount), 5000) / 5000) * 5000;
+  // ---- Leases ending soon -------------------------------------------------
+  const ending = units
+    .filter(u => u.currentTenant)
+    .map(u => {
+      const end = parsePaymentDate(coverageEndOf(u));
+      return { u, end, days: end ? Math.round((end.getTime() - new Date(today.toDateString()).getTime()) / DAY) : null };
+    })
+    .filter((x): x is { u: PropertyUnit; end: Date; days: number } => x.days !== null && x.days <= 30)
+    .sort((a, b) => a.days - b.days)
+    .slice(0, 6);
+
+  const card = 'bg-white rounded-3xl border border-slate-200/80 shadow-xs';
+  const initials = (name: string) => name.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase();
+  const Avatar: React.FC<{ a: TenantAccount; tone?: string }> = ({ a, tone }) => (
+    <span className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black text-white shrink-0 bg-gradient-to-br ${
+      tone || (unitCategoryOf(a.unit.unitNumber, units) === 'space' ? 'from-blue-500 to-indigo-600' : 'from-orange-500 to-amber-500')
+    }`}>
+      {initials(a.tenant.name)}
+    </span>
+  );
+  const Empty: React.FC<{ text: string }> = ({ text }) => <p className="py-8 text-center text-xs text-slate-400">{text}</p>;
 
   return (
-    <div id="analytics-view" className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
-      
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-700">
-              <BarChart3 className="w-5 h-5" />
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              Executive Analytics
-            </h1>
+    <div id="analytics-view" className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
+
+      {/* Header */}
+      <div className={`relative overflow-hidden ${card}`}>
+        <div className="h-1.5 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
+        <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-orange-100/50" />
+        <div className="relative p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/30 shrink-0">
+            <TrendingUp className="w-6 h-6" />
           </div>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Certified fiscal audits, collection velocity, spatial yield metrics, and escrow liability reports.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-          >
-            <Printer className="w-3.5 h-3.5 text-slate-500" />
-            <span>Print Report</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportReportCSV}
-            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20 cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
-          </button>
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Analysis</h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">The whole business at a glance • {MONTH_NAMES[today.getMonth()]} {today.getFullYear()}</p>
+          </div>
         </div>
       </div>
 
-      {/* Report Module Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
-        {[
-          { id: 'revenue' as const, label: 'Revenue & Monthly Trends', icon: TrendingUp },
-          { id: 'spatial' as const, label: 'Spatial Yield & Floor Area', icon: Layers },
-          { id: 'arrears' as const, label: 'Arrears & Delinquency Aging', icon: AlertTriangle, count: unitsInArrears.length },
-          { id: 'deposits' as const, label: 'Escrow Reserves Liability', icon: ShieldCheck },
-          { id: 'expirations' as const, label: 'Lease Maturity Calendar', icon: Clock, count: unitsExpiringSoon.length },
-        ].map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeReportTab === tab.id;
-
+      {/* Overview tiles */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        {tiles.map(t => {
+          const Icon = t.icon;
           return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveReportTab(tab.id)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-                isActive
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-              {typeof tab.count === 'number' && tab.count > 0 && (
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  isActive ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-700'
-                }`}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
+            <div key={t.label} className={`relative overflow-hidden ${card} p-4`}>
+              <div className={`absolute -right-6 -top-6 w-20 h-20 rounded-full bg-gradient-to-br ${t.tone} opacity-10`} />
+              <span className={`w-8 h-8 rounded-xl bg-gradient-to-br ${t.tone} text-white flex items-center justify-center shadow-sm`}>
+                <Icon className="w-4 h-4" />
+              </span>
+              <p className="mt-3 text-[10px] font-black uppercase tracking-wider text-slate-500">{t.label}</p>
+              <p className="text-lg sm:text-xl font-black text-slate-900 leading-tight truncate">{t.main}</p>
+              <p className="text-[11px] text-slate-500 truncate">{t.sub}</p>
+            </div>
           );
         })}
       </div>
 
-      {/* TAB 1: REVENUE & MONTHLY TRENDS */}
-      {activeReportTab === 'revenue' && (
-        <div className="space-y-6 animate-in fade-in">
-          
-          {/* Key KPI summary strip */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 block">Total Revenue Cleared</span>
-              <div className="mt-1">
-                <span className="text-2xl font-black text-slate-900">${totalClearedUSD.toLocaleString()} USD</span>
-                <span className="text-[11px] text-emerald-600 font-bold block mt-0.5">Verified Collections</span>
-              </div>
+      {/* Chart + units */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className={`lg:col-span-2 ${card} p-5`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-extrabold text-slate-900">Rent collected vs expected</h2>
+              <p className="text-xs text-slate-500">Last 6 months • {chartRate}% collected</p>
             </div>
-
-            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 block">Monthly Run-Rate</span>
-              <div className="mt-1">
-                <span className="text-2xl font-black text-blue-600">${totalMonthlyPotential.toLocaleString()} USD</span>
-                <span className="text-[11px] text-slate-500 font-medium block mt-0.5">Shops + Spaces Capacity</span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 block">Retail Shops Share</span>
-              <div className="mt-1">
-                <span className="text-2xl font-black text-indigo-700">{shopsRevenuePct}%</span>
-                <span className="text-[11px] text-slate-500 font-medium block mt-0.5">${shopsRevenue.toLocaleString()} USD/mo</span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 block">Commercial Spaces Share</span>
-              <div className="mt-1">
-                <span className="text-2xl font-black text-emerald-700">{spacesRevenuePct}%</span>
-                <span className="text-[11px] text-slate-500 font-medium block mt-0.5">${spacesRevenue.toLocaleString()} USD/mo</span>
-              </div>
+            <div className="inline-flex bg-slate-100 p-0.5 rounded-xl">
+              {(['USD', 'SSP'] as const).map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setChartCurrency(c)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${chartCurrency === c ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs' : 'text-slate-600'}`}
+                >
+                  {c === 'USD' ? '$ Dollar' : 'SSP'}
+                </button>
+              ))}
             </div>
           </div>
-
-          {/* Monthly Trend SVG Chart & Breakdown */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Monthly Rental Collections Trend (USD $)
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Certified monthly rent cash inflow across all commercial tenancies.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-xl text-xs font-bold">
-                  2026 Fiscal Year
-                </span>
-              </div>
-            </div>
-
-            {/* Interactive SVG Chart */}
-            <div className="h-64 w-full relative">
-              <svg className="w-full h-full overflow-visible" viewBox="0 0 600 220" preserveAspectRatio="none">
-                {/* Horizontal Grid */}
-                {[0, 0.25, 0.5, 0.75, 1].map((pct, idx) => {
-                  const y = 185 - pct * 155;
-                  const labelVal = Math.round(chartCeiling * pct);
-                  return (
-                    <g key={idx}>
-                      <line x1="50" y1={y} x2="580" y2={y} stroke={idx === 0 ? "#cbd5e1" : "#f1f5f9"} strokeWidth="1" strokeDasharray={idx === 0 ? undefined : "3 3"} />
-                      <text x="40" y={y + 3} fill="#94a3b8" fontSize="10" textAnchor="end">
-                        ${labelVal >= 1000 ? `${labelVal / 1000}k` : labelVal}
-                      </text>
-                    </g>
-                  );
-                })}
-
-                {/* Bars */}
-                {monthlyChartData.map((d, idx) => {
-                  const spacing = 520 / monthlyChartData.length;
-                  const barWidth = 36;
-                  const x = 60 + idx * spacing + (spacing - barWidth) / 2;
-                  const barHeight = Math.max(6, (d.amount / chartCeiling) * 155);
-                  const y = 185 - barHeight;
-                  const isHovered = hoveredChartMonth === idx;
-
-                  return (
-                    <g 
-                      key={d.month}
-                      onMouseEnter={() => setHoveredChartMonth(idx)}
-                      onMouseLeave={() => setHoveredChartMonth(null)}
-                      className="cursor-pointer"
-                    >
-                      <rect
-                        x={x}
-                        y={y}
-                        width={barWidth}
-                        height={barHeight}
-                        rx="6"
-                        fill={isHovered ? "#1d4ed8" : "#2563eb"}
-                        className="transition-all duration-200"
-                      />
-
-                      {/* Tooltip */}
-                      {isHovered && (
-                        <g>
-                          <rect
-                            x={x + barWidth / 2 - 40}
-                            y={y - 28}
-                            width="80"
-                            height="20"
-                            rx="5"
-                            fill="#0f172a"
-                          />
-                          <text
-                            x={x + barWidth / 2}
-                            y={y - 14}
-                            textAnchor="middle"
-                            fill="#ffffff"
-                            fontSize="10"
-                            fontWeight="bold"
-                          >
-                            ${d.amount.toLocaleString()} USD
-                          </text>
-                        </g>
-                      )}
-
-                      <text
-                        x={x + barWidth / 2}
-                        y="205"
-                        textAnchor="middle"
-                        fill={isHovered ? "#1d4ed8" : "#64748b"}
-                        fontSize="11"
-                        fontWeight="600"
-                      >
-                        {d.monthShort}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-            </div>
+          <div className="mt-5 h-52 flex items-end gap-2 sm:gap-4">
+            {chart.map(c => {
+              const rate = c.expected ? Math.round((c.paid / c.expected) * 100) : 0;
+              return (
+                <div key={c.idx} className="flex-1 h-full flex flex-col justify-end items-center gap-1.5 min-w-0" title={`${c.label}: ${formatMoney(c.paid, chartCurrency)} of ${formatMoney(c.expected, chartCurrency)}`}>
+                  <span className={`text-[10px] font-black ${rate >= 90 ? 'text-emerald-600' : rate >= 50 ? 'text-amber-600' : 'text-rose-600'}`}>{c.expected ? `${rate}%` : ''}</span>
+                  <div className="relative w-full max-w-12 flex-1 flex items-end">
+                    <div className="absolute bottom-0 inset-x-0 rounded-t-xl bg-slate-100" style={{ height: `${(c.expected / chartMax) * 100}%` }} />
+                    <div className="relative w-full rounded-t-xl bg-gradient-to-t from-orange-500 to-amber-400 transition-all" style={{ height: `${(c.paid / chartMax) * 100}%` }} />
+                  </div>
+                  <span className={`text-[11px] font-bold ${c.idx === todayIdx ? 'text-orange-600' : 'text-slate-500'}`}>{c.label}</span>
+                </div>
+              );
+            })}
           </div>
-
-          {/* Revenue Ledger Audit Table */}
-          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-              <h4 className="font-bold text-slate-900 text-xs sm:text-sm">Verified Transaction Records</h4>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-400 font-semibold">{payments.length} transactions cleared</span>
-                {onClearAllPayments && (
-                  <ClearAllButton size="sm" count={payments.length} itemLabel="payments" onClear={onClearAllPayments} />
-                )}
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-700">
-                <thead className="bg-slate-50/80 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
-                  <tr>
-                    <th className="py-3 px-4">Receipt #</th>
-                    <th className="py-3 px-4">Tenant Name</th>
-                    <th className="py-3 px-4">Leased Unit</th>
-                    <th className="py-3 px-4">Date</th>
-                    <th className="py-3 px-4">Accounting Period</th>
-                    <th className="py-3 px-4">Amount Cleared (USD)</th>
-                    <th className="py-3 px-4">Payment Method</th>
-                    {onDeletePayment && <th className="py-3 px-4 w-10" />}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {payments.slice(0, 10).map(p => (
-                    <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-blue-600">{p.receiptNumber}</td>
-                      <td className="py-3 px-4 font-bold text-slate-900">{p.tenantName}</td>
-                      <td className="py-3 px-4 font-semibold text-slate-700">{p.unitNumber}</td>
-                      <td className="py-3 px-4 text-slate-500">{p.date}</td>
-                      <td className="py-3 px-4 text-slate-600">{p.accountingPeriod}</td>
-                      <td className="py-3 px-4 font-bold text-emerald-600">${p.amount.toFixed(2)} USD</td>
-                      <td className="py-3 px-4 text-slate-600">{p.paymentMethod}</td>
-                      {onDeletePayment && (
-                        <td className="py-3 px-4 text-right">
-                          <DeleteButton
-                            title="Delete payment"
-                            onDelete={() => onDeletePayment(p)}
-                            confirm={{ title: 'Delete this payment?', subject: `${p.receiptNumber} • ${p.tenantName}` }}
-                          />
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="mt-3 flex items-center gap-4 text-[11px] text-slate-500">
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-gradient-to-t from-orange-500 to-amber-400" /> Collected</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-slate-100 border border-slate-200" /> Expected</span>
           </div>
-
         </div>
-      )}
 
-      {/* TAB 2: SPATIAL YIELD & OCCUPANCY */}
-      {activeReportTab === 'spatial' && (
-        <div className="space-y-6 animate-in fade-in">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {floorStats.map(f => (
-              <div key={f.floor} className="bg-white rounded-3xl p-5 border border-slate-200 shadow-2xs space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-slate-900 text-sm">{f.floor}</h4>
-                  <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
-                    {f.rate.toFixed(0)}% Occupied
+        <div className={`${card} p-5 space-y-5`}>
+          <div>
+            <h2 className="text-sm font-extrabold text-slate-900">Units</h2>
+            {[{ label: 'Shops', icon: Store, list: shops, bar: 'from-orange-500 to-amber-500' }, { label: 'Spaces', icon: LayoutGrid, list: spaces, bar: 'from-blue-500 to-indigo-600' }].map(g => {
+              const Icon = g.icon;
+              const pct = g.list.length ? Math.round((occupied(g.list) / g.list.length) * 100) : 0;
+              return (
+                <div key={g.label} className="mt-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-1.5 font-bold text-slate-700"><Icon className="w-3.5 h-3.5 text-slate-400" /> {g.label}</span>
+                    <span className="font-bold text-slate-500">{occupied(g.list)} of {g.list.length} rented • {pct}%</span>
+                  </div>
+                  <div className="mt-1.5 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div className={`h-full rounded-full bg-gradient-to-r ${g.bar}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div>
+            <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5"><CalendarClock className="w-4 h-4 text-orange-500" /> Ending in 30 days</h2>
+            {ending.length === 0 ? (
+              <Empty text="No lease ends in the next 30 days." />
+            ) : (
+              <ul className="mt-2 divide-y divide-slate-100">
+                {ending.map(({ u, end, days }) => (
+                  <li key={u.id} className="py-2 flex items-center justify-between gap-2 text-xs">
+                    <span className="min-w-0">
+                      <span className="font-bold text-slate-900">{u.unitNumber}</span>
+                      <span className="text-slate-500"> • {u.currentTenant?.name}</span>
+                    </span>
+                    <span className={`shrink-0 px-2 py-0.5 rounded-lg font-black ${days < 0 ? 'bg-rose-100 text-rose-700' : days <= 10 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`} title={formatLongDate(end)}>
+                      {days < 0 ? `Ended ${-days}d ago` : days === 0 ? 'Today' : `${days} days`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Payment behaviour */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+        {/* On time */}
+        <div className={`${card} overflow-hidden`}>
+          <div className="px-5 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white flex items-center gap-3">
+            <Trophy className="w-5 h-5" />
+            <div>
+              <h2 className="text-sm font-extrabold">Pays on time</h2>
+              <p className="text-[11px] text-white/85">Paid by the {GRACE_DAYS}th of each month</p>
+            </div>
+          </div>
+          {best.length === 0 ? <Empty text="No rent months due yet." /> : (
+            <ul className="divide-y divide-slate-100">
+              {best.map((b, i) => (
+                <li key={b.account.key} className="px-4 py-3 flex items-center gap-3">
+                  <span className="w-5 text-xs font-black text-slate-400 text-center">{i + 1}</span>
+                  <Avatar a={b.account} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-slate-900 truncate">{b.account.tenant.name}</p>
+                    <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className={`h-full rounded-full ${b.score >= 80 ? 'bg-emerald-500' : b.score >= 50 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${b.score}%` }} />
+                    </div>
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      {b.account.unit.unitNumber} • {b.onTime} of {b.onTime + b.late + b.missed} on time{b.early ? ` • ${b.early} early` : ''}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 text-sm font-black ${b.score >= 80 ? 'text-emerald-600' : b.score >= 50 ? 'text-amber-600' : 'text-rose-600'}`}>{b.score}%</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Who paid first */}
+        <div className={`${card} overflow-hidden`}>
+          <div className="px-5 py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Timer className="w-5 h-5" />
+              <div>
+                <h2 className="text-sm font-extrabold">Who paid first</h2>
+                <p className="text-[11px] text-white/85">Order of payment for the month</p>
+              </div>
+            </div>
+            <select
+              value={firstMonthIdx}
+              onChange={e => setFirstMonthIdx(Number(e.target.value))}
+              className="px-2 py-1.5 rounded-lg bg-white/20 text-white text-xs font-bold border border-white/30 focus:outline-none cursor-pointer [&>option]:text-slate-900"
+            >
+              {monthChoices.map(idx => <option key={idx} value={idx}>{MONTH_NAMES[idx % 12].slice(0, 3)} {Math.floor(idx / 12)}</option>)}
+            </select>
+          </div>
+          {firstPayers.length === 0 ? <Empty text="Nobody has paid for this month yet." /> : (
+            <ul className="divide-y divide-slate-100">
+              {firstPayers.slice(0, 8).map(({ a, m, first }, i) => (
+                <li key={a.key} className="px-4 py-3 flex items-center gap-3">
+                  <span className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 ${
+                    i === 0 ? 'bg-amber-400 text-white' : i === 1 ? 'bg-slate-300 text-white' : i === 2 ? 'bg-orange-300 text-white' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    {i < 3 ? <Medal className="w-3.5 h-3.5" /> : i + 1}
                   </span>
-                </div>
-
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex justify-between text-slate-600">
-                    <span>Leased Bays:</span>
-                    <strong className="text-slate-900 font-bold">{f.occupied} / {f.total} units</strong>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-slate-900 truncate">{a.tenant.name}</p>
+                    <p className="text-[10px] text-slate-500">{a.unit.unitNumber} • {formatLongDate(first)} • {timingLabel(first, firstMonthIdx)}</p>
                   </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>Floor Area:</span>
-                    <strong className="text-slate-900">{f.totalArea} m²</strong>
+                  {m.status === 'paid'
+                    ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    : <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 text-[10px] font-bold">Part</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+          {notPaidYet > 0 && (
+            <p className="px-4 py-2.5 border-t border-slate-100 bg-rose-50/60 text-[11px] font-bold text-rose-700">{notPaidYet} tenant{notPaidYet === 1 ? ' has' : 's have'} not paid this month yet</p>
+          )}
+        </div>
+
+        {/* Most overdue */}
+        <div className={`${card} overflow-hidden md:col-span-2 xl:col-span-1`}>
+          <div className="px-5 py-4 bg-gradient-to-r from-rose-500 to-orange-500 text-white flex items-center gap-3">
+            <Flame className="w-5 h-5" />
+            <div>
+              <h2 className="text-sm font-extrabold">Most overdue</h2>
+              <p className="text-[11px] text-white/85">Months owed now and late payments</p>
+            </div>
+          </div>
+          {worst.length === 0 ? <Empty text="Nobody is overdue. 🎉" /> : (
+            <ul className="divide-y divide-slate-100">
+              {worst.map(b => (
+                <li key={b.account.key} className="px-4 py-3 flex items-center gap-3">
+                  <Avatar a={b.account} tone={b.account.dueNow.length ? 'from-rose-500 to-orange-500' : undefined} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-slate-900 truncate">{b.account.tenant.name}</p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {b.account.dueNow.slice(0, 4).map(m => (
+                        <span key={m.key} className="px-1.5 py-0.5 rounded-md bg-rose-500 text-white text-[10px] font-bold">{m.short.split(' ')[0]}</span>
+                      ))}
+                      {b.account.dueNow.length > 4 && <span className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 text-[10px] font-bold">+{b.account.dueNow.length - 4}</span>}
+                      {b.late > 0 && <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 text-[10px] font-bold">Late {b.late}×{b.avgDaysLate ? ` • ~${b.avgDaysLate}d` : ''}</span>}
+                    </div>
                   </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>Monthly Yield:</span>
-                    <strong className="text-blue-600 font-bold">${f.totalRevenueUSD.toLocaleString()} USD</strong>
-                  </div>
-                  <div className="flex justify-between text-slate-600 pt-1 border-t border-slate-100">
-                    <span>Yield Density:</span>
-                    <strong className="text-emerald-700 font-bold">${f.yieldPerSqM.toFixed(2)} / m²</strong>
-                  </div>
-                </div>
-
-                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div className="bg-blue-600 h-full rounded-full" style={{ width: `${Math.min(100, f.rate)}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Spatial Breakdown Matrix Table */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 font-bold text-slate-900 text-sm">
-              Floor-by-Floor Spatial Yield Matrix
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-700">
-                <thead className="bg-slate-50/80 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
-                  <tr>
-                    <th className="py-3 px-4">Level</th>
-                    <th className="py-3 px-4">Inventory Units</th>
-                    <th className="py-3 px-4">Occupied Bays</th>
-                    <th className="py-3 px-4">Occupancy %</th>
-                    <th className="py-3 px-4">Total Floor Area</th>
-                    <th className="py-3 px-4">Monthly Revenue (USD)</th>
-                    <th className="py-3 px-4">Revenue Density ($/m²)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {floorStats.map(f => (
-                    <tr key={f.floor} className="hover:bg-slate-50/80">
-                      <td className="py-3.5 px-4 font-bold text-slate-900">{f.floor}</td>
-                      <td className="py-3.5 px-4">{f.total} bays</td>
-                      <td className="py-3.5 px-4 font-bold text-blue-600">{f.occupied} leased</td>
-                      <td className="py-3.5 px-4 font-extrabold text-slate-900">{f.rate.toFixed(1)}%</td>
-                      <td className="py-3.5 px-4">{f.totalArea} m²</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-900">${f.totalRevenueUSD.toLocaleString()} USD</td>
-                      <td className="py-3.5 px-4 font-bold text-emerald-600">${f.yieldPerSqM.toFixed(2)} / m²</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                  <span className="shrink-0 text-right">
+                    <span className="block text-sm font-black text-rose-600">{b.owed > 0 ? formatMoney(b.owed, b.account.currency) : '—'}</span>
+                    <span className="block text-[10px] text-slate-500">{b.account.dueNow.length} month{b.account.dueNow.length === 1 ? '' : 's'} owed</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-      )}
-
-      {/* TAB 3: ARREARS & DELINQUENCY AGING */}
-      {activeReportTab === 'arrears' && (
-        <div className="space-y-6 animate-in fade-in">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 block">Total Overdue Arrears</span>
-              <div className="mt-1">
-                <span className="text-2xl font-black text-rose-600">${totalArrearsUSD.toLocaleString()} USD</span>
-                <span className="text-[11px] text-slate-400 block mt-0.5">{unitsInArrears.length} accounts delinquent</span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 block">Overdue Percentage</span>
-              <div className="mt-1">
-                <span className="text-2xl font-black text-slate-900">
-                  {totalMonthlyPotential > 0 ? ((totalArrearsUSD / totalMonthlyPotential) * 100).toFixed(1) : 0}%
-                </span>
-                <span className="text-[11px] text-slate-400 block mt-0.5">of monthly roll</span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 block">Accounts in Notice</span>
-              <div className="mt-1">
-                <span className="text-2xl font-black text-amber-600">{unitsInArrears.length}</span>
-                <span className="text-[11px] text-slate-400 block mt-0.5">Demands issued</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-              <h4 className="font-bold text-slate-900 text-sm">Delinquent Tenant Accounts & Arrears Aging</h4>
-            </div>
-
-            {unitsInArrears.length === 0 ? (
-              <div className="p-12 text-center text-slate-400">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                <p className="font-bold text-slate-800 text-xs">No Outstanding Delinquencies</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">All active tenants are in good standing with zero overdue balance.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50/80 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
-                    <tr>
-                      <th className="py-3 px-4">Unit #</th>
-                      <th className="py-3 px-4">Tenant Name</th>
-                      <th className="py-3 px-4">Floor</th>
-                      <th className="py-3 px-4">Contact Phone</th>
-                      <th className="py-3 px-4">Overdue Balance (USD)</th>
-                      <th className="py-3 px-4">Billing Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {unitsInArrears.map(u => (
-                      <tr key={u.id} className="hover:bg-rose-50/40">
-                        <td className="py-3.5 px-4 font-mono font-bold text-slate-900">{u.unitNumber}</td>
-                        <td className="py-3.5 px-4 font-bold text-slate-900">{u.currentTenant?.name || 'Vacant'}</td>
-                        <td className="py-3.5 px-4 text-slate-600">{u.floor}</td>
-                        <td className="py-3.5 px-4 text-slate-600">{u.currentTenant?.phone || 'N/A'}</td>
-                        <td className="py-3.5 px-4 font-bold text-rose-600 text-sm">${(u.arrearsUSD || 0).toLocaleString()} USD</td>
-                        <td className="py-3.5 px-4">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">
-                            {u.billingStatus}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 4: ESCROW RESERVES LIABILITY */}
-      {activeReportTab === 'deposits' && (
-        <div className="space-y-6 animate-in fade-in">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 block">Total Escrow Deposits Held</span>
-              <div className="mt-1">
-                <span className="text-2xl font-black text-slate-900">${totalEscrowDepositsUSD.toLocaleString()} USD</span>
-                <span className="text-[11px] text-emerald-600 font-bold block mt-0.5">Segregated Trust Accounts</span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 block">Covered Leases</span>
-              <div className="mt-1">
-                <span className="text-2xl font-black text-blue-600">
-                  {deposits.filter(d => d.status === 'Held in Escrow').length}
-                </span>
-                <span className="text-[11px] text-slate-400 block mt-0.5">Guaranteed Accounts</span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 block">Average Security Deposit</span>
-              <div className="mt-1">
-                <span className="text-2xl font-black text-indigo-700">
-                  ${Math.round(totalEscrowDepositsUSD / Math.max(1, deposits.filter(d => d.status === 'Held in Escrow').length)).toLocaleString()} USD
-                </span>
-                <span className="text-[11px] text-slate-400 block mt-0.5">Per Commercial Tenant</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-              <h4 className="font-bold text-slate-900 text-sm">Escrow Trust Deposits Register</h4>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-400 font-semibold">{deposits.length} escrow vouchers</span>
-                {onClearAllDeposits && (
-                  <ClearAllButton size="sm" count={deposits.length} itemLabel="deposits" onClear={onClearAllDeposits} />
-                )}
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-700">
-                <thead className="bg-slate-50/80 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
-                  <tr>
-                    <th className="py-3 px-4">Slip #</th>
-                    <th className="py-3 px-4">Tenant Name</th>
-                    <th className="py-3 px-4">Leased Unit</th>
-                    <th className="py-3 px-4">Deposit Amount (USD)</th>
-                    <th className="py-3 px-4">Months Covered</th>
-                    <th className="py-3 px-4">Bank Escrow Account</th>
-                    <th className="py-3 px-4">Status</th>
-                    {onDeleteDeposit && <th className="py-3 px-4 w-10" />}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {deposits.map(d => (
-                    <tr key={d.id} className="hover:bg-slate-50/80">
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900">{d.depositSlip || d.id}</td>
-                      <td className="py-3 px-4 font-bold text-slate-900">{d.tenantName}</td>
-                      <td className="py-3 px-4 font-semibold text-slate-700">{d.unitNumber}</td>
-                      <td className="py-3 px-4 font-bold text-slate-900 text-sm">${d.amountUSD.toLocaleString()} USD</td>
-                      <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-[11px]">
-                          {d.depositMonths || 2} Months
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-slate-500 text-[11px]">{d.bankAccount}</td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          d.status === 'Held in Escrow' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'
-                        }`}>
-                          {d.status}
-                        </span>
-                      </td>
-                      {onDeleteDeposit && (
-                        <td className="py-3 px-4 text-right">
-                          <DeleteButton
-                            title="Delete deposit"
-                            onDelete={() => onDeleteDeposit(d)}
-                            confirm={{ title: 'Delete this deposit?', subject: `${d.depositSlip || d.id} • ${d.tenantName}` }}
-                          />
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 5: LEASE MATURITY CALENDAR */}
-      {activeReportTab === 'expirations' && (
-        <div className="space-y-6 animate-in fade-in">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm">Leases Expiring in the Next 60 Days</h4>
-                <p className="text-xs text-slate-400">Timely renewals ensure zero tenancy vacancy and continuous rental flow.</p>
-              </div>
-              <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full">
-                {unitsExpiringSoon.length} Up for Renewal
-              </span>
-            </div>
-
-            {unitsExpiringSoon.length === 0 ? (
-              <div className="p-12 text-center text-slate-400">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                <p className="font-bold text-slate-800 text-xs">No Immediate Lease Expirations</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">All active tenancies have more than 60 days of lease validity remaining.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50/80 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
-                    <tr>
-                      <th className="py-3 px-4">Unit #</th>
-                      <th className="py-3 px-4">Tenant Name</th>
-                      <th className="py-3 px-4">Floor / Type</th>
-                      <th className="py-3 px-4">Lease Maturity</th>
-                      <th className="py-3 px-4">Days Remaining</th>
-                      <th className="py-3 px-4">Monthly Rent (USD)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {unitsExpiringSoon.map(u => (
-                      <tr key={u.id} className="hover:bg-amber-50/40">
-                        <td className="py-3.5 px-4 font-mono font-bold text-slate-900">{u.unitNumber}</td>
-                        <td className="py-3.5 px-4 font-bold text-slate-900">{u.currentTenant?.name}</td>
-                        <td className="py-3.5 px-4 text-slate-600">{u.floor} ({u.categoryType || u.type})</td>
-                        <td className="py-3.5 px-4 text-slate-600">{u.leaseEnd || '2026-10-01'}</td>
-                        <td className="py-3.5 px-4">
-                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                            (u.daysRemaining ?? 30) <= 15 ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
-                          }`}>
-                            {u.daysRemaining} days left
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 font-bold text-slate-900">${u.monthlyRateUSD.toLocaleString()} USD</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
+      </div>
     </div>
   );
 };

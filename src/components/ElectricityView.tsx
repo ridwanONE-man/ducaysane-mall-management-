@@ -277,7 +277,7 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
   const signed = (n: number, c: Currency) => `${n < 0 ? '-' : ''}${formatMoney(Math.abs(n), c)}`;
 
   return (
-    <div id="electricity-view" className="p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
+    <div id="electricity-view" className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
 
       {/* Header */}
       <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs">

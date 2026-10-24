@@ -438,7 +438,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
   };
 
   return (
-    <div className="p-6 sm:p-8 space-y-6 max-w-7xl mx-auto">
+    <div className="p-3 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs">
         <div className="h-1.5 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
@@ -791,7 +791,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
 
       {/* Tenant Detail Profile Drawer / Modal */}
       {selectedTenant && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 my-8">
             
             {/* Drawer Header */}
@@ -826,7 +826,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
             </div>
 
             {/* Profile Content */}
-            <div className="p-6 space-y-5 text-xs text-slate-700">
+            <div className="p-4 sm:p-6 space-y-5 text-xs text-slate-700">
               
               {/* Leased Space & Lease Timing Strip */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-blue-50/40 p-4 rounded-2xl border border-blue-200/60">
@@ -880,7 +880,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="grid grid-cols-3 gap-2 sm:gap-3 text-center">
                   <div className="p-3 bg-slate-50 rounded-xl">
                     <span className="text-[10px] uppercase font-bold text-slate-500 block">Monthly Base Rent</span>
                     <span className="font-black text-slate-900 text-sm">
@@ -1030,7 +1030,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
       {/* MODAL: MODIFY DETAILS / PRICE (Direct Database Sync)     */}
       {/* ======================================================== */}
       {modifyingTarget && (
-        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 my-8">
             <form onSubmit={handleSaveModify}>
               {/* Header */}
@@ -1061,7 +1061,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
               </div>
 
               {/* Form Body */}
-              <div className="p-6 space-y-4 text-xs text-slate-700 max-h-[70vh] overflow-y-auto">
+              <div className="p-4 sm:p-6 space-y-4 text-xs text-slate-700 max-h-[70vh] overflow-y-auto">
                 {modError && (
                   <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0" />
@@ -1247,7 +1247,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
       {/* MODAL: VACATE UNIT CONFIRMATION (Database Sync)          */}
       {/* ======================================================== */}
       {vacatingTarget && (
-        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 my-8">
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-rose-50/70">
@@ -1272,7 +1272,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
             </div>
 
             {/* Body */}
-            <div className="p-6 space-y-4 text-xs text-slate-700">
+            <div className="p-4 sm:p-6 space-y-4 text-xs text-slate-700">
               {vacateError && (
                 <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
@@ -1426,7 +1426,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
 
       {/* Add / Modify Deposit Modal */}
       {isDepositModalOpen && depositUnit && (
-        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden">
             <div className="p-6 pb-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
               <div className="flex items-center gap-2.5">
@@ -1443,7 +1443,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveDepositRecord} className="p-6 space-y-4 text-xs">
+            <form onSubmit={handleSaveDepositRecord} className="p-4 sm:p-6 space-y-4 text-xs">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
                   Monthly Base Rent:

@@ -17,6 +17,7 @@ import {
   LogOut,
   Hourglass,
   Zap,
+  X,
 } from 'lucide-react';
 import { NavigationTab, AdminUser } from '../types';
 import logoImg from '../assets/logo.png';
@@ -29,6 +30,8 @@ interface SidebarProps {
   adminUser: AdminUser;
   onLogout: () => void;
   activeBuilding: string;
+  open?: boolean; // phones and tablets: menu slid in
+  onClose?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -38,7 +41,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   waitingCount = 0,
   adminUser,
   onLogout,
-  activeBuilding
+  activeBuilding,
+  open = false,
+  onClose,
 }) => {
   const navItems: {
     id: NavigationTab;
@@ -63,7 +68,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside id="nbc-sidebar" className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between h-screen shrink-0 sticky top-0 z-30 select-none">
+    <>
+    {/* Dark backdrop behind the menu on phones and tablets */}
+    <div
+      onClick={onClose}
+      className={`lg:hidden fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-xs transition-opacity ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+    />
+    <aside
+      id="nbc-sidebar"
+      className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] lg:w-64 lg:sticky lg:top-0 lg:z-30 bg-white border-r border-slate-200 flex flex-col justify-between h-screen h-dvh lg:h-screen shrink-0 select-none transition-transform duration-200 lg:translate-x-0 ${
+        open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="lg:hidden absolute top-4 right-3 p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+        title="Close menu"
+      >
+        <X className="w-5 h-5" />
+      </button>
       
       {/* Top Header & Property Selector */}
       <div className="p-4 border-b border-slate-100">
@@ -175,5 +199,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
     </aside>
+    </>
   );
 };

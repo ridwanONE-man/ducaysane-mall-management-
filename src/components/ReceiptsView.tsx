@@ -154,7 +154,7 @@ Generated electronically by Nyakuron Business Centre Management.
   ];
 
   return (
-    <div id="receipts-view" className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div id="receipts-view" className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
 
       {/* Header */}
       <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs">
@@ -281,7 +281,7 @@ Generated electronically by Nyakuron Business Centre Management.
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full min-w-[720px] text-left border-collapse">
             <thead>
               <tr className="bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider">
                 <th className="py-3 px-4">Receipt Number</th>

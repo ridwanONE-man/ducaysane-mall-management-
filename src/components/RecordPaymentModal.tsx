@@ -153,7 +153,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div 
         id="record-tenant-payment-modal"
         className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-8"
@@ -186,7 +186,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
           
           {/* Row 1: Tenant Name & Leased Space */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

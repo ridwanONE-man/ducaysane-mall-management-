@@ -296,7 +296,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
   };
 
   return (
-    <div id="units-management-container" className="p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
+    <div id="units-management-container" className="p-3 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
 
       {/* Header */}
       <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs">
@@ -707,7 +707,7 @@ export const UnitsView: React.FC<UnitsViewProps> = ({
       ) : (
         <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-700">
+            <table className="w-full min-w-[720px] text-left text-xs text-slate-700">
               <thead className="bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider">
                 <tr>
                   <th className="p-4 w-10">

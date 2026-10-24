@@ -279,7 +279,7 @@ export const AddUnitModal: React.FC<AddUnitModalProps> = ({
   const label = 'block text-[11px] font-bold text-slate-600 mb-1';
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-slate-50 rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 my-8 max-h-[92vh] flex flex-col font-sans">
 
         {/* Header */}

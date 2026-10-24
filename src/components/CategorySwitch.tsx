@@ -31,7 +31,7 @@ const OPTIONS: { value: UnitCategory; label: string; icon: React.ComponentType<{
 
 // Three tiles to switch a page between all units, shops only and spaces only.
 export const CategorySwitch: React.FC<CategorySwitchProps> = ({ value, onChange, counts, noun }) => (
-  <div className="grid grid-cols-3 gap-3">
+  <div className="grid grid-cols-3 gap-2 sm:gap-3">
     {OPTIONS.map(o => {
       const active = value === o.value;
       return (
@@ -39,17 +39,17 @@ export const CategorySwitch: React.FC<CategorySwitchProps> = ({ value, onChange,
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
-          className={`relative flex items-center gap-3 rounded-2xl p-3 sm:p-4 text-left border transition-all cursor-pointer ${
+          className={`relative flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3 rounded-2xl p-2.5 sm:p-4 text-center sm:text-left border transition-all cursor-pointer ${
             active
               ? `bg-gradient-to-br ${o.tone} text-white border-transparent shadow-lg`
               : 'bg-white border-slate-200/80 hover:border-orange-200 hover:shadow-sm'
           }`}
         >
-          <span className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center ${active ? 'bg-white/20' : `bg-gradient-to-br ${o.tone} text-white shadow-sm`}`}>
-            <o.icon className="w-5 h-5" />
+          <span className={`w-8 h-8 sm:w-10 sm:h-10 shrink-0 rounded-xl flex items-center justify-center ${active ? 'bg-white/20' : `bg-gradient-to-br ${o.tone} text-white shadow-sm`}`}>
+            <o.icon className="w-4 h-4 sm:w-5 sm:h-5" />
           </span>
           <span className="min-w-0">
-            <span className={`block text-sm font-extrabold ${active ? 'text-white' : 'text-slate-900'}`}>{o.label}</span>
+            <span className={`block text-xs sm:text-sm font-extrabold ${active ? 'text-white' : 'text-slate-900'}`}>{o.label}</span>
             <span className={`block text-[11px] ${active ? 'text-white/80' : 'text-slate-500'}`}>{counts[o.value]} {noun}</span>
           </span>
         </button>

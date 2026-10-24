@@ -164,7 +164,7 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 my-8 max-h-[92vh] flex flex-col font-sans">
         
         {/* Modal Header */}
@@ -192,7 +192,7 @@ export const AssignTenantModal: React.FC<AssignTenantModalProps> = ({
         </div>
 
         {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 text-xs">
           
           {/* Tenant Identity */}
           <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-3">

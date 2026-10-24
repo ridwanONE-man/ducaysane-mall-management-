@@ -1344,6 +1344,9 @@ export default function App() {
     showToast('All notifications marked as read.');
   };
 
+  // Phones and tablets: the side menu slides in
+  const [navOpen, setNavOpen] = useState(false);
+
   // Unread alerts count
   const unreadAlertsCount = notifications.filter(n => !n.read).length;
 
@@ -1357,7 +1360,7 @@ export default function App() {
       
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-5 right-5 z-60 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 animate-in slide-in-from-top-4 duration-200">
+        <div className="fixed top-3 left-3 right-3 sm:left-auto sm:top-5 sm:right-5 z-60 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 animate-in slide-in-from-top-4 duration-200">
           <span className="w-2 h-2 rounded-full bg-emerald-400" />
           <span>{toastMessage}</span>
           <button 
@@ -1374,8 +1377,11 @@ export default function App() {
         activeTab={activeTab}
         onTabChange={(tab) => {
           setActiveTab(tab);
+          setNavOpen(false);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
         unreadAlertsCount={unreadAlertsCount}
         waitingCount={waitingList.filter(e => e.status === 'Waiting').length}
         adminUser={adminUser}
@@ -1384,7 +1390,7 @@ export default function App() {
       />
 
       {/* Main Content Pane */}
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 h-screen h-dvh overflow-y-auto overflow-x-hidden">
         
         {/* Header with Live Sync Status */}
         <Header
@@ -1412,6 +1418,7 @@ export default function App() {
           realtimeStatus={realtimeStatus}
           units={unitsShown}
           payments={payments}
+          onOpenMenu={() => setNavOpen(true)}
         />
 
         {/* Dynamic Views with Real Functions */}
@@ -1565,12 +1572,10 @@ export default function App() {
           {activeTab === 'analytics' && (
             <AnalyticsView
               units={unitsShown}
-              payments={payments}
+              tenantAccounts={tenantAccounts}
               deposits={visibleDeposits}
-              onDeletePayment={handleDeletePayment}
-              onClearAllPayments={handleClearAllPayments}
-              onDeleteDeposit={handleDeleteDeposit}
-              onClearAllDeposits={handleClearAllDeposits}
+              cashflow={[...cashflow, ...electricityInCashflow]}
+              waitingList={waitingList}
             />
           )}
 

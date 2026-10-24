@@ -109,7 +109,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const selectCls = 'px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500';
 
   return (
-    <div id="payments-ledger-container" className="p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
+    <div id="payments-ledger-container" className="p-3 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
 
       {/* Header */}
       <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs">
@@ -276,7 +276,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-700">
+              <table className="w-full min-w-[720px] text-left text-xs text-slate-700">
                 <thead>
                   <tr className="bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider">
                     <th className="py-3 px-4">Receipt #</th>

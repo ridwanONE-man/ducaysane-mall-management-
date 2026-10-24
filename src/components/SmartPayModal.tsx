@@ -81,7 +81,7 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
   const canConfirm = selectedMonths.length > 0 && cash > 0 && excess <= 0;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 p-6 pb-4 border-b border-slate-100">
@@ -106,7 +106,7 @@ export const SmartPayModal: React.FC<SmartPayModalProps> = ({ account, onClose, 
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="p-4 sm:p-6 space-y-5">
           {/* Month grid */}
           <div>
             <p className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">

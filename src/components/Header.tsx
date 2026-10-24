@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, X, Wifi, WifiOff, Store, Users, Printer, ArrowRight, CornerDownLeft } from 'lucide-react';
+import { Search, X, Wifi, WifiOff, Store, Users, Printer, ArrowRight, CornerDownLeft, Menu } from 'lucide-react';
 import { CurrencyMode, NavigationTab, AdminUser, CommercialNotification, PropertyUnit, PaymentRecord } from '../types';
 import { RealtimeStatus } from '../lib/supabaseService';
 import { formatUnitRent } from '../utils/currency';
@@ -21,6 +21,7 @@ export interface HeaderProps {
   realtimeStatus?: RealtimeStatus;
   units?: PropertyUnit[];
   payments?: PaymentRecord[];
+  onOpenMenu?: () => void; // phones and tablets
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -30,7 +31,8 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigate,
   realtimeStatus = 'connected',
   units = [],
-  payments = []
+  payments = [],
+  onOpenMenu,
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -138,8 +140,18 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header 
       id="nbc-appbar" 
-      className="h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-5 lg:px-8 flex items-center justify-between gap-4 sticky top-0 z-30 transition-all"
+      className="h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-3 sm:px-5 lg:px-8 flex items-center justify-between gap-2 sm:gap-4 sticky top-0 z-30 transition-all"
     >
+      {onOpenMenu && (
+        <button
+          type="button"
+          onClick={onOpenMenu}
+          className="lg:hidden shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-sm shadow-orange-500/30 cursor-pointer"
+          title="Open menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+      )}
       {/* Search Bar with Live Instant Results Palette */}
       <div ref={containerRef} className="relative flex items-center flex-1 max-w-lg">
         <div className="relative w-full">
@@ -344,7 +356,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Right Controls: Realtime Live Sync Status Badge + Admin Profile */}
-      <div className="flex items-center gap-3 select-none shrink-0">
+      <div className="flex items-center gap-2 sm:gap-3 select-none shrink-0">
         
         {/* Real-time Multi-User Status Pill */}
         <div 
@@ -369,7 +381,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span className="text-[11px] font-bold tracking-tight">Live Sync</span>
+              <span className="hidden sm:inline text-[11px] font-bold tracking-tight">Live Sync</span>
             </>
           )}
 
@@ -389,13 +401,13 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Admin Profile: Name and Email */}
-        <div className="flex items-center gap-3 px-3.5 py-1.5 rounded-2xl bg-slate-50 border border-slate-200/80 cursor-default">
+        <div className="flex items-center gap-3 p-1 md:px-3.5 md:py-1.5 rounded-2xl bg-slate-50 border border-slate-200/80 cursor-default">
           <img 
             src={adminUser.avatar} 
             alt={adminUser.name} 
             className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-200 shrink-0"
           />
-          <div className="flex flex-col text-left min-w-0">
+          <div className="hidden md:flex flex-col text-left min-w-0">
             <span className="text-xs font-bold text-slate-900 truncate leading-snug">
               {adminUser.name}
             </span>

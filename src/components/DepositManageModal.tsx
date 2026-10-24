@@ -50,7 +50,7 @@ export const DepositManageModal: React.FC<DepositManageModalProps> = ({ account,
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-100 overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-150">
         <div className="h-1.5 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
         <div className="flex items-start justify-between gap-3 p-6 pb-4 border-b border-slate-100">
@@ -68,7 +68,7 @@ export const DepositManageModal: React.FC<DepositManageModalProps> = ({ account,
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-4 sm:p-6 space-y-4">
           {deposits.length === 0 && (
             <p className="py-8 text-center text-xs text-slate-400">This tenant has no deposit held.</p>
           )}

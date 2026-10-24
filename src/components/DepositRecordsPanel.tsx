@@ -322,7 +322,7 @@ export const DepositRecordsPanel: React.FC<DepositRecordsPanelProps> = ({ deposi
 
       {/* Voucher preview */}
       {viewing && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto" onClick={() => setViewing(null)}>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-3 sm:p-4 overflow-y-auto" onClick={() => setViewing(null)}>
           <div className="bg-slate-100 rounded-3xl max-w-3xl w-full shadow-2xl my-6 overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between gap-3 px-5 py-3 bg-white border-b border-slate-200">
               <p className="text-sm font-extrabold text-slate-900 truncate">Voucher {viewing.depositSlip || viewing.id}</p>

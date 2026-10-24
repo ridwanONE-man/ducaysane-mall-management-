@@ -32,7 +32,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   const shown = filter === 'unread' ? notifications.filter(n => !n.read) : notifications;
 
   return (
-    <div className="p-6 sm:p-8 max-w-4xl mx-auto space-y-5">
+    <div className="p-3 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">

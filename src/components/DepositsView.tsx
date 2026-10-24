@@ -99,7 +99,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
   };
 
   return (
-    <div id="deposits-view" className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div id="deposits-view" className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/80 shadow-xs">
         <div className="h-1.5 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
@@ -378,7 +378,7 @@ export const DepositsView: React.FC<DepositsViewProps> = ({
 
       {/* Release confirmation */}
       {releasing && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
               <Undo2 className="w-6 h-6" />

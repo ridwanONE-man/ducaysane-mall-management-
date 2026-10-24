@@ -92,7 +92,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClearAllData }) =>
   };
 
   return (
-    <div className="p-6 sm:p-8 space-y-6 max-w-4xl mx-auto">
+    <div className="p-3 sm:p-6 lg:p-8 space-y-6 max-w-4xl mx-auto">
       <div>
         <div className="flex items-center gap-1.5 text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">
           <span>Home</span>

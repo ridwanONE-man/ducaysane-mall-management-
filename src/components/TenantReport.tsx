@@ -724,7 +724,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
         ) : (
           <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full min-w-[720px] text-left text-xs">
                 <thead>
                   <tr className="bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider">
                     <th className="py-3 pl-4 w-8">
@@ -1047,7 +1047,7 @@ export const TenantReport: React.FC<TenantReportProps> = ({ units, payments, dep
 
       {/* Deposit voucher preview */}
       {viewingDeposit && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto" onClick={() => setViewingDeposit(null)}>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-3 sm:p-4 overflow-y-auto" onClick={() => setViewingDeposit(null)}>
           <div className="bg-slate-100 rounded-3xl max-w-3xl w-full shadow-2xl my-6 overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between gap-3 px-5 py-3 bg-white border-b border-slate-200">
               <p className="text-sm font-extrabold text-slate-900 truncate">Voucher {viewingDeposit.depositSlip || viewingDeposit.id}</p>
