@@ -1,7 +1,7 @@
 import React from 'react';
 import { CashflowTransaction } from '../types';
 import { numberToWords } from '../utils/numberToWords';
-import { formatMoney, formatLongDate, parsePaymentDate } from '../utils/printUtils';
+import { formatMoney, formatLongDate } from '../utils/printUtils';
 import { BUSINESS_PROFILE } from '../data/businessProfile';
 import logoImg from '../assets/logo.png';
 
@@ -103,159 +103,74 @@ export const CashflowVoucher: React.FC<{ tx: CashflowTransaction }> = ({ tx }) =
   );
 };
 
-// A list of cashflow entries: one amount column, each line marked IN or OUT,
-// grouped by day; dollar and SSP totals kept apart.
+// A list of cashflow entries with dollar and SSP totals kept apart.
 export const CashflowStatement: React.FC<{ transactions: CashflowTransaction[]; filterLabel: string }> = ({ transactions, filterLabel }) => {
-  type Cur = 'USD' | 'SSP';
-  const cur = (t: CashflowTransaction): Cur => (t.currency || 'USD') as Cur;
-  const sum = (list: CashflowTransaction[], c: Cur, type: 'Inflow' | 'Outflow') =>
-    list.filter(t => cur(t) === c && t.type === type).reduce((s, t) => s + t.amount, 0);
-  const net = (list: CashflowTransaction[], c: Cur) => sum(list, c, 'Inflow') - sum(list, c, 'Outflow');
-  const signed = (n: number, c: Cur) => `${n < 0 ? '-' : ''}${formatMoney(Math.abs(n), c)}`;
-
-  const currencies = (['USD', 'SSP'] as const).filter(c => transactions.some(t => cur(t) === c));
-  const shown: Cur[] = currencies.length ? [...currencies] : ['USD', 'SSP'];
-
-  // Grouped by day, oldest first, so the statement reads in order
-  const toKey = (t: CashflowTransaction) => {
-    const d = parsePaymentDate(t.date);
-    return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '0000';
-  };
-  const groups = [...transactions.reduce((m, t) => {
-    const k = toKey(t);
-    if (!m.has(k)) m.set(k, []);
-    m.get(k)!.push(t);
-    return m;
-  }, new Map<string, CashflowTransaction[]>()).entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  const first = groups[0]?.[1][0];
-  const last = groups[groups.length - 1]?.[1][0];
-  const covering = !first ? '—' : groups.length === 1 ? formatLongDate(first.date) : `${formatLongDate(first.date)} – ${formatLongDate(last!.date)}`;
-  const inCount = transactions.filter(t => t.type === 'Inflow').length;
-  const outCount = transactions.length - inCount;
-  const reportNo = `CFS-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
-
-  const Meta: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
-    <div className="flex items-baseline gap-2">
-      <span className="w-24 shrink-0 text-[9px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
-      <span className="flex-1 border-b border-dotted border-slate-400 pb-0.5 text-[11px] font-semibold text-slate-900">{value}</span>
-    </div>
-  );
+  const totals = (['USD', 'SSP'] as const).map(currency => {
+    const list = transactions.filter(t => (t.currency || 'USD') === currency);
+    const inflow = list.filter(t => t.type === 'Inflow').reduce((s, t) => s + t.amount, 0);
+    const outflow = list.filter(t => t.type === 'Outflow').reduce((s, t) => s + t.amount, 0);
+    return { currency, count: list.length, inflow, outflow, net: inflow - outflow };
+  }).filter(t => t.count > 0);
 
   return (
     <div className="bg-white text-slate-900 font-sans p-3">
       <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
         <CashflowHeader title="Cashflow Statement" subtitle="Money in & out" tone="bg-gradient-to-b from-orange-500 to-amber-400" />
-        <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
-
-        <div className="px-7 py-6 space-y-5">
-          {/* Statement details */}
-          <div className="grid grid-cols-2 gap-x-10 gap-y-2">
-            <Meta label="Statement no." value={<span className="font-mono">{reportNo}</span>} />
-            <Meta label="Printed on" value={formatLongDate(new Date())} />
-            <Meta label="Covering" value={covering} />
-            <Meta label="Showing" value={filterLabel} />
-            <Meta label="Entries" value={`${inCount} money in • ${outCount} money out`} />
-            <Meta label="Prepared by" value={ADMIN} />
+        <div className="px-6 py-5 space-y-4">
+          <div className="flex items-center justify-between text-[11px] text-slate-600">
+            <span>Showing: <strong className="text-slate-900">{filterLabel}</strong> • {transactions.length} entr{transactions.length === 1 ? 'y' : 'ies'}</span>
+            <span>Printed {formatLongDate(new Date())} • {ADMIN}</span>
           </div>
 
-          {/* Entries: one amount column, IN or OUT on every line */}
-          <table className="w-full text-[10px] border-collapse">
-            <thead>
-              <tr className="bg-slate-900 text-white text-left uppercase tracking-wider text-[9px]">
-                <th className="py-2 px-2 font-bold">Ref</th>
-                <th className="py-2 px-2 font-bold text-center">In / Out</th>
-                <th className="py-2 px-2 font-bold">Description</th>
-                <th className="py-2 px-2 font-bold">Category</th>
-                <th className="py-2 px-2 font-bold">Account / Bank</th>
-                <th className="py-2 px-2 font-bold text-right">Amount</th>
-              </tr>
-            </thead>
-            {groups.map(([key, items]) => (
-              <tbody key={key} className="print-avoid-break">
-                <tr className="border-b border-slate-300">
-                  <td colSpan={5} className="pt-3 pb-1 px-2 text-[10px] font-black uppercase tracking-wider text-orange-700">
-                    {(parsePaymentDate(items[0].date) || new Date()).toLocaleDateString('en-US', { weekday: 'long' })}, {formatLongDate(items[0].date)}
-                  </td>
-                  <td className="pt-3 pb-1 px-2 text-right font-mono font-bold text-slate-500 whitespace-nowrap">
-                    {(['USD', 'SSP'] as const).filter(c => items.some(t => cur(t) === c)).map(c => signed(net(items, c), c)).join(' • ')}
-                  </td>
-                </tr>
-                {items.map((t, i) => {
-                  const out = t.type === 'Outflow';
-                  return (
-                    <tr key={t.id} className={`border-b border-slate-100 ${i % 2 ? 'bg-slate-50/70' : ''}`}>
-                      <td className="py-1.5 px-2 font-mono text-slate-600">{t.referenceNumber}</td>
-                      <td className="py-1.5 px-2 text-center">
-                        <span className={`inline-block w-9 rounded text-[9px] font-black ${out ? 'text-rose-700 border border-rose-300' : 'text-emerald-700 border border-emerald-300'}`}>
-                          {out ? 'OUT' : 'IN'}
-                        </span>
-                      </td>
-                      <td className="py-1.5 px-2 font-semibold">{t.title}{t.notes && <span className="block text-[9px] font-normal text-slate-500">{t.notes}</span>}</td>
-                      <td className="py-1.5 px-2 text-slate-600">{t.category}</td>
-                      <td className="py-1.5 px-2 text-slate-600">{t.account}</td>
-                      <td className={`py-1.5 px-2 text-right font-mono font-bold whitespace-nowrap ${out ? 'text-rose-700' : 'text-emerald-700'}`}>
-                        {out ? '-' : '+'}{formatMoney(t.amount, cur(t))}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            ))}
-          </table>
-
-          {/* Summary + balance in words */}
-          <div className="flex items-start justify-between gap-8 print-avoid-break">
-            <div className="flex-1 space-y-2 pt-1">
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Balance in words</p>
-              {shown.map(c => {
-                const b = net(transactions, c);
-                return (
-                  <p key={c} className="text-[11px] italic text-slate-800 border-l-2 border-orange-500 pl-2">
-                    <span className="not-italic font-bold mr-1">{c === 'USD' ? 'Dollar:' : 'SSP:'}</span>
-                    {b < 0 ? 'Minus ' : ''}{numberToWords(Math.abs(b), c)}
-                  </p>
-                );
-              })}
-            </div>
-            <table className="w-72 text-[11px] border-collapse">
-              <thead>
-                <tr className="border-b-2 border-slate-900 text-[9px] uppercase tracking-wider text-slate-500">
-                  <th className="py-1.5 text-left font-bold">Summary</th>
-                  {shown.map(c => <th key={c} className="py-1.5 text-right font-bold">{c === 'USD' ? 'Dollar ($)' : 'SSP'}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-slate-200">
-                  <td className="py-1.5">Total money in</td>
-                  {shown.map(c => <td key={c} className="py-1.5 text-right font-mono">+{formatMoney(sum(transactions, c, 'Inflow'), c)}</td>)}
-                </tr>
-                <tr className="border-b border-slate-200">
-                  <td className="py-1.5">Total money out</td>
-                  {shown.map(c => <td key={c} className="py-1.5 text-right font-mono">-{formatMoney(sum(transactions, c, 'Outflow'), c)}</td>)}
-                </tr>
-                <tr className="bg-slate-900 text-white font-black">
-                  <td className="py-2 px-2 uppercase tracking-wider text-[10px]">Balance</td>
-                  {shown.map(c => <td key={c} className="py-2 px-2 text-right font-mono">{signed(net(transactions, c), c)}</td>)}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* Signatures */}
-          <div className="grid grid-cols-3 gap-8 pt-8 print-avoid-break">
-            {[['Prepared by', ADMIN], ['Checked by', ''], ['Approved by', '']].map(([role, name]) => (
-              <div key={role} className="text-center">
-                <div className="h-10 border-b border-slate-500" />
-                <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">{role}</p>
-                <p className="text-[10px] font-semibold text-slate-800 min-h-[14px]">{name}</p>
+          <div className={`grid gap-3 print-avoid-break ${totals.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {totals.map(t => (
+              <div key={t.currency} className="rounded-xl border border-slate-300 overflow-hidden">
+                <div className="bg-slate-900 text-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider">{t.currency === 'USD' ? 'Dollar ($)' : 'SSP'}</div>
+                <div className="grid grid-cols-3 text-center text-[10px]">
+                  <div className="py-2"><span className="block text-slate-500">In</span><strong className="text-emerald-700">{formatMoney(t.inflow, t.currency)}</strong></div>
+                  <div className="py-2 border-x border-slate-200"><span className="block text-slate-500">Out</span><strong className="text-rose-700">{formatMoney(t.outflow, t.currency)}</strong></div>
+                  <div className="py-2"><span className="block text-slate-500">Net</span><strong>{t.net < 0 ? '-' : ''}{formatMoney(Math.abs(t.net), t.currency)}</strong></div>
+                </div>
               </div>
             ))}
           </div>
-        </div>
 
-        <div className="px-7 py-2 border-t border-slate-300 bg-slate-50 flex items-center justify-between text-[9px] text-slate-500">
-          <span>{BUSINESS_PROFILE.name} • Cash flow records</span>
-          <span>+ money in • - money out • Dollar and SSP are never added together</span>
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="border-y-2 border-slate-900 text-left uppercase tracking-wider">
+                <th className="py-1.5">Date</th>
+                <th className="py-1.5">Ref</th>
+                <th className="py-1.5">Description</th>
+                <th className="py-1.5">Category</th>
+                <th className="py-1.5">Account / Bank</th>
+                <th className="py-1.5 text-right">In</th>
+                <th className="py-1.5 text-right">Out</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.map(t => (
+                <tr key={t.id} className="border-b border-slate-200 print-avoid-break">
+                  <td className="py-1.5">{formatLongDate(t.date)}</td>
+                  <td className="py-1.5 font-mono">{t.referenceNumber}</td>
+                  <td className="py-1.5 font-semibold">{t.title}</td>
+                  <td className="py-1.5">{t.category}</td>
+                  <td className="py-1.5">{t.account}</td>
+                  <td className="py-1.5 text-right font-mono text-emerald-700">{t.type === 'Inflow' ? formatMoney(t.amount, t.currency || 'USD') : ''}</td>
+                  <td className="py-1.5 text-right font-mono text-rose-700">{t.type === 'Outflow' ? formatMoney(t.amount, t.currency || 'USD') : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="grid grid-cols-2 gap-10 pt-6 print-avoid-break">
+            {['Prepared by', 'Approved by'].map(r => (
+              <div key={r} className={r === 'Approved by' ? 'text-right' : ''}>
+                <div className="h-10 border-b border-slate-500" />
+                <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">{r}</p>
+                <p className="text-[10px] font-bold">{ADMIN}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
