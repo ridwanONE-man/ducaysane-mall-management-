@@ -693,7 +693,7 @@ export const TenantsView: React.FC<TenantsViewProps> = ({
                       </span>
                       <span className={`font-black ${leaseTone}`}>
                         {owedNow.length
-                          ? `Owes ${owedNow.map(m => m.short.split(' ')[0]).join(', ')} ${formatMoney(owedNowAmt, cur)}`
+                          ? `${daysLeft !== null && daysLeft < 0 ? `Expired ${-daysLeft}d • ` : ''}Owes ${owedNow.map(m => m.short.split(' ')[0]).join(', ')} ${formatMoney(owedNowAmt, cur)}`
                           : daysLeft === null ? '' : daysLeft < 0 ? `Expired ${-daysLeft}d ago` : daysLeft === 0 ? 'Ends today' : `${daysLeft} days left`}
                       </span>
                     </div>
