@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Users, Search, Phone, Copy, Check, CalendarCheck, AlertTriangle, CheckCircle2, Store, ShieldCheck, TrendingUp, Wallet } from 'lucide-react';
+import { Users, Search, Phone, Copy, Check, CalendarCheck, AlertTriangle, CheckCircle2, Store, ShieldCheck, TrendingUp, Wallet, Hourglass, CalendarPlus } from 'lucide-react';
 import { PaymentRecord } from '../types';
 import { TenantAccount } from '../utils/tenantAccount';
-import { formatLongDate, formatMoney } from '../utils/printUtils';
+import { formatLongDate, formatMoney, parsePaymentDate } from '../utils/printUtils';
+import { MONTH_NAMES } from '../utils/rentLedger';
 import { RentCurrency, formatBoth } from '../utils/currency';
 
 interface TenantAccountsPanelProps {
@@ -20,6 +21,17 @@ const isUnpaid = (a: TenantAccount) => a.owing.some(m => m.status === 'due');
 const isPartial = (a: TenantAccount) => a.owing.some(m => m.status === 'partial');
 // Still owes rent for a month that has already passed
 const isOverdue = (a: TenantAccount) => a.owing.some(m => m.idx < todayIdx());
+
+// Days left on the paid months (negative = days since rent ran out), and the next
+// month that will be added to the balance on its 1st
+function rentDays(a: TenantAccount) {
+  const paidUntil = parsePaymentDate(a.paidThrough);
+  if (!paidUntil) return null;
+  const today = new Date(new Date().setHours(0, 0, 0, 0));
+  const days = Math.round((paidUntil.getTime() - today.getTime()) / 86_400_000);
+  const next = new Date(paidUntil.getFullYear(), paidUntil.getMonth(), paidUntil.getDate() + 1);
+  return { days, paidUntil, next, nextLabel: `${MONTH_NAMES[next.getMonth()]} ${next.getFullYear()}` };
+}
 
 const FILTER_MATCH: Record<Filter, (a: TenantAccount) => boolean> = {
   all: () => true,
@@ -218,6 +230,34 @@ export const TenantAccountsPanel: React.FC<TenantAccountsPanelProps> = ({ accoun
                   )}
                 </div>
               </div>
+
+              {/* Remaining days on the paid months */}
+              {(() => {
+                const r = rentDays(a);
+                if (!r) return null;
+                const expired = r.days < 0;
+                const pct = expired ? 100 : Math.max(4, Math.min(100, 100 - (r.days / 31) * 100));
+                return (
+                  <div className={`mt-3 rounded-2xl p-3 ${expired ? 'bg-rose-50 border border-rose-200' : r.days <= 5 ? 'bg-amber-50 border border-amber-200' : 'bg-emerald-50 border border-emerald-200'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`flex items-center gap-1.5 text-sm font-black ${expired ? 'text-rose-700' : r.days <= 5 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                        {expired ? <AlertTriangle className="w-4 h-4" /> : <Hourglass className="w-4 h-4" />}
+                        {expired ? `Expired ${-r.days} day${r.days === -1 ? '' : 's'}` : r.days === 0 ? 'Last day today' : `${r.days} day${r.days === 1 ? '' : 's'} left`}
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-500">{expired ? 'paid until' : 'until'} {formatLongDate(r.paidUntil)}</span>
+                    </div>
+                    <div className="mt-2 h-1.5 rounded-full bg-white overflow-hidden">
+                      <div className={`h-full rounded-full ${expired ? 'bg-rose-500' : r.days <= 5 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
+                    </div>
+                    <p className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-600">
+                      <CalendarPlus className="w-3 h-3 shrink-0" />
+                      {expired
+                        ? <>Counting until paid • new months are added on the 1st</>
+                        : <><strong>{r.nextLabel}</strong>&nbsp;rent ({usd(a.monthlyRent, a.currency)}) is added on {formatLongDate(r.next)}</>}
+                    </p>
+                  </div>
+                );
+              })()}
 
               <div className="mt-3 space-y-1.5 text-xs">
                 <div className="flex justify-between text-slate-600">

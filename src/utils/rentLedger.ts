@@ -124,12 +124,13 @@ export function buildRentLedger({
   if (startIdx === undefined) startIdx = todayIdx;
 
   // A current tenant owes rent for every month of the lease they signed (the whole
-  // duration goes on the balance up front); without an end date, up to this month.
-  // Former tenants stop at their last paid month.
+  // duration goes on the balance up front), and keeps owing a new month on the 1st of
+  // each month while they stay after the lease end. Former tenants stop at their last
+  // paid month.
   let dueUntilIdx = isCurrent ? todayIdx : (allocated.length ? Math.max(...allocated) : startIdx);
   if (end) {
     const leaseLast = lastLeaseMonthIndex(start, end);
-    dueUntilIdx = isCurrent ? leaseLast : Math.min(dueUntilIdx, leaseLast);
+    dueUntilIdx = isCurrent ? Math.max(leaseLast, todayIdx) : Math.min(dueUntilIdx, leaseLast);
   }
   // Advance payments for future months are still listed.
   const lastIdx = Math.max(dueUntilIdx, ...allocated, startIdx);
