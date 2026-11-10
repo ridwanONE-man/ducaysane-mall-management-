@@ -472,83 +472,114 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
             <p className="text-xs text-slate-400 mt-1">Use “Money In” for collections and “Money Out” for electricity expenses.</p>
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className="p-3 sm:p-4 space-y-4 bg-slate-50/60">
             {groups.map(g => {
               const net = (c: Currency) => sumBy(g.items, c) - sumBy(g.items, c, true);
+              const dayCurrencies = (['USD', 'SSP'] as const).filter(c => g.items.some(t => t.currency === c));
+              const isToday = g.date.toDateString() === new Date().toDateString();
               return (
-                <div key={g.key}>
-                  {/* Day header with that day's totals */}
-                  <div className="px-4 py-2 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
-                    <span className="flex items-center gap-2 text-xs font-extrabold text-slate-800">
-                      <CalendarDays className="w-4 h-4 text-orange-500" />
-                      {dayHeading(g.date)} • {formatLongDate(g.date)}
-                      <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-[10px] text-slate-500">{g.items.length}</span>
-                    </span>
-                    <span className="flex items-center gap-1.5 text-[11px] font-black">
-                      {(['USD', 'SSP'] as const).filter(c => g.items.some(t => t.currency === c)).map(c => (
-                        <span key={c} className={`px-2 py-0.5 rounded-lg text-white ${c === 'USD' ? 'bg-slate-900' : 'bg-orange-500'}`}>{signed(net(c), c)}</span>
-                      ))}
-                      <button type="button" onClick={() => printReport(g.items)} title="Print this day" className="p-1.5 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-white cursor-pointer">
-                        <Printer className="w-3.5 h-3.5" />
+                <div key={g.key} className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+                  {/* Day header: calendar tile, day name and that day's money */}
+                  <div className="px-4 py-3 flex flex-wrap items-center gap-3 border-b border-slate-100 bg-gradient-to-r from-orange-50/70 via-white to-white">
+                    <div className={`w-12 shrink-0 rounded-2xl overflow-hidden text-center shadow-sm ${isToday ? 'ring-2 ring-orange-400' : 'ring-1 ring-slate-200'}`}>
+                      <div className="bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[9px] font-black uppercase tracking-wider py-0.5">
+                        {g.date.toLocaleDateString('en-US', { month: 'short' })}
+                      </div>
+                      <div className="bg-white text-lg font-black text-slate-900 leading-7">{g.date.getDate()}</div>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-extrabold text-slate-900">{dayHeading(g.date)}</p>
+                      <p className="text-[11px] text-slate-500">{formatLongDate(g.date)} • {g.items.length} entr{g.items.length === 1 ? 'y' : 'ies'}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {dayCurrencies.map(c => {
+                        const n = net(c);
+                        return (
+                          <div key={c} className={`rounded-xl px-3 py-1.5 text-right ${c === 'USD' ? 'bg-slate-900 text-white' : 'bg-gradient-to-r from-orange-500 to-amber-500 text-white'}`}>
+                            <span className="block text-[9px] font-bold uppercase tracking-wider opacity-80">{c === 'USD' ? 'Dollar' : 'SSP'} balance</span>
+                            <span className="block text-sm font-black leading-tight">{signed(n, c)}</span>
+                          </div>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => printReport(g.items)}
+                        title="Print this day"
+                        className="w-9 h-9 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-orange-600 hover:border-orange-300 flex items-center justify-center cursor-pointer"
+                      >
+                        <Printer className="w-4 h-4" />
                       </button>
-                    </span>
+                    </div>
                   </div>
 
-                  {g.items.map(t => {
-                    const out = isOut(t);
-                    const daily = isDailySpaces(t);
-                    const isSpace = categoryOf(t) === 'space';
-                    const isSel = selected.has(t.id);
-                    const kwh = kwhOfEntry(t);
-                    const note = out ? '' : noteOfEntry(t);
-                    return (
-                      <div key={t.id} className={`px-4 py-2.5 flex items-center gap-3 transition-colors ${isSel ? 'bg-orange-50/60' : out ? 'bg-rose-50/40 hover:bg-rose-50' : daily ? 'bg-blue-50/40 hover:bg-blue-50' : 'hover:bg-slate-50/70'}`}>
-                        <button type="button" onClick={() => toggleOne(t.id)} className="shrink-0 cursor-pointer" title={isSel ? 'Unselect' : 'Select to print'}>
-                          {isSel ? <CheckSquare className="w-5 h-5 text-orange-500" /> : <Square className="w-5 h-5 text-slate-300 hover:text-slate-400" />}
-                        </button>
-                        <span className={`shrink-0 w-14 py-1.5 rounded-xl text-center text-[11px] font-black text-white bg-gradient-to-br ${
-                          out ? 'from-rose-500 to-orange-500' : isSpace ? 'from-blue-500 to-indigo-600' : 'from-orange-500 to-amber-500'
-                        }`}>
-                          {out ? <ArrowUpRight className="w-4 h-4 mx-auto" /> : daily ? <LayoutGrid className="w-4 h-4 mx-auto" /> : unitOfEntry(t) || '—'}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className={`text-sm font-bold truncate ${out ? 'text-rose-900' : daily ? 'text-blue-900' : 'text-slate-900'}`}>{tenantOfEntry(t)}</p>
-                          <p className="text-[11px] text-slate-500 truncate">
-                            <span className="font-mono">{t.referenceNumber}</span>
-                            {out && <> • <span className={`font-bold ${isSpace ? 'text-blue-600' : 'text-orange-600'}`}>Out from {isSpace ? 'spaces' : 'shops'}</span></>}
-                            {kwh > 0 && <> • <Gauge className="inline w-3 h-3 -mt-0.5 text-blue-500" /> {kwh.toLocaleString()} kWh</>}
-                            {note && <> • {note}</>}
-                          </p>
-                        </div>
-                        <span className={`shrink-0 text-sm sm:text-base font-black ${out ? 'text-rose-600' : t.currency === 'SSP' ? 'text-orange-600' : 'text-slate-900'}`}>
-                          {out ? '-' : '+'}{formatMoney(t.amount, t.currency)}
-                        </span>
-                        <div className="shrink-0 flex items-center">
-                          <button type="button" onClick={() => setPrintJob(t)} title="Print voucher" className="p-1.5 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-orange-50 cursor-pointer">
-                            <Printer className="w-4 h-4" />
+                  {/* Entries */}
+                  <ul className="divide-y divide-slate-100">
+                    {g.items.map(t => {
+                      const out = isOut(t);
+                      const daily = isDailySpaces(t);
+                      const isSpace = categoryOf(t) === 'space';
+                      const isSel = selected.has(t.id);
+                      const kwh = kwhOfEntry(t);
+                      const note = out ? '' : noteOfEntry(t);
+                      const accent = out ? 'bg-rose-500' : isSpace ? 'bg-blue-500' : 'bg-orange-500';
+                      return (
+                        <li key={t.id} className={`relative flex flex-wrap sm:flex-nowrap items-center gap-3 pl-5 pr-3 sm:pr-4 py-3 transition-colors ${isSel ? 'bg-orange-50/70' : 'hover:bg-slate-50'}`}>
+                          <span className={`absolute left-0 top-2 bottom-2 w-1 rounded-r-full ${accent}`} />
+                          <button type="button" onClick={() => toggleOne(t.id)} className="shrink-0 cursor-pointer" title={isSel ? 'Unselect' : 'Select to print'}>
+                            {isSel ? <CheckSquare className="w-5 h-5 text-orange-500" /> : <Square className="w-5 h-5 text-slate-300 hover:text-slate-400" />}
                           </button>
-                          <button data-edit
-                            type="button"
-                            onClick={() => (out ? setOutForm({ editing: t }) : setForm({ editing: t }))}
-                            title="Modify"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <DeleteButton
-                            title="Delete"
-                            onDelete={() => onDelete(t)}
-                            confirm={{
-                              title: out ? 'Delete this money out?' : 'Delete this electricity entry?',
-                              subject: `${tenantOfEntry(t)} • ${formatMoney(t.amount, t.currency)}`,
-                              message: 'It is removed from the electricity records.',
-                              confirmLabel: 'Delete entry',
-                            }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+                          <span className={`shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center text-[11px] font-black text-white shadow-sm bg-gradient-to-br ${
+                            out ? 'from-rose-500 to-orange-500' : isSpace ? 'from-blue-500 to-indigo-600' : 'from-orange-500 to-amber-500'
+                          }`}>
+                            {out ? <ArrowUpRight className="w-5 h-5" /> : daily ? <LayoutGrid className="w-5 h-5" /> : <span className="px-0.5 truncate">{unitOfEntry(t) || '—'}</span>}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm sm:text-[15px] font-extrabold text-slate-900 truncate">{tenantOfEntry(t)}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                              <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md font-black uppercase tracking-wide ${out ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                {out ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownLeft className="w-3 h-3" />}
+                                {out ? 'Money out' : 'Money in'}
+                              </span>
+                              <span className={`px-1.5 py-0.5 rounded-md font-bold ${isSpace ? 'bg-blue-50 text-blue-700' : 'bg-orange-50 text-orange-700'}`}>
+                                {out ? `From ${isSpace ? 'spaces' : 'shops'}` : isSpace ? 'Spaces' : 'Shop'}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded-md bg-slate-100 font-mono text-slate-500">{t.referenceNumber}</span>
+                              {kwh > 0 && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-700 font-bold"><Gauge className="w-3 h-3" />{kwh.toLocaleString()} kWh</span>}
+                              {note && <span className="text-slate-500 truncate max-w-[220px]">{note}</span>}
+                            </div>
+                          </div>
+                          <span className={`shrink-0 px-3 py-1.5 rounded-xl text-sm sm:text-base font-black whitespace-nowrap ${
+                            out ? 'bg-rose-50 text-rose-600 ring-1 ring-rose-200' : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                          }`}>
+                            {out ? '−' : '+'}{formatMoney(t.amount, t.currency)}
+                          </span>
+                          <div className="shrink-0 flex items-center gap-0.5 ml-auto sm:ml-0">
+                            <button type="button" onClick={() => setPrintJob(t)} title="Print voucher" className="p-2 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-orange-50 cursor-pointer">
+                              <Printer className="w-4 h-4" />
+                            </button>
+                            <button data-edit
+                              type="button"
+                              onClick={() => (out ? setOutForm({ editing: t }) : setForm({ editing: t }))}
+                              title="Modify"
+                              className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <DeleteButton
+                              title="Delete"
+                              onDelete={() => onDelete(t)}
+                              confirm={{
+                                title: out ? 'Delete this money out?' : 'Delete this electricity entry?',
+                                subject: `${tenantOfEntry(t)} • ${formatMoney(t.amount, t.currency)}`,
+                                message: 'It is removed from the electricity records.',
+                                confirmLabel: 'Delete entry',
+                              }}
+                            />
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </div>
               );
             })}
