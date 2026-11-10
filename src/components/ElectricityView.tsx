@@ -33,6 +33,7 @@ import { numberToWords } from '../utils/numberToWords';
 type Currency = 'USD' | 'SSP';
 type PeriodMode = 'all' | 'day' | 'month' | 'year' | 'range';
 type FlowFilter = 'all' | 'in' | 'out';
+type Bucket = 'all' | 'previous' | 'current' | 'future';
 type PrintJob = ElectricityEntry | 'report' | null;
 
 const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -119,6 +120,8 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
   const [category, setCategory] = useState<UnitCategory>('all');
   const [currencyFilter, setCurrencyFilter] = useState<'ALL' | Currency>('ALL');
   const [flow, setFlow] = useState<FlowFilter>('all');
+  // Previous / current / future month boxes: clicking one shows only that part
+  const [bucket, setBucket] = useState<Bucket>('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [form, setForm] = useState<{ editing: ElectricityEntry | null } | null>(null);
@@ -152,7 +155,16 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
 
   const categoryOf = (t: ElectricityEntry) =>
     isOut(t) || isDailySpaces(t) ? (t.unitType === 'Space' ? 'space' : 'shop') : unitCategoryOf(t.unitNumber, units) || (t.unitType === 'Space' ? 'space' : 'shop');
-  const dated = entries.filter(inPeriod);
+  // Which month part an entry falls in, compared with this calendar month
+  const thisMonthIdx = today.getFullYear() * 12 + today.getMonth();
+  const bucketOf = (t: ElectricityEntry): Exclude<Bucket, 'all'> => {
+    const d = parsePaymentDate(t.date);
+    const idx = d ? d.getFullYear() * 12 + d.getMonth() : thisMonthIdx;
+    return idx < thisMonthIdx ? 'previous' : idx > thisMonthIdx ? 'future' : 'current';
+  };
+  const inBucket = (t: ElectricityEntry) => bucket === 'all' || bucketOf(t) === bucket;
+  const bucketLabel = bucket === 'previous' ? 'Previous months' : bucket === 'current' ? `${MONTH_NAMES[today.getMonth()]} ${today.getFullYear()}` : bucket === 'future' ? 'Future months' : '';
+  const dated = entries.filter(t => inPeriod(t) && inBucket(t));
   const categoryCounts = {
     all: dated.length,
     shop: dated.filter(t => categoryOf(t) === 'shop').length,
@@ -185,7 +197,7 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
 
   const filterLabel = [
     categoryLabel,
-    periodLabel,
+    bucket === 'all' ? periodLabel : bucketLabel,
     flow === 'all' ? '' : flow === 'in' ? 'Money in' : 'Money out',
     currencyFilter === 'ALL' ? '' : currencyFilter === 'USD' ? 'Dollar only' : 'SSP only',
     q ? `search "${search.trim()}"` : '',
@@ -399,12 +411,69 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
         </div>
       </div>
 
+      {/* Previous / current / future months */}
+      {(() => {
+        const byCategory = category === 'all' ? entries : entries.filter(t => categoryOf(t) === category);
+        const parts: { key: Bucket; label: string; tone: string; ring: string; ink: string }[] = [
+          { key: 'previous', label: 'Previous months', tone: 'bg-white border-slate-200', ring: 'ring-slate-300', ink: 'text-slate-500' },
+          { key: 'current', label: `Current month (${MONTH_NAMES[today.getMonth()].slice(0, 3)} ${today.getFullYear()})`, tone: 'bg-orange-50/70 border-orange-200', ring: 'ring-orange-300', ink: 'text-orange-600' },
+          { key: 'future', label: 'Future months', tone: 'bg-white border-slate-200', ring: 'ring-slate-300', ink: 'text-slate-500' },
+          { key: 'all', label: 'Total balance', tone: 'bg-gradient-to-br from-slate-900 to-slate-800 border-slate-900 text-white', ring: 'ring-orange-300', ink: 'text-orange-300' },
+        ];
+        return (
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+            {parts.map(part => {
+              const list = part.key === 'all' ? byCategory : byCategory.filter(t => bucketOf(t) === part.key);
+              const dark = part.key === 'all';
+              const active = bucket === part.key && (part.key !== 'all' || periodMode === 'all');
+              const used = (['USD', 'SSP'] as const).filter(c => list.some(t => t.currency === c));
+              return (
+                <div
+                  key={part.key}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => { setBucket(part.key); setPeriodMode('all'); }}
+                  onKeyDown={e => { if (e.key === 'Enter') { setBucket(part.key); setPeriodMode('all'); } }}
+                  className={`relative text-left rounded-2xl border p-4 transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-md ${part.tone} ${active ? `ring-4 ${part.ring}` : ''}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className={`text-[10px] font-black uppercase tracking-wider ${part.ink}`}>{part.label}</span>
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); printReport(list); }}
+                      disabled={list.length === 0}
+                      title={`Print ${part.label.toLowerCase()}`}
+                      className={`shrink-0 -mt-1 -mr-1 p-1.5 rounded-lg cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${dark ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-orange-600 hover:bg-white'}`}
+                    >
+                      <Printer className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {used.length === 0 ? (
+                    <p className={`mt-1 text-xl font-black ${dark ? 'text-white' : 'text-slate-300'}`}>0</p>
+                  ) : used.map(c => {
+                    const bal = sumBy(list, c) - sumBy(list, c, true);
+                    return (
+                      <p key={c} className={`mt-1 text-lg sm:text-xl font-black leading-tight ${dark ? 'text-white' : bal < 0 ? 'text-rose-600' : c === 'SSP' ? 'text-orange-600' : 'text-slate-900'}`}>
+                        {signed(bal, c)}
+                      </p>
+                    );
+                  })}
+                  <p className={`mt-1 text-[11px] ${dark ? 'text-white/60' : 'text-slate-500'}`}>
+                    {list.length} entr{list.length === 1 ? 'y' : 'ies'} • {active ? 'showing' : 'tap to show'}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {/* Period */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-2.5 flex flex-wrap items-center gap-2">
         <span className="flex items-center gap-1.5 px-2 text-xs font-bold text-slate-700"><CalendarRange className="w-4 h-4 text-orange-500" /> Show</span>
         <div className="inline-flex bg-slate-100 p-0.5 rounded-xl">
           {([['all', 'All'], ['day', 'Day'], ['month', 'Month'], ['year', 'Year'], ['range', 'Custom']] as [PeriodMode, string][]).map(([m, label]) => (
-            <button key={m} type="button" onClick={() => setPeriodMode(m)} className={pill(periodMode === m)}>{label}</button>
+            <button key={m} type="button" onClick={() => { setPeriodMode(m); setBucket('all'); }} className={pill(periodMode === m && bucket === 'all')}>{label}</button>
           ))}
         </div>
         {periodMode === 'day' && <input type="date" value={day} onChange={e => setDay(e.target.value)} className={selectCls} />}
@@ -426,7 +495,7 @@ export const ElectricityView: React.FC<ElectricityViewProps> = ({ entries: allEn
           </span>
         )}
         <span className="ml-auto px-3 py-1 rounded-full bg-orange-50 text-orange-700 text-[11px] font-bold">
-          {categoryLabel} • {periodLabel} • {periodEntries.length} entr{periodEntries.length === 1 ? 'y' : 'ies'}
+          {categoryLabel} • {bucket === 'all' ? periodLabel : bucketLabel} • {periodEntries.length} entr{periodEntries.length === 1 ? 'y' : 'ies'}
         </span>
       </div>
 
